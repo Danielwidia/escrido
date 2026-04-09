@@ -2267,6 +2267,7 @@ app.post('/api/generate-ai', async (req, res) => {
         prompt += `bertipe ${typeDescriptions[tipe] || 'pilihan ganda'} `;
     }
     prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} tentang: ${materi}. `;
+    prompt += `PENTING: Jika soal didasarkan pada sebuah teks bacaan (passage), maka teks bacaan tersebut WAJIB disertakan di awal field "text" sebelum pertanyaan dimulai. Jangan hanya memberikan pertanyaannya saja. Gunakan format yang rapi (misal: "Teks Bacaan: ... \n\n Pertanyaan: ..."). `;
     if (levelParts.length > 0) {
         prompt += `Sebarkan level soal sebagai ${levelParts.join(', ')}. `;
     }
@@ -2527,7 +2528,8 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         promptText = `Buatkan ${docType} (Bentuk: ${extraData?.jenis || 'Soal Ujian Tertulis'}) untuk mata pelajaran ${mapel} ${topicHint} fase ${fase}. Sajikan dalam bentuk format matriks yang merinci: Indikator Soal, Level Kognitif (seperti L1/L2/L3 atau C1-C6), and Bentuk Soal.`;
     } else if (type === 'soal-jawaban') {
         docType = `Soal dan Kunci Jawaban`;
-        promptText = `Buatkan instrumen Soal dan Kunci Jawaban untuk mata pelajaran ${mapel} fase ${fase} ${topicHint}. Rincian jumlah dan bentuk soal yang diharapkan adalah: ${extraData?.jumlahPerBentuk || '5 soal Pilihan Ganda'}. Usahakan tipe soal HOTS (Higher Order Thinking Skills). Berikan juga pembahasan singkat untuk masing-masing soal.`;
+        promptText = `Buatkan instrumen Soal dan Kunci Jawaban untuk mata pelajaran ${mapel} fase ${fase} ${topicHint}. Rincian jumlah dan bentuk soal yang diharapkan adalah: ${extraData?.jumlahPerBentuk || '5 soal Pilihan Ganda'}. Usahakan tipe soal HOTS (Higher Order Thinking Skills). Berikan juga pembahasan singkat untuk masing-masing soal. `;
+        promptText += `PENTING: Jika soal didasarkan pada teks bacaan (passage), sertakan teks bacaan tersebut secara utuh di dalam konten soal sebelum pertanyaan dimulai. `;
         promptText += `\nUntuk soal uraian tipe text, buatlah kunci jawaban yang sangat singkat: hanya 1 kalimat padat dan jelas, maksimal 5 kata.`;
 
         if (extraData?.opsiGambar === 'placeholder') {
