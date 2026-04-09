@@ -1,0 +1,39 @@
+{
+  "name": "exam-browser-online",
+  "version": "1.0.0",
+  "description": "CBT Exam Browser - Consolidated Root Version",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:exe": "pkg . --targets node18-win-x64 --output dist/app.exe && powershell -Command \"New-Item -ItemType Directory -Force dist/APP; Copy-Item index.html,logo.png,administrasi_guru.html dist/APP/\"",
+    "setup:vercel": "node setup-vercel-env.js",
+    "upload:github": "node upload-to-github.js"
+  },
+  "pkg": {
+    "assets": [
+      "wordParser.js"
+    ]
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
+    "@supabase/supabase-js": "^2.101.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^4.18.2",
+    "mammoth": "^1.6.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "1.1.1",
+    "pptxgenjs": "^3.12.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.0"
+  },
+  "author": "Daniel Widiatmoko",
+  "license": "ISC"
+}

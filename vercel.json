@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/server.js" }
+  ],
+  "functions": {
+    "server.js": {
+      "includeFiles": "{*.html,*.png,app.js,style.css,wordParser.js,*.ico}"
+    }
+  }
+}

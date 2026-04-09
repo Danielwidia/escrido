@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADMIN CBT - SMP KRISTEN DORKAS</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js"></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+
+    <div id="app">
+        <!-- Login Screen -->
+
+
+        <!-- Auth Modal -->
+
+
+        <!-- Admin Dashboard -->
+        <div id="admin-dashboard" class="hidden min-h-screen flex bg-slate-50">
+            <aside class="w-64 bg-slate-900 text-white flex flex-col hidden lg:flex">
+                <div class="p-8 flex flex-col items-center gap-3 text-center">
+                    <img src="logo.png" class="w-12 h-12 object-contain">
+                    <h2 class="text-xs font-black text-sky-400 italic">ADMIN CBT DORKAS</h2>
+                </div>
+                <nav class="flex-1 px-4 space-y-2">
+                    <button onclick="showAdminSection('overview')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="overview"><i class="fas fa-home"></i> Beranda</button>
+                    <button onclick="showAdminSection('banksoal')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="banksoal"><i class="fas fa-book"></i> Bank Soal</button>
+                    <button onclick="showAdminSection('rombel')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="rombel"><i class="fas fa-users-cog"></i> Rombel</button>
+                    <button onclick="showAdminSection('students')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="students"><i class="fas fa-users"></i> Peserta Didik</button>
+                    <button onclick="showAdminSection('results')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="results"><i class="fas fa-poll"></i> Hasil Ujian</button>
+                    <button onclick="showAdminSection('raport')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="raport"><i class="fas fa-file-alt"></i> Raport Siswa</button>
+                    <button onclick="showAdminSection('settings')"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 nav-link"
+                        data-section="settings"><i class="fas fa-cog"></i> Pengaturan Akun</button>
+                    <div class="my-2 border-t border-slate-700"></div>
+                    <a href="administrasi_guru.html" target="_blank"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 text-blue-500 font-bold">
+                        <i class="fas fa-laptop-file"></i> Perangkat Ajar<span
+                            class="ml-auto text-[9px] bg-blue-500/20 px-2 py-0.5 border border-blue-500/30 rounded-full">AI</span>
+                    </a>
+                </nav>
+                <div class="p-6 border-t border-slate-800">
+                    <button onclick="exportDatabase()"
+                        class="w-full py-3 bg-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-2 mb-4 hover:bg-slate-700"><i
+                            class="fas fa-download"></i> Backup Data</button>
+                    <!-- Restore Data Menu -->
+                    <label for="restore-input"
+                        class="w-full py-3 bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer hover:bg-indigo-600 hover:text-white transition-all">
+                        <i class="fas fa-upload"></i> Restore Data
+                        <input type="file" id="restore-input" class="hidden" accept=".json"
+                            onchange="importDatabase(event)">
+                    </label>
+                    <button onclick="logout()"
+                        class="w-full py-3 bg-red-500/10 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white"><i
+                            class="fas fa-power-off"></i> Logout</button>
+                </div>
+            </aside>
+
+            <main class="flex-1 h-screen overflow-y-auto p-6 lg:p-10">
+                <!-- Mobile nav bar (visible below lg breakpoint) -->
+                <nav id="mobile-admin-nav"
+                    class="lg:hidden bg-slate-900 text-white p-4 flex justify-between items-center">
+                    <button onclick="toggleMobileMenu()" class="text-2xl"><i class="fas fa-bars"></i></button>
+                    <span class="font-bold">ADMIN CBT DORKAS</span>
+                </nav>
+
+                <!-- Mobile menu overlay -->
+                <div id="mobile-menu"
+                    class="fixed inset-0 bg-slate-900 bg-opacity-95 text-white z-50 hidden p-8 overflow-y-auto">
+                    <button onclick="toggleMobileMenu()" class="absolute top-4 right-4 text-xl"><i
+                            class="fas fa-times"></i></button>
+                    <div class="space-y-4 mt-8">
+                        <button onclick="showAdminSection('overview'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-home"></i> Beranda</button>
+                        <button onclick="showAdminSection('banksoal'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-book"></i> Bank Soal</button>
+                        <button onclick="showAdminSection('rombel'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-users-cog"></i> Rombel</button>
+                        <button onclick="showAdminSection('students'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-users"></i> Peserta Didik</button>
+                        <button onclick="showAdminSection('results'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-poll"></i> Hasil Ujian</button>
+                        <button onclick="showAdminSection('raport'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-file-alt"></i> Raport Siswa</button>
+                        <button onclick="showAdminSection('settings'); toggleMobileMenu();"
+                            class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                class="fas fa-cog"></i> Pengaturan Akun</button>
+                        <div class="border-t border-slate-700 pt-4 mt-4">
+                            <a href="administrasi_guru.html" target="_blank"
+                                class="w-full text-left px-4 py-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 font-bold flex items-center gap-3"><i
+                                    class="fas fa-laptop-file"></i>Perangkat Ajar</a>
+                        </div>
+                        <div class="border-t border-slate-700 pt-4 mt-4">
+                            <button onclick="exportDatabase()"
+                                class="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 flex items-center gap-3"><i
+                                    class="fas fa-download"></i> Backup Data</button>
+                            <button onclick="logout()"
+                                class="w-full text-left px-4 py-3 rounded-xl bg-red-500/20 hover:bg-red-500 hover:text-white text-red-400 flex items-center gap-3 mt-2"><i
+                                    class="fas fa-power-off"></i> Logout</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Overview Section -->
+                <div id="admin-overview" class="admin-section">
+                    <h2 class="text-3xl font-black text-slate-800 mb-8 tracking-tight">Statistik SMP Kristen Dorkas</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-sky-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Total Mapel</p>
+                            <h3 id="stat-subjects" class="text-3xl font-black">0</h3>
+                        </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-indigo-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Total Soal</p>
+                            <h3 id="stat-questions" class="text-3xl font-black">0</h3>
+                        </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Rombel Aktif</p>
+                            <h3 id="stat-rombel" class="text-3xl font-black">0</h3>
+                        </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-amber-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Total Siswa</p>
+                            <h3 id="stat-students" class="text-3xl font-black">0</h3>
+                        </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-indigo-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Hasil Ujian</p>
+                            <h3 id="stat-results" class="text-3xl font-black">0</h3>
+                        </div>
+                    </div>
+                    <div class="mt-8">
+                        <h3 class="text-xl font-black text-slate-800 mb-4">Akses Sistem</h3>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-3">Alamat IP yang Dapat Diakses</p>
+                            <div id="accessible-ips" class="text-sm text-slate-700">
+                                <div class="animate-pulse">Memuat alamat IP...</div>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-2">Gunakan salah satu alamat di atas untuk mengakses
+                                sistem dari perangkat lain di jaringan yang sama.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Questions Section -->
+                <div id="admin-banksoal" class="hidden admin-section">
+                    <div class="flex flex-col lg:flex-row justify-between gap-4 mb-8">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800">Bank Soal</h2>
+                            <p class="text-slate-400 text-sm">Kelola Soal CBT</p>
+                        </div>
+                        <div
+                            class="flex flex-wrap gap-3 items-end bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                            <!-- Configuration Group -->
+                            <div class="flex flex-col gap-1.5">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Konfigurasi</label>
+                                <div class="flex gap-2">
+                                    <button onclick="openScheduleModal()"
+                                        class="px-3 py-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-xl text-xs font-bold transition-all hover:bg-purple-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-calendar-check text-[10px]"></i> Jadwal
+                                    </button>
+                                    <button onclick="openTimeLimitModal()"
+                                        class="px-3 py-2 bg-orange-50 text-orange-600 border border-orange-100 rounded-xl text-xs font-bold transition-all hover:bg-orange-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-clock text-[10px]"></i> Waktu
+                                    </button>
+                                    <button onclick="shuffleQuestions()"
+                                        class="px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-xs font-bold transition-all hover:bg-indigo-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-random text-[10px]"></i> Acak
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Main Actions -->
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Aksi
+                                    Utama</label>
+                                <div class="flex gap-2">
+                                    <button onclick="openQuestionModal()"
+                                        class="px-4 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold transition-all hover:bg-sky-700 hover:shadow-lg hover:shadow-sky-100 flex items-center gap-2">
+                                        <i class="fas fa-plus"></i> Soal Baru
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- AI Group -->
+                            <div class="flex flex-col gap-1.5">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Bantuan
+                                    AI</label>
+                                <div class="flex gap-2">
+                                    <button onclick="openAiModal()"
+                                        class="px-3 py-2 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-xs font-bold transition-all hover:bg-rose-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-robot text-[10px]"></i> Buat Soal AI
+                                    </button>
+                                    <button onclick="openKisiKisiModal()"
+                                        class="px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-xl text-xs font-bold transition-all hover:bg-indigo-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-wand-sparkles text-[10px]"></i> Kisi-kisi AI
+                                    </button>
+                                </div>
+                                <p id="ai-open-hint" class="hidden text-[10px] text-slate-500 leading-relaxed mt-2">
+                                    Petunjuk: Tekan tombol untuk membuka fitur AI. Setelah fitur terbuka, pilih materi, jenis & jumlah soal, dan opsi gambar jika perlu.
+                                </p>
+                            </div>
+
+                            <!-- Data Management Group -->
+                            <div class="flex flex-col gap-1.5">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Kelola
+                                    Data</label>
+                                <div class="flex gap-2">
+                                    <!-- Import Dropdown -->
+                                    <div class="relative group">
+                                        <button
+                                            class="px-3 py-2 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-2">
+                                            <i class="fas fa-file-import text-[10px]"></i> Import <i
+                                                class="fas fa-chevron-down text-[7px]"></i>
+                                        </button>
+                                        <div
+                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden group-hover:block z-30 animate-fade-in">
+                                            <button onclick="openImportModal()"
+                                                class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-t-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
+                                                <i class="fas fa-file-word text-blue-500"></i> Word (.docx)
+                                            </button>
+                                            <button onclick="importQuestionsExcel()"
+                                                class="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
+                                                <i class="fas fa-file-excel text-emerald-500"></i> Excel (.xlsx)
+                                            </button>
+                                            <button onclick="importQuestionsJSON()"
+                                                class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-b-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
+                                                <i class="fas fa-file-code text-cyan-500"></i> JSON File
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <!-- Export Dropdown -->
+                                    <div class="relative group">
+                                        <button
+                                            class="px-3 py-2 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-2">
+                                            <i class="fas fa-file-export text-[10px]"></i> Export <i
+                                                class="fas fa-chevron-down text-[7px]"></i>
+                                        </button>
+                                        <div
+                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden group-hover:block z-30 animate-fade-in">
+                                            <button onclick="exportQuestionsExcel()"
+                                                class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-t-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
+                                                <i class="fas fa-file-excel text-emerald-500"></i> Excel (.xlsx)
+                                            </button>
+                                            <button onclick="exportQuestions()"
+                                                class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-b-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
+                                                <i class="fas fa-file-code text-blue-500"></i> JSON File
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Maintenance / Danger Zone -->
+                            <div class="flex flex-col gap-1.5 flex-1 items-end">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest pr-1">Pengaturan</label>
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="deleteSelectedAdminQuestions()"
+                                        class="px-3 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl text-xs font-bold transition-all hover:bg-red-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-check-circle text-[10px]"></i> Hapus Terpilih
+                                    </button>
+                                    <button onclick="deleteFilteredQuestions()"
+                                        class="px-3 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl text-xs font-bold transition-all hover:bg-red-600 hover:text-white flex items-center gap-2">
+                                        <i class="fas fa-trash-alt text-[10px]"></i> Hapus Soal
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-6 gap-6">
+                        <div class="lg:col-span-1 space-y-4">
+                            <!-- Quick Stats -->
+                            <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                                    Statistik Cepat</h4>
+                                <div class="space-y-3">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs text-slate-600">Total Soal</span>
+                                        <span class="text-sm font-bold text-slate-800" id="total-questions">0</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs text-slate-600">Ditampilkan</span>
+                                        <span class="text-sm font-bold text-sky-600" id="filtered-questions">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter
+                                    & Cari</h4>
+                                <div class="space-y-3">
+                                    <div class="relative">
+                                        <input type="text" id="search-questions" onkeyup="renderAdminQuestions()"
+                                            placeholder="Cari soal..."
+                                            class="w-full p-3 bg-slate-50 rounded-xl border-none text-xs font-bold outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-sky-500 pr-10">
+                                        <button onclick="clearSearch()"
+                                            class="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                            title="Clear search">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                    <select id="filter-rombel" onchange="renderAdminQuestions()"
+                                        class="w-full p-3 bg-slate-50 rounded-xl border-none text-xs font-bold outline-none ring-1 ring-slate-100">
+                                        <option value="ALL">Semua Rombel</option>
+                                    </select>
+                                    <select id="filter-mapel" onchange="renderAdminQuestions()"
+                                        class="w-full p-3 bg-slate-50 rounded-xl border-none text-xs font-bold outline-none ring-1 ring-slate-100">
+                                        <option value="ALL">Semua Mapel</option>
+                                    </select>
+                                    <button onclick="clearFilters()"
+                                        class="w-full py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors">Reset
+                                        Filter</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="lg:col-span-5">
+                            <div class="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                                <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="text-sm font-bold text-slate-700">Daftar Soal</h3>
+                                        <div class="flex items-center gap-2 text-xs text-slate-500">
+                                            <span>Menampilkan <span id="filtered-count"
+                                                    class="font-bold text-sky-600">0</span> dari <span id="total-count"
+                                                    class="font-bold">0</span> soal</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-sm table-hover">
+                                        <thead
+                                            class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            <tr>
+                                                <th class="px-6 py-4 text-center w-28">
+                                                    <div class="flex items-center justify-center gap-2">
+                                                        <input type="checkbox" id="admin-select-all-checkbox" onclick="toggleAdminSelectAll(event)" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                                                        <span>Urutan</span>
+                                                    </div>
+                                                </th>
+                                                <th class="px-6 py-4">Isi Soal</th>
+                                                <th class="px-6 py-4 w-32">Kategori</th>
+                                                <th class="px-6 py-4 w-28">Kunci</th>
+                                                <th class="px-6 py-4 w-40">Jenis Soal</th>
+                                                <th class="px-6 py-4 text-center w-28">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="questions-table-body" class="divide-y divide-slate-50"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rombel Section -->
+                <div id="admin-rombel" class="hidden admin-section">
+                    <div class="flex flex-col lg:flex-row justify-between gap-4 mb-8">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800">Kelola Rombel & Mapel</h2>
+                            <p class="text-slate-400 text-sm">Kelola Mapel dan Rombel SMP Kristen Dorkas.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="openConfigModal('mapel')"
+                                class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all hover:bg-slate-200">Tambah
+                                Mapel</button>
+                            <button onclick="openConfigModal('rombel')"
+                                class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all hover:bg-slate-200">Tambah
+                                Rombel</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center">
+                            <h4 class="text-lg font-black text-slate-800 mb-4">Diagram Penyelesaian</h4>
+                            <div class="space-y-4">
+                                <div class="text-center">
+                                    <h5 class="text-sm font-bold text-slate-600 mb-2">Kelas 7</h5>
+                                    <canvas id="completion-chart-vii" width="150" height="150"></canvas>
+                                    <div id="completion-legend-vii" class="mt-2 text-xs text-slate-700 text-center">
+                                    </div>
+                                </div>
+                                <div class="text-center">
+                                    <h5 class="text-sm font-bold text-slate-600 mb-2">Kelas 8</h5>
+                                    <canvas id="completion-chart-viii" width="150" height="150"></canvas>
+                                    <div id="completion-legend-viii" class="mt-2 text-xs text-slate-700 text-center">
+                                    </div>
+                                </div>
+                                <div class="text-center">
+                                    <h5 class="text-sm font-bold text-slate-600 mb-2">Kelas 9</h5>
+                                    <canvas id="completion-chart-ix" width="150" height="150"></canvas>
+                                    <div id="completion-legend-ix" class="mt-2 text-xs text-slate-700 text-center">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                            <h4 class="text-lg font-black text-slate-800 mb-4">Mata Pelajaran</h4>
+                            <div id="mapel-list" class="space-y-2"></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                            <h4 class="text-lg font-black text-slate-800 mb-4">Rombel</h4>
+                            <div id="rombel-list" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Students Section -->
+                <div id="admin-students" class="hidden admin-section">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800">Database Siswa</h2>
+                            <p class="text-slate-400 text-sm">Informasi login siswa SMP Kristen Dorkas.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="openImportSiswaModal()"
+                                class="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-emerald-100 transition-all hover:bg-emerald-700 flex items-center gap-2">
+                                <i class="fas fa-file-excel"></i> Import Excel
+                            </button>
+                            <button onclick="generateStudentCardsPDF()"
+                                class="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm shadow-lg hover:bg-indigo-700">Kartu
+                                Tes</button>
+                            <button onclick="openStudentModal()"
+                                class="px-6 py-3 bg-sky-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-sky-100 transition-all hover:bg-sky-700">Daftarkan
+                                Siswa</button>
+                            <button onclick="saveDatabaseToServer()"
+                                class="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm shadow-lg hover:bg-indigo-700">Simpan
+                                DB</button>
+                            <button onclick="loadDatabaseFromServer()"
+                                class="px-6 py-3 bg-amber-500 text-white rounded-2xl font-bold text-sm shadow-lg hover:bg-amber-600">Ambil
+                                DB</button>
+                        </div>
+                    </div>
+                    <div class="mb-4 flex items-center gap-3">
+                        <label class="text-xs text-slate-500">Rombel:</label>
+                        <select id="students-filter-rombel" onchange="renderAdminStudents()"
+                            class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-sm">
+                            <option value="">Semua</option>
+                        </select>
+                    </div>
+                    <div class="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">Nama Lengkap</th>
+                                    <th class="px-6 py-4">Rombel</th>
+                                    <th class="px-6 py-4">ID / Sandi</th>
+                                    <th class="px-6 py-4 text-center">Hapus</th>
+                                </tr>
+                            </thead>
+                            <tbody id="students-table-body" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div id="admin-results" class="hidden admin-section">
+                    <div class="mb-8">
+                        <h2 class="text-2xl font-black text-slate-800">Laporan Hasil Ujian</h2>
+                        <p class="text-slate-400 text-sm">Monitor pencapaian nilai siswa secara real-time.</p>
+                    </div>
+                    <div class="mb-4 flex flex-wrap items-center gap-3">
+                        <label class="text-xs text-slate-500">Rombel:</label>
+                        <select id="results-filter-rombel"
+                            class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-sm"></select>
+                        <label class="text-xs text-slate-500">Mata Pelajaran:</label>
+                        <select id="results-filter-mapel"
+                            class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-sm"></select>
+                        <label class="text-xs text-slate-500">Dari:</label>
+                        <input type="date" id="results-date-from"
+                            class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-sm">
+                        <label class="text-xs text-slate-500">Sampai:</label>
+                        <input type="date" id="results-date-to"
+                            class="p-2 rounded-xl bg-slate-50 border border-slate-100 text-sm">
+                        <button onclick="renderAdminResults()"
+                            class="px-4 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold">Terapkan</button>
+                        <button onclick="clearResultsFilter()"
+                            class="px-3 py-2 bg-slate-100 rounded-xl text-xs">Reset</button>
+                        <button onclick="exportResultsToExcel()"
+                            class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2"><i
+                                class="fas fa-download"></i> Export Excel</button>
+                        <button onclick="clearAllResults()"
+                            class="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-red-700"><i
+                                class="fas fa-trash-alt"></i> Hapus Semua</button>
+                    </div>
+                    <div class="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">Siswa</th>
+                                    <th class="px-6 py-4">Rombel</th>
+                                    <th class="px-6 py-4">Mata Pelajaran</th>
+                                    <th class="px-6 py-4">Tanggal</th>
+                                    <th class="px-6 py-4 text-center">Skor Akhir</th>
+                                    <th class="px-6 py-4 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-table-body" class="divide-y divide-slate-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Raport Section -->
+                <div id="admin-raport" class="hidden admin-section">
+                    <div class="flex flex-col lg:flex-row justify-between gap-4 mb-6">
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800">Raport Nilai Siswa</h2>
+                            <p class="text-slate-400 text-sm">Rekap nilai ujian siswa per mata pelajaran.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 items-end">
+                            <div class="flex flex-col gap-1">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Rombel</label>
+                                <select id="raport-filter-rombel" onchange="updateRaportSiswaFilter(this.value); renderRaport()"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[130px]">
+                                    <option value="ALL">Semua Rombel</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label
+                                    class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Siswa</label>
+                                <select id="raport-filter-siswa" onchange="renderRaport()"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[180px]">
+                                    <option value="ALL">Semua Siswa</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tahun
+                                    Ajaran</label>
+                                <input type="text" id="raport-tahun" value="2025/2026"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold w-28">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nama
+                                    Orang Tua/Wali</label>
+                                <input type="text" id="raport-parent-name" value="Orang Tua / Wali"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[220px]">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nama
+                                    Wali Kelas</label>
+                                <input type="text" id="raport-wali-name" value="Wali Kelas"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[180px]">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Jabatan
+                                    Kepala Sekolah</label>
+                                <input type="text" id="raport-kepala-title" value="Kepala SMP Kristen Dorkas"
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[220px]">
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nama
+                                    Kepala Sekolah</label>
+                                <input type="text" id="raport-kepala-name" value="Pujoko, S.Pd., M.Pd."
+                                    class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold min-w-[220px]">
+                            </div>
+                            <button onclick="renderRaport()"
+                                class="px-4 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-sky-700">
+                                <i class="fas fa-sync"></i> Muat
+                            </button>
+                            <button onclick="previewRaport()"
+                                class="px-4 py-2 bg-slate-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-600">
+                                <i class="fas fa-eye"></i> Preview
+                            </button>
+                            <button onclick="printRaport()"
+                                class="px-4 py-2 bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-slate-900">
+                                <i class="fas fa-print"></i> Cetak
+                            </button>
+                            <button onclick="downloadRaportPDF()"
+                                class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-rose-700">
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </button>
+                            <button onclick="downloadRaportExcel()"
+                                class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700">
+                                <i class="fas fa-file-excel"></i> Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- KOP + Tabel Raport -->
+                    <div id="raport-container"
+                        class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                        <!-- KOP Sekolah -->
+                        <div id="raport-kop" class="p-8 border-b border-slate-200">
+                            <div class="flex items-center gap-12 justify-start">
+                                <img src="logo.png" id="raport-logo" class="w-32 h-32 object-contain mr-8">
+                                <div class="text-center">
+                                    <h1 class="text-2xl font-black text-slate-900 uppercase tracking-wide">YAYASAN KRISTEN DORKAS</h1>
+                                    <h2 class="text-3xl font-black text-slate-900 uppercase tracking-wide">SMP KRISTEN
+                                        DORKAS</h2>
+                                    <p class="text-sm text-slate-600 mt-2">Jalan Untung Suropati Nomor 23, Lasem</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Judul Laporan -->
+                        <div class="p-4 text-center border-b border-slate-200">
+                            <h3 class="text-lg font-black text-slate-900 uppercase tracking-widest">LAPORAN HASIL
+                                UJIAN</h3>
+                            <p class="text-sm text-slate-600 mt-2">Tahun Ajaran: <span id="raport-kop-tahun"
+                                    class="font-bold">2025/2026</span></p>
+                        </div>
+                        <!-- Nama Siswa dan Rombel -->
+                        <div class="px-8 py-4 border-b border-slate-200 text-left">
+                            <p class="text-sm font-bold text-slate-800">Nama Siswa: <span id="raport-siswa-name">Semua Siswa</span> | Rombel: <span id="raport-siswa-rombel">Semua</span></p>
+                        </div>
+                        <!-- Tabel Raport -->
+                        <div class="overflow-x-auto">
+                            <table id="raport-table" class="w-full text-left text-xs border-collapse">
+                                <thead id="raport-thead" class="bg-slate-800 text-white sticky top-0"></thead>
+                                <tbody id="raport-tbody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                        <div id="raport-footer" class="px-6 py-8 border-t border-slate-200">
+                            <div class="flex flex-col lg:flex-row justify-between gap-8 text-xs text-slate-700">
+                                <div class="flex-1 text-center">
+                                    <div class="h-4"></div>
+                                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Orang Tua/Wali</p>
+                                    <div class="h-16"></div>
+                                    <p id="raport-footer-parent" class="font-black text-slate-800">...................</p>
+                                </div>
+                                <div class="flex-1 text-center">
+                                    <div class="h-16"></div>
+                                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Mengetahui</p>
+                                    <p id="raport-footer-kepala-title" class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-8">Kepala SMP Kristen Dorkas</p>
+                                    <div class="h-16"></div>
+                                    <p id="raport-footer-kepala-name" class="font-black tracking-widest text-slate-800">Pujoko, S.Pd., M.Pd.</p>
+                                </div>
+                                <div class="flex-1 text-center">
+                                    <p id="raport-footer-date" class="text-[10px] text-slate-500 mb-1">Lasem, 01 Januari 2026</p>
+                                    <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">Wali Kelas</p>
+                                    <div class="h-16"></div>
+                                    <p id="raport-footer-wali" class="font-black text-slate-800">...................</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="raport-empty" class="hidden py-16 text-center text-slate-400">
+                            <i class="fas fa-file-alt text-4xl mb-3 opacity-30"></i>
+                            <p class="font-bold">Belum ada data ujian.</p>
+                            <p class="text-xs mt-1">Pilih Rombel dan klik Muat untuk melihat raport.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div id="admin-settings" class="hidden admin-section">
+                    <div class="space-y-8">
+                        <!-- Admin Account Settings -->
+                        <div class="max-w-xl">
+                            <h2 class="text-2xl font-black text-slate-800 mb-2">Pengaturan Akun Administrator</h2>
+                            <p class="text-slate-400 text-sm mb-8">Kelola kredensial akses Administrator.</p>
+                            <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                                <div>
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Username
+                                        Administrator</label>
+                                    <input type="text" id="set-admin-id"
+                                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-sky-500 font-bold">
+                                </div>
+                                <div class="pt-4 border-t border-slate-50">
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Password
+                                        Saat Ini (Konfirmasi)</label>
+                                    <input type="password" id="set-admin-old-pass"
+                                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-sky-500 mb-4"
+                                        placeholder="••••••••">
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Password
+                                        Baru</label>
+                                    <input type="password" id="set-admin-new-pass"
+                                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-sky-500"
+                                        placeholder="Biarkan kosong jika tidak ingin ganti password">
+                                </div>
+                                <button onclick="updateAdminAccount()"
+                                    class="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-all">SIMPAN
+                                    PERUBAHAN</button>
+                            </div>
+                        </div>
+
+                        <!-- Remote Server Settings -->
+                        <div class="max-w-xl">
+                            <h2 class="text-2xl font-black text-slate-800 mb-2">Konfigurasi Server Remote</h2>
+                            <p class="text-slate-400 text-sm mb-8">Hubungkan ke backend eksternal (Render/Railway/Lokal)
+                                agar fitur AI dan Word/Excel bekerja di GitHub.</p>
+                            <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                                <div>
+                                    <label
+                                        class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">URL
+                                        Server Backend</label>
+                                    <input type="text" id="set-remote-url"
+                                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-sky-500 font-mono text-xs"
+                                        placeholder="https://app-name.onrender.com">
+                                    <p class="text-[10px] text-slate-400 mt-2 italic">Kosongkan jika ingin menggunakan
+                                        server default (relative).</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="clearRemoteServer()"
+                                        class="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all">HAPUS</button>
+                                    <button onclick="saveRemoteServer()"
+                                        class="flex-1 py-3 bg-sky-600 text-white font-bold rounded-2xl hover:bg-sky-700 shadow-lg shadow-sky-100 transition-all">SIMPAN
+                                        URL</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Teacher Management -->
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800 mb-2">Kelola Akun Guru</h2>
+                            <p class="text-slate-400 text-sm mb-8">Daftarkan guru dan tentukan rombel untuk setiap mata
+                                pelajaran yang diampu.</p>
+                            <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Nama
+                                            Guru</label>
+                                        <input type="text" id="teacher-name"
+                                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-amber-500"
+                                            placeholder="Masukkan nama guru">
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Username
+                                            / ID</label>
+                                        <input type="text" id="teacher-id"
+                                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-amber-500"
+                                            placeholder="@XXXX atau nama singkat">
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Password</label>
+                                        <input type="password" id="teacher-password"
+                                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-amber-500"
+                                            placeholder="escrido123" value="escrido123">
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mata
+                                            Pelajaran yang Diampuh (<span class="font-normal">pilih rombel untuk setiap
+                                                mapel</span>)</label>
+                                        <div id="teacher-subjects"
+                                            class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100 max-h-40 overflow-y-auto">
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="registerTeacher()"
+                                    class="w-full py-3 bg-amber-600 text-white font-bold rounded-2xl hover:bg-amber-700 transition-all">TAMBAH
+                                    GURU</button>
+                            </div>
+
+                            <!-- Teachers List -->
+                            <div class="mt-6 bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                                <table class="w-full text-left text-sm">
+                                    <thead
+                                        class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        <tr>
+                                            <th class="px-6 py-4">Nama Guru</th>
+                                            <th class="px-6 py-4">ID</th>
+                                            <th class="px-6 py-4">Mata Pelajaran</th>
+                                            <th class="px-6 py-4">Rombel</th>
+                                            <th class="px-6 py-4 text-center">Hapus</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="teachers-table-body" class="divide-y divide-slate-50"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Copyright footer for admin dashboard -->
+                <p class="text-xs text-slate-400 mt-8 text-center">© Daniel Widiatmoko</p>
+            </main>
+        </div>
+
+        <!-- Student Area -->
+
+
+        <!-- Confirmation Finish Exam Modal -->
+
+    </div>
+
+    <!-- Saving Data Modal for Sequential Render/Deploy Queue -->
+    <div id="saving-modal"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-md hidden items-center justify-center p-4 z-[200] overflow-hidden transition-all duration-500">
+        <div
+            class="bg-white/90 backdrop-blur-2xl rounded-[2rem] max-w-sm w-full p-10 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] border border-white/50 text-center relative">
+            <!-- Decorative gradient backgrounds -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-sky-400/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
+
+            <div class="relative">
+                <div class="w-24 h-24 mx-auto mb-8 relative">
+                    <!-- Modern Gradient Spinner -->
+                    <div class="absolute inset-0 rounded-full border-[6px] border-slate-100"></div>
+                    <div
+                        class="absolute inset-0 rounded-full border-[6px] border-transparent border-t-sky-500 border-r-indigo-500 animate-spin">
+                    </div>
+                    <!-- Central Icon -->
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <i class="fas fa-cloud-upload-alt text-2xl text-sky-600 animate-pulse"></i>
+                    </div>
+                </div>
+
+                <h3 class="text-2xl font-black text-slate-800 mb-3 tracking-tight">Sinkronisasi Data</h3>
+                <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+                    Sedang mengamankan hasil ujian Anda ke server utama. Mohon jangan menutup halaman ini.
+                </p>
+
+                <!-- Progress Line -->
+                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-2">
+                    <div id="saving-progress-bar"
+                        class="bg-gradient-to-r from-sky-500 to-indigo-600 h-full w-0 transition-all duration-1000 ease-out">
+                    </div>
+                </div>
+                <p class="text-[10px] font-black text-sky-600 uppercase tracking-[0.2em] animate-pulse">Verifying
+                    Integrity...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="config-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-xs w-full p-8 shadow-2xl animate-fade-in">
+            <h3 id="config-title" class="text-xl font-black mb-6">Konfigurasi</h3>
+            <input type="text" id="config-input"
+                class="w-full px-5 py-3 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-sky-500 mb-4 font-bold"
+                placeholder="Nama entitas...">
+            <div class="flex gap-2">
+                <button onclick="closeModals()"
+                    class="flex-1 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl">BATAL</button>
+                <button onclick="saveConfig()"
+                    class="flex-1 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700">TAMBAH</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Siswa Excel Modal -->
+    <div id="import-siswa-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-black">Import Data Siswa (Excel)</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="bg-sky-50 border border-sky-100 p-4 rounded-2xl mb-4 text-[11px] leading-tight text-sky-800">
+                <b>Cara Import:</b><br>
+                1. Siapkan Excel dengan 2 kolom: <b>[Nama Lengkap]</b> dan <b>[Rombel]</b>.<br>
+                2. Salin (Copy) datanya saja atau pilih file Excel menggunakan tombol di bawah.<br>
+                3. Tempel (Paste) di kotak berikut atau tunggu sampai file selesai diproses.<br>
+                <i>ID akan dibuat otomatis, Password standar: 123456</i>
+            </div>
+            <input type="file" id="import-excel-file" accept=".xls,.xlsx" class="text-sm mb-4"
+                onchange="handleExcelFile(event)">
+            <textarea id="import-siswa-area"
+                class="flex-1 min-h-[250px] p-4 bg-slate-50 rounded-2xl outline-none text-sm mb-4 font-mono custom-scrollbar"
+                placeholder="Contoh:&#10;Daniel VII&#10;Widiatmoko VIII"></textarea>
+            <button onclick="processImportSiswa()"
+                class="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-all">IMPORT
+                SEKARANG</button>
+        </div>
+    </div>
+
+    <div id="import-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-black">Import Soal dari Word</h3>
+                <button onclick="closeModals()" class="text-slate-400"><i class="fas fa-times"></i></button>
+            </div>
+            <div
+                class="bg-amber-50 border border-amber-100 p-4 rounded-2xl mb-4 text-[11px] leading-tight text-amber-800">
+                <b>Panduan Copas:</b> 1. Apa warna bendera kita? A. Merah Putih B. Biru (dst) Kunci: A
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <select id="import-mapel" class="p-3 bg-slate-50 rounded-xl border-none text-xs font-bold"></select>
+                <select id="import-rombel" class="p-3 bg-slate-50 rounded-xl border-none text-xs font-bold"></select>
+            </div>
+            <div class="flex flex-col gap-3">
+                <input type="file" id="import-word-file" accept=".doc,.docx" class="text-sm"
+                    onchange="handleWordFile(event)">
+                <div id="import-backend-warning" class="text-red-500 text-xs italic"></div>
+                <textarea id="import-text-area"
+                    class="flex-1 min-h-[250px] p-4 bg-slate-50 rounded-2xl outline-none text-sm"
+                    placeholder="Tempel teks soal di sini..."></textarea>
+            </div>
+            <button onclick="processImport()" class="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl">PROSES
+                IMPORT</button>
+        </div>
+    </div>
+
+    <div id="question-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div
+            class="bg-white rounded-3xl max-w-xl w-full p-8 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar animate-fade-in">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="question-modal-title" class="text-xl font-black">Buat Soal Baru</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-4">
+                <select id="q-mapel" class="p-3 bg-slate-50 rounded-xl border-none text-xs font-bold"></select>
+                <select id="q-rombel" class="p-3 bg-slate-50 rounded-xl border-none text-xs font-bold"></select>
+                <select id="q-type" class="p-3 bg-slate-50 rounded-xl border-none text-xs font-bold"
+                    onchange="updateQuestionTypeDisplay(this.value)">
+                    <option value="single">Pilihan Ganda</option>
+                    <option value="multiple">Pilihan Ganda Kompleks</option>
+                    <option value="text">Uraian/Esai</option>
+                    <option value="tf">Benar/Salah</option>
+                    <option value="matching">Menjodohkan</option>
+                </select>
+            </div>
+            <textarea id="q-text" class="w-full p-4 bg-slate-50 rounded-2xl mb-4 h-32 outline-none text-sm"
+                placeholder="Pertanyaan..."></textarea>
+            <div class="mb-4">
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Gambar Soal
+                    (Multiple)</label>
+                <input type="file" id="q-image-file" accept="image/*" multiple class="mb-2 text-sm"
+                    onchange="previewQuestionImages(event)">
+                <div class="mt-2 flex gap-2">
+                    <input type="text" id="q-image-url"
+                        class="flex-1 px-3 py-2 bg-slate-50 rounded-xl text-xs border-none outline-none focus:ring-1 focus:ring-sky-500"
+                        placeholder="Atau paste URL Gambar di sini...">
+                    <button onclick="addImageUrl()"
+                        class="px-3 py-2 bg-sky-100 text-sky-600 rounded-xl text-xs font-bold hover:bg-sky-600 hover:text-white transition-all whitespace-nowrap">TAMBAH
+                        URL</button>
+                </div>
+                <div id="q-images-preview" class="flex flex-wrap gap-2 mt-4"></div>
+                <div id="q-images-list" class="space-y-1 text-xs text-slate-500 mt-2"></div>
+            </div>
+            <div class="space-y-2 mb-6" id="q-opts-container">
+                <input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none"
+                    placeholder="Opsi A">
+                <input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none"
+                    placeholder="Opsi B">
+                <input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none"
+                    placeholder="Opsi C">
+                <input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none"
+                    placeholder="Opsi D">
+            </div>
+            <div id="q-answer-text-container" class="hidden mb-6">
+                <textarea id="q-answer-text" class="w-full p-3 bg-slate-50 rounded-2xl h-24"
+                    placeholder="Jawaban benar (tulis esai)"></textarea>
+            </div>
+            <div id="q-tf-container" class="hidden mb-6">
+                <!-- rows dynamically added -->
+                <div class="tf-row flex items-center gap-2">
+                    <input type="text" class="tf-statement flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"
+                        placeholder="Pernyataan">
+                    <select class="tf-correct p-3 bg-slate-50 rounded-xl text-sm border-none">
+                        <option value="">--Benar/Salah--</option>
+                        <option value="true">Benar</option>
+                        <option value="false">Salah</option>
+                    </select>
+                    <button type="button" onclick="removeTfRow(this)" class="text-red-500">&times;</button>
+                </div>
+                <button type="button" onclick="addTfRow()" class="mt-2 text-sm text-sky-600">+ Tambah
+                    Pernyataan</button>
+            </div>
+            <div id="q-matching-container" class="hidden mb-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan
+                            (Kiri)</label>
+                        <div id="q-matching-questions" class="space-y-2">
+                            <div class="matching-q-row flex items-center gap-2">
+                                <input type="text"
+                                    class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"
+                                    placeholder="Pertanyaan 1">
+                                <button type="button" onclick="removeMatchingQRow(this)"
+                                    class="text-red-500">&times;</button>
+                            </div>
+                        </div>
+                        <button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah
+                            Pertanyaan</button>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban
+                            (Kanan)</label>
+                        <div id="q-matching-answers" class="space-y-2">
+                            <div class="matching-a-row flex items-center gap-2">
+                                <input type="text"
+                                    class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"
+                                    placeholder="Jawaban 1">
+                                <button type="button" onclick="removeMatchingARow(this)"
+                                    class="text-red-500">&times;</button>
+                            </div>
+                        </div>
+                        <button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah
+                            Jawaban</button>
+                    </div>
+                </div>
+            </div>
+            <div id="q-opsi-group" class="mb-8">
+                <label id="q-opsi-label"
+                    class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pilih Jawaban
+                    Benar (Opsi)</label>
+                <div class="flex gap-2" id="q-correct-buttons-group">
+                    <button onclick="setActiveCorrect(0)" class="c-btn flex-1 py-3 border-2 rounded-xl font-bold"
+                        data-idx="0">A</button>
+                    <button onclick="setActiveCorrect(1)" class="c-btn flex-1 py-3 border-2 rounded-xl font-bold"
+                        data-idx="1">B</button>
+                    <button onclick="setActiveCorrect(2)" class="c-btn flex-1 py-3 border-2 rounded-xl font-bold"
+                        data-idx="2">C</button>
+                    <button onclick="setActiveCorrect(3)" class="c-btn flex-1 py-3 border-2 rounded-xl font-bold"
+                        data-idx="3">D</button>
+                </div>
+            </div>
+
+            <button id="save-question-btn" onclick="window.isTeacherMode ? saveTeacherQuestion() : saveQuestion()"
+                class="w-full py-4 bg-sky-600 text-white font-bold rounded-2xl">SIMPAN SOAL</button>
+        </div>
+    </div>
+
+    <!-- Student Instruction Modal -->
+
+
+    <!-- Image Zoom Modal -->
+    <div id="image-zoom-modal"
+        class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50 backdrop-blur-sm"
+        onclick="if(event.target === this) closeImageZoom()">
+        <div class="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            <button onclick="closeImageZoom()"
+                class="absolute top-4 right-4 text-white hover:text-slate-200 text-3xl z-10 transition-colors"><i
+                    class="fas fa-times-circle"></i></button>
+            <div class="relative bg-white rounded-xl overflow-hidden shadow-2xl max-w-full max-h-full">
+                <img id="zoom-image-display" src="" alt="Gambar diperbesar"
+                    class="max-w-full max-h-[80vh] object-contain w-auto h-auto">
+                <div
+                    class="absolute bottom-3 left-3 bg-slate-900/80 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
+                    <span id="zoom-image-counter">1/1</span>
+                </div>
+                <div class="absolute bottom-3 right-3 flex gap-2">
+                    <button onclick="previousZoomImage()"
+                        class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm transition-all shadow-lg"><i
+                            class="fas fa-chevron-left"></i></button>
+                    <button onclick="nextZoomImage()"
+                        class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm transition-all shadow-lg"><i
+                            class="fas fa-chevron-right"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Teacher Area -->
+
+
+    <div id="student-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl animate-fade-in">
+            <h3 class="text-xl font-black mb-6">Siswa Baru</h3>
+            <input type="text" id="st-name" class="w-full px-5 py-3 bg-slate-50 rounded-2xl mb-3 outline-none"
+                placeholder="Nama Lengkap">
+            <select id="st-rombel" class="w-full p-3 bg-slate-50 rounded-2xl mb-6 outline-none text-sm"></select>
+            <button onclick="saveStudent()"
+                class="w-full py-4 bg-sky-600 text-white font-bold rounded-2xl">DAFTAR</button>
+        </div>
+    </div>
+
+    <!-- AI Modal -->
+    <div id="ai-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-rose-100 text-rose-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h3 class="text-xl font-black">Buat Soal AI</h3>
+                </div>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label id="ai-materi-label" class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Materi /
+                        Topik Utama</label>
+                    <input type="text" id="ai-materi"
+                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"
+                        placeholder="Contoh: Ekosistem Laut, Aljabar, dll">
+                </div>
+
+                <!-- Upload Kisi-kisi -->
+                <div class="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                    <label class="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-2">Upload Kisi-kisi / Blueprint (Opsional)</label>
+                    <p class="text-[10px] text-amber-500 mb-3 leading-relaxed">Punya kisi-kisi sendiri? Upload file Word, Excel, PDF, atau Gambar (JPG, PNG) agar AI membuat soal persis sesuai dokumen Anda.</p>
+                    <input type="file" id="ai-blueprint-file" onchange="handleAiBlueprintChange(this)" accept=".doc,.docx,.xlsx,.xls,.pdf,.jpg,.jpeg,.png" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 transition-all">
+                    <div class="mt-4">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Penanganan Gambar / Ilustrasi</label>
+                        <select id="ai-opsi-gambar" class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold">
+                            <option value="none">Tanpa Gambar</option>
+                            <option value="placeholder">Buat Area Ilustrasi Kosong</option>
+                            <option value="auto">Generate Gambar AI Otomatis</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Jumlah Per Jenis Soal -->
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Jumlah
+                        &amp; Bentuk Soal</label>
+                    <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-2xl ring-1 ring-slate-200">
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="ai-jml-pg" min="0" value="5" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <span class="text-xs text-slate-700 font-medium">Pilihan Ganda</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="ai-jml-pgk" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <span class="text-xs text-slate-700 font-medium">PG Kompleks</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="ai-jml-esai" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <span class="text-xs text-slate-700 font-medium">Esai / Uraian</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="ai-jml-bs" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <span class="text-xs text-slate-700 font-medium">Benar / Salah</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="ai-jml-jodoh" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <span class="text-xs text-slate-700 font-medium">Menjodohkan</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="ai-total-display"
+                                class="w-14 text-center text-sm font-black text-rose-600 bg-rose-50 py-2 rounded-lg ring-1 ring-rose-200">5</span>
+                            <span class="text-xs text-rose-600 font-bold">Total Soal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Level Soal -->
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Level
+                        Soal</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="text-[10px] text-slate-500 block mb-1">Mudah</label>
+                            <input type="number" id="ai-lvl-mudah" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-500 block mb-1">Sedang</label>
+                            <input type="number" id="ai-lvl-sedang" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-500 block mb-1">HOTS</label>
+                            <input type="number" id="ai-lvl-hots" min="0" value="0" readonly
+                                class="w-full px-2 py-2 bg-rose-50 text-rose-600 font-bold rounded-lg outline-none ring-1 ring-rose-200 text-sm text-center">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3" id="ai-target-selectors">
+                    <div>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mapel</label>
+                        <select id="ai-mapel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
+                    </div>
+                    <div>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel</label>
+                        <select id="ai-rombel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-[11px] text-rose-800 leading-relaxed">
+                    <i class="fas fa-info-circle mr-1"></i> AI akan membuat soal sesuai jenis dan level yang dipilih,
+                    mengikuti Kurikulum Merdeka SMP.
+                </div>
+                <div class="text-[11px] text-slate-500 leading-relaxed border border-slate-100 rounded-2xl p-4 bg-slate-50">
+                    <i class="fas fa-hand-point-right mr-1"></i> Tekan GENERATE SOAL setelah memilih jumlah, level, dan opsi gambar. Jika Anda ingin soal berilustrasi, pilih opsi gambar di atas.
+                </div>
+
+                <button onclick="generateQuestionsWithAi()" id="ai-generate-btn" title="Klik untuk membuat soal AI. Gunakan opsi gambar jika perlu ilustrasi."
+                    class="w-full py-4 bg-rose-600 text-white font-bold rounded-2xl hover:bg-rose-700 shadow-xl shadow-rose-100 transition-all flex items-center justify-center gap-3">
+                    <i class="fas fa-magic"></i> GENERATE SOAL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Loading Overlay -->
+    <div id="ai-loading"
+        class="fixed inset-0 bg-slate-900/80 hidden items-center justify-center p-4 z-[70] backdrop-blur-md">
+        <div class="text-center">
+            <div class="relative w-24 h-24 mx-auto mb-6">
+                <div class="absolute inset-0 border-4 border-rose-500/20 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-rose-500 rounded-full border-t-transparent animate-spin">
+                </div>
+                <div class="absolute inset-0 flex items-center justify-center text-white">
+                    <i class="fas fa-robot text-3xl animate-pulse"></i>
+                </div>
+            </div>
+            <h3 class="text-xl font-black text-white mb-2">AI sedang berpikir...</h3>
+            <p class="text-rose-200 text-sm animate-pulse italic">Mohon tunggu, sedang merangkai pertanyaan terbaik
+                untuk Anda.</p>
+        </div>
+    </div>
+
+    <div id="schedule-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">Jadwal Akses Ujian (Rombel × Mapel)</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">Pilih kombinasi Rombel dan Mata Pelajaran yang dapat diakses
+                peserta.</p>
+            <div id="schedule-checklist" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 mb-6"></div>
+            <button onclick="saveSchedules()"
+                class="w-full py-4 bg-purple-600 text-white font-bold rounded-2xl hover:bg-purple-700 transition-all">SIMPAN
+                JADWAL</button>
+        </div>
+    </div>
+
+    <!-- Time Limit Modal -->
+    <div id="time-limit-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">Atur Waktu Pengerjaan (Rombel × Mapel)</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">Atur waktu pengerjaan ujian dalam menit untuk setiap kombinasi
+                Rombel dan Mata Pelajaran.</p>
+            <div id="time-limit-list" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 mb-6"></div>
+            <button onclick="saveTimeLimits()"
+                class="w-full py-4 bg-orange-600 text-white font-bold rounded-2xl hover:bg-orange-700 transition-all">SIMPAN
+                WAKTU</button>
+        </div>
+    </div>
+
+    <!-- Kisi-kisi Modal -->
+    <div id="kisi-kisi-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-5xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-magic"></i>
+                    </div>
+                    <h3 class="text-xl font-black">Buat Kisi-kisi dengan AI</h3>
+                </div>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+
+            <div id="kisi-kisi-setup" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mata
+                            Pelajaran</label>
+                        <select id="kk-mapel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-500 font-bold"></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel
+                            / Kelas</label>
+                        <select id="kk-rombel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-500 font-bold"></select>
+                    </div>
+                </div>
+                <div
+                    class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-[11px] text-indigo-800 leading-relaxed">
+                    <i class="fas fa-info-circle mr-1"></i> AI akan membaca soal yang ada di Bank Soal untuk Mapel dan
+                    Rombel yang dipilih, kemudian menyusun Kisi-kisi instrumen secara otomatis.
+                </div>
+                <button onclick="generateKisiKisiWithAi()" id="kk-generate-btn"
+                    class="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3">
+                    <i class="fas fa-wand-magic-sparkles"></i> MULAI ANALISIS AI
+                </button>
+            </div>
+
+            <div id="kisi-kisi-result" class="hidden flex flex-col flex-1 overflow-hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <p class="text-xs text-slate-500">Hasil analisis AI berdasarkan <span id="kk-count"
+                            class="font-bold">0</span> soal.</p>
+                    <div class="flex gap-2">
+                        <button onclick="downloadKisiKisiExcel()"
+                            class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-excel"></i> EXCEL
+                        </button>
+                        <button onclick="downloadKisiKisiWord()"
+                            class="px-3 py-2 bg-blue-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-word"></i> WORD
+                        </button>
+                        <button onclick="downloadKisiKisiPdf()"
+                            class="px-3 py-2 bg-rose-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto border border-slate-100 rounded-2xl custom-scrollbar">
+                    <table id="kk-table" class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-900 text-white sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-10">No</th>
+                                <th class="px-4 py-3 border border-slate-700">Kompetensi Dasar</th>
+                                <th class="px-4 py-3 border border-slate-700">Materi</th>
+                                <th class="px-4 py-3 border border-slate-700">Indikator Soal</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-16">Level</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-16">No Soal</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-20">Bentuk</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kk-table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <button onclick="resetKisiKisiModal()"
+                    class="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 self-center">RESET /
+                    KEMBALI</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cheat Warning Modal -->
+    <div id="cheat-warning-modal"
+        class="fixed inset-0 bg-red-900/95 hidden items-center justify-center p-4 z-[100] backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl animate-fade-in">
+            <div class="text-center">
+                <div
+                    class="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-exclamation-triangle text-4xl"></i>
+                </div>
+                <h3 class="text-2xl font-black text-slate-800 mb-2">PERINGATAN KERAS!</h3>
+                <p class="text-slate-600 mb-8 leading-relaxed">Terdeteksi upaya keluar dari halaman ujian.
+                    <br><br><strong>Peringatan:</strong> Jika Anda keluar sekali lagi, ujian akan otomatis
+                    <strong>diberhentikan dan nilai dikirim</strong> apa adanya.
+                </p>
+                <button onclick="closeCheatWarning()"
+                    class="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 shadow-xl shadow-red-200 transition-all uppercase tracking-widest">SAYA
+                    MENGERTI</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 relative">
+                <div class="absolute inset-0 rounded-full border-4 border-slate-200"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-indigo-500 animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <i class="fas fa-spinner text-xl text-sky-600 animate-pulse"></i>
+                </div>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Memuat...</h3>
+            <p class="text-sm text-slate-500">Sedang mempersiapkan halaman</p>
+        </div>
+    </div>
+
+    <!-- Anti-Cheat Content Mask (visible when tab inactive) -->
+    <div id="cheat-mask"
+        class="fixed inset-0 bg-slate-900 z-[99] hidden items-center justify-center pointer-events-none">
+        <div class="text-center text-white p-8">
+            <i class="fas fa-eye-slash text-6xl mb-4 text-slate-500"></i>
+            <h3 class="text-xl font-bold">KONTEN DISEMBUNYIKAN</h3>
+            <p class="text-slate-400 text-sm">Kembali ke tab ujian untuk melanjutkan.</p>
+        </div>
+    </div>
+    </div>
+
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 left-6 z-[10000] flex flex-col gap-2 pointer-events-none"></div>
+</body>
+
+</html>

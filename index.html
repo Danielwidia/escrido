@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Ujian Online - SMP KRISTEN DORKAS</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js"></script>
+    <!-- Google Sign-In Library -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+
+<body class="bg-slate-50 min-h-screen">
+
+    <div id="app">
+        <!-- Login Screen -->
+        <div id="login-screen" class="min-h-screen flex items-center justify-center p-4 login-bg relative">
+            <!-- Decorative glassmorphism shapes -->
+            <div class="glass-shape shadow-sm"
+                style="width: 320px; height: 320px; top: -10%; left: -5%; animation-delay: 0s;"></div>
+            <div class="glass-shape shadow-sm"
+                style="width: 450px; height: 450px; bottom: -15%; right: -10%; animation-delay: -5s;"></div>
+            <div class="glass-shape shadow-sm"
+                style="width: 180px; height: 180px; top: 40%; left: 15%; animation-delay: -10s;"></div>
+
+            <div class="max-w-sm w-full login-card rounded-[2rem] p-8 text-center shadow-2xl">
+                <!-- Floating Logo -->
+                <div class="mb-6 flex flex-col items-center">
+                    <div
+                        class="p-4 bg-white rounded-[1.5rem] shadow-[0_4px_20px_rgba(2,132,199,0.08)] border border-slate-50 mb-2">
+                        <img src="logo.png" alt="Logo CBT Application"
+                            class="logo-glow object-contain w-[72px] h-[72px]" onerror="this.src='logo.png'">
+                    </div>
+                </div>
+
+                <!-- Branding -->
+                <h1 class="cbt-title mb-1.5">CBT Application</h1>
+                <p class="text-[11px] font-bold uppercase tracking-widest mb-1.5 cbt-subtitle">SMP KRISTEN DORKAS</p>
+                <p class="cbt-motto uppercase italic mb-6">Cerdas · Beriman · Berbudi Pekerti</p>
+
+                <hr class="divider-line">
+
+                <!-- Buttons -->
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <button onclick="showLoginForm('student')" id="btn-portal-siswa"
+                        class="login-btn login-btn-student w-full py-3.5 px-4 rounded-[1.25rem] font-bold flex items-center justify-center gap-3 text-[15px]">
+                        <i class="fas fa-user-graduate"></i> Portal Siswa
+                    </button>
+                    <button onclick="showLoginForm('teacher')" id="btn-portal-guru"
+                        class="login-btn login-btn-teacher w-full py-3.5 px-4 rounded-[1.25rem] font-bold flex items-center justify-center gap-3 text-[15px]">
+                        <i class="fas fa-chalkboard-teacher"></i> Portal Guru
+                    </button>
+                    <button onclick="showLoginForm('admin')" id="btn-administrator"
+                        class="login-btn login-btn-admin w-full py-3.5 px-4 rounded-[1.25rem] font-bold flex items-center justify-center gap-3 text-[15px]">
+                        <i class="fas fa-user-shield"></i> Administrator
+                    </button>
+                </div>
+
+                <p style="font-size:11px;color:#94a3b8;margin-top:28px;">© Daniel Widiatmoko</p>
+            </div>
+        </div>
+
+        <!-- Auth Modal -->
+        <div id="auth-modal"
+            class="fixed inset-0 bg-slate-900 bg-opacity-60 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 animate-fade-in">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 id="modal-title" class="text-xl font-black text-slate-800">Login</h2>
+                    <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                            class="fas fa-times"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <input type="text" id="username"
+                        class="w-full px-5 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none"
+                        placeholder="Username / ID">
+                    <div class="relative">
+                        <input type="password" id="password"
+                            class="w-full px-5 py-3 pr-12 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none"
+                            placeholder="Password (escrido)">
+                        <button type="button" onclick="togglePasswordVisibility()"
+                            class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-sky-500 transition-colors"
+                            title="Lihat / Sembunyikan Password">
+                            <i id="toggle-pw-icon" class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+                        <strong>Info Login:</strong><br>
+                        • ID: DRKS-XXXX (lihat kartu ujian)<br>
+                        • Password: escrido<br>
+                    </div>
+                    <div id="login-error" class="text-red-500 text-xs font-bold hidden text-center italic">ID, nama,
+                        atau password salah!</div>
+                    <button id="login-btn"
+                        class="w-full py-4 bg-sky-600 text-white rounded-2xl font-bold hover:bg-sky-700 shadow-xl shadow-sky-200 uppercase tracking-wide">Masuk
+                        Sistem</button>
+                    
+                    <!-- Google Sign-In Section (Only for Teachers) -->
+                    <div id="google-signin-section" class="hidden mt-4 pt-4 border-t border-slate-200">
+                        <p class="text-xs font-bold text-slate-600 mb-3">ATAU Login dengan Google:</p>
+                        <div id="google-signin-btn" class="flex justify-center"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        
+
+        <!-- Student Area -->
+        
+
+        <!-- Confirmation Finish Exam Modal -->
+        
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-slate-900 bg-opacity-60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 relative">
+                <div class="absolute inset-0 rounded-full border-4 border-slate-200"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-indigo-500 animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <i class="fas fa-spinner text-xl text-sky-600 animate-pulse"></i>
+                </div>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-2">Memuat...</h3>
+            <p class="text-sm text-slate-500">Sedang memuat halaman</p>
+        </div>
+    </div>
+
+    <!-- Saving Data Modal for Sequential Render/Deploy Queue -->
+    <div id="saving-modal"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-md hidden items-center justify-center p-4 z-[200] overflow-hidden transition-all duration-500">
+        <div
+            class="bg-white/90 backdrop-blur-2xl rounded-[2rem] max-w-sm w-full p-10 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] border border-white/50 text-center relative">
+            <!-- Decorative gradient backgrounds -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-sky-400/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
+
+            <div class="relative">
+                <div class="w-24 h-24 mx-auto mb-8 relative">
+                    <!-- Modern Gradient Spinner -->
+                    <div class="absolute inset-0 rounded-full border-[6px] border-slate-100"></div>
+                    <div
+                        class="absolute inset-0 rounded-full border-[6px] border-transparent border-t-sky-500 border-r-indigo-500 animate-spin">
+                    </div>
+                    <!-- Central Icon -->
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <i class="fas fa-cloud-upload-alt text-2xl text-sky-600 animate-pulse"></i>
+                    </div>
+                </div>
+
+                <h3 class="text-2xl font-black text-slate-800 mb-3 tracking-tight">Sinkronisasi Data</h3>
+                <p class="text-sm text-slate-500 mb-6 leading-relaxed">
+                    Sedang mengamankan hasil ujian Anda ke server utama. Mohon jangan menutup halaman ini.
+                </p>
+
+                <!-- Progress Line -->
+                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-2">
+                    <div id="saving-progress-bar"
+                        class="bg-gradient-to-r from-sky-500 to-indigo-600 h-full w-0 transition-all duration-1000 ease-out">
+                    </div>
+                </div>
+                <p class="text-[10px] font-black text-sky-600 uppercase tracking-[0.2em] animate-pulse">Verifying
+                    Integrity...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    
+
+    <!-- Import Siswa Excel Modal -->
+    
+
+    
+
+    
+
+    <!-- Student Instruction Modal -->
+    
+
+    <!-- Image Zoom Modal -->
+    
+
+    <!-- Teacher Area -->
+    
+
+    <div id="student-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl animate-fade-in">
+            <h3 class="text-xl font-black mb-6">Siswa Baru</h3>
+            <input type="text" id="st-name" class="w-full px-5 py-3 bg-slate-50 rounded-2xl mb-3 outline-none"
+                placeholder="Nama Lengkap">
+            <select id="st-rombel" class="w-full p-3 bg-slate-50 rounded-2xl mb-6 outline-none text-sm"></select>
+            <button onclick="saveStudent()"
+                class="w-full py-4 bg-sky-600 text-white font-bold rounded-2xl">DAFTAR</button>
+        </div>
+    </div>
+
+    <!-- AI Modal -->
+    <div id="ai-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl animate-fade-in">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-rose-100 text-rose-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h3 class="text-xl font-black">Buat Soal AI</h3>
+                </div>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Materi
+                        / Topik Utama</label>
+                    <input type="text" id="ai-materi"
+                        class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"
+                        placeholder="Contoh: Ekosistem Laut, Aljabar, dll">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Jumlah
+                            Soal</label>
+                        <input type="number" id="ai-jumlah" value="5" min="1" max="20"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Tipe
+                            Soal</label>
+                        <select id="ai-type"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold">
+                            <option value="single">Pilihan Ganda</option>
+                            <option value="multiple">Pilihan Ganda Kompleks</option>
+                            <option value="tf">Benar / Salah</option>
+                            <option value="text">Uraian / Esai</option>
+                            <option value="matching">Menjodohkan</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3" id="ai-target-selectors">
+                    <div>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mapel</label>
+                        <select id="ai-mapel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
+                    </div>
+                    <div>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel</label>
+                        <select id="ai-rombel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
+                    </div>
+                </div>
+
+                <div
+                    class="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-[11px] text-rose-800 leading-relaxed">
+                    <i class="fas fa-info-circle mr-1"></i> AI akan mencoba membuat soal yang menantang namun tetap
+                    sesuai dengan kurikulum SMP. Hasil soal dapat diedit kembali setelah dibuat.
+                </div>
+
+                <button onclick="generateQuestionsWithAi()" id="ai-generate-btn"
+                    class="w-full py-4 bg-rose-600 text-white font-bold rounded-2xl hover:bg-rose-700 shadow-xl shadow-rose-100 transition-all flex items-center justify-center gap-3">
+                    <i class="fas fa-magic"></i> GENERATE SOAL
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Loading Overlay -->
+    <div id="ai-loading"
+        class="fixed inset-0 bg-slate-900/80 hidden items-center justify-center p-4 z-[70] backdrop-blur-md">
+        <div class="text-center">
+            <div class="relative w-24 h-24 mx-auto mb-6">
+                <div class="absolute inset-0 border-4 border-rose-500/20 rounded-full"></div>
+                <div class="absolute inset-0 border-4 border-rose-500 rounded-full border-t-transparent animate-spin">
+                </div>
+                <div class="absolute inset-0 flex items-center justify-center text-white">
+                    <i class="fas fa-robot text-3xl animate-pulse"></i>
+                </div>
+            </div>
+            <h3 class="text-xl font-black text-white mb-2">AI sedang berpikir...</h3>
+            <p class="text-rose-200 text-sm animate-pulse italic">Mohon tunggu, sedang merangkai pertanyaan terbaik
+                untuk Anda.</p>
+        </div>
+    </div>
+
+    <div id="schedule-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">Jadwal Akses Ujian (Rombel × Mapel)</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">Pilih kombinasi Rombel dan Mata Pelajaran yang dapat diakses
+                peserta.</p>
+            <div id="schedule-checklist" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 mb-6"></div>
+            <button onclick="saveSchedules()"
+                class="w-full py-4 bg-purple-600 text-white font-bold rounded-2xl hover:bg-purple-700 transition-all">SIMPAN
+                JADWAL</button>
+        </div>
+    </div>
+
+    <!-- Time Limit Modal -->
+    <div id="time-limit-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">Atur Waktu Pengerjaan (Rombel × Mapel)</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+            <p class="text-slate-400 text-sm mb-6">Atur waktu pengerjaan ujian dalam menit untuk setiap kombinasi
+                Rombel dan Mata Pelajaran.</p>
+            <div id="time-limit-list" class="flex-1 overflow-y-auto custom-scrollbar space-y-3 mb-6"></div>
+            <button onclick="saveTimeLimits()"
+                class="w-full py-4 bg-orange-600 text-white font-bold rounded-2xl hover:bg-orange-700 transition-all">SIMPAN
+                WAKTU</button>
+        </div>
+    </div>
+
+    <!-- Kisi-kisi Modal -->
+    <div id="kisi-kisi-modal"
+        class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-3xl max-w-5xl w-full p-8 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-magic"></i>
+                    </div>
+                    <h3 class="text-xl font-black">Buat Kisi-kisi dengan AI</h3>
+                </div>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600"><i
+                        class="fas fa-times"></i></button>
+            </div>
+
+            <div id="kisi-kisi-setup" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mata
+                            Pelajaran</label>
+                        <select id="kk-mapel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-500 font-bold"></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel
+                            / Kelas</label>
+                        <select id="kk-rombel"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-500 font-bold"></select>
+                    </div>
+                </div>
+                <div
+                    class="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-[11px] text-indigo-800 leading-relaxed">
+                    <i class="fas fa-info-circle mr-1"></i> AI akan membaca soal yang ada di Bank Soal untuk Mapel dan
+                    Rombel yang dipilih, kemudian menyusun Kisi-kisi instrumen secara otomatis.
+                </div>
+                <button onclick="generateKisiKisiWithAi()" id="kk-generate-btn"
+                    class="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center gap-3">
+                    <i class="fas fa-wand-magic-sparkles"></i> MULAI ANALISIS AI
+                </button>
+            </div>
+
+            <div id="kisi-kisi-result" class="hidden flex flex-col flex-1 overflow-hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <p class="text-xs text-slate-500">Hasil analisis AI berdasarkan <span id="kk-count"
+                            class="font-bold">0</span> soal.</p>
+                    <div class="flex gap-2">
+                        <button onclick="downloadKisiKisiExcel()"
+                            class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-excel"></i> EXCEL
+                        </button>
+                        <button onclick="downloadKisiKisiWord()"
+                            class="px-3 py-2 bg-blue-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-word"></i> WORD
+                        </button>
+                        <button onclick="downloadKisiKisiPdf()"
+                            class="px-3 py-2 bg-rose-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1">
+                            <i class="fas fa-file-pdf"></i> PDF
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto border border-slate-100 rounded-2xl custom-scrollbar">
+                    <table id="kk-table" class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-900 text-white sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-10">No</th>
+                                <th class="px-4 py-3 border border-slate-700">Kompetensi Dasar</th>
+                                <th class="px-4 py-3 border border-slate-700">Materi</th>
+                                <th class="px-4 py-3 border border-slate-700">Indikator Soal</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-16">Level</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-16">No Soal</th>
+                                <th class="px-4 py-3 border border-slate-700 text-center w-20">Bentuk</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kk-table-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+                <button onclick="resetKisiKisiModal()"
+                    class="mt-4 text-xs font-bold text-slate-400 hover:text-slate-600 self-center">RESET /
+                    KEMBALI</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cheat Warning Modal -->
+    <div id="cheat-warning-modal"
+        class="fixed inset-0 bg-red-900/95 hidden items-center justify-center p-4 z-[100] backdrop-blur-md">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl animate-fade-in">
+            <div class="text-center">
+                <div
+                    class="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-exclamation-triangle text-4xl"></i>
+                </div>
+                <h3 class="text-2xl font-black text-slate-800 mb-2">PERINGATAN KERAS!</h3>
+                <p class="text-slate-600 mb-8 leading-relaxed">Terdeteksi upaya keluar dari halaman ujian.
+                    <br><br><strong>Peringatan:</strong> Jika Anda keluar sekali lagi, ujian akan otomatis
+                    <strong>diberhentikan dan nilai dikirim</strong> apa adanya.
+                </p>
+                <button onclick="closeCheatWarning()"
+                    class="w-full py-4 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 shadow-xl shadow-red-200 transition-all uppercase tracking-widest">SAYA
+                    MENGERTI</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anti-Cheat Content Mask (visible when tab inactive) -->
+    <div id="cheat-mask"
+        class="fixed inset-0 bg-slate-900 z-[99] hidden items-center justify-center pointer-events-none">
+        <div class="text-center text-white p-8">
+            <i class="fas fa-eye-slash text-6xl mb-4 text-slate-500"></i>
+            <h3 class="text-xl font-bold">KONTEN DISEMBUNYIKAN</h3>
+            <p class="text-slate-400 text-sm">Kembali ke tab ujian untuk melanjutkan.</p>
+        </div>
+    </div>
+    </div>
+
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+    
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 left-6 z-[10000] flex flex-col gap-2 pointer-events-none"></div>
+</body>
+
+</html>
