@@ -2142,8 +2142,8 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
     }
 });
 
-app.post('/api/generate-ai', async (req, res) => {
-    const {
+app.post('/api/generate-ai', upload.single('file'), async (req, res) => {
+    let {
         materi,
         jumlah = 5,
         tipe = 'single',
@@ -2153,6 +2153,21 @@ app.post('/api/generate-ai', async (req, res) => {
         levelCounts = {},
         opsiGambar = 'none'
     } = req.body;
+
+    // Handle file upload if present
+    if (req.file) {
+        try {
+            console.log(`[AI] Processing uploaded file for question generation: ${req.file.originalname}`);
+            const fileText = await parseBlueprint(req.file.buffer, req.file.originalname, req);
+            if (fileText) {
+                // Combine manual topic and file content
+                materi = (materi ? materi + "\n\n" : "") + "KONTEKS DOKUMEN:\n" + fileText;
+                console.log(`[AI] Extracted ${fileText.length} characters from file.`);
+            }
+        } catch (fileErr) {
+            console.error('[AI] Error parsing file in /api/generate-ai:', fileErr.message);
+        }
+    }
 
     const imageEnabled = String(opsiGambar || 'none').toLowerCase() === 'auto';
 

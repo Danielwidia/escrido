@@ -6072,7 +6072,21 @@ function showLoginForm(type) {
             }
 
             try {
-                const headers = { 'Content-Type': 'application/json' };
+                const formData = new FormData();
+                formData.append('materi', materi || '');
+                formData.append('jumlah', String(jumlah));
+                formData.append('tipe', tipe);
+                formData.append('mapel', mapel);
+                formData.append('rombel', rombel);
+                formData.append('typeCounts', JSON.stringify(typeCounts));
+                formData.append('levelCounts', JSON.stringify(levelCounts));
+                formData.append('opsiGambar', opsiGambar);
+                
+                if (file) {
+                    formData.append('file', file);
+                }
+
+                const headers = {}; // FormData browser will set boundary and multipart/form-data
                 
                 // Add teacher info to headers for API key pooling
                 if (currentSiswa && currentSiswa.role === 'teacher') {
@@ -6083,7 +6097,7 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: headers,
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar })
+                    body: formData
                 });
 
                 const rawResponse = await response.text();
