@@ -1586,6 +1586,8 @@ function showLoginForm(type) {
                 }
 
                 const keys = result.globalKeys;
+                const isAdmin = currentSiswa && currentSiswa.role === 'admin';
+
                 if (keys.length === 0) {
                     updateGlobalApiKeysStats([]);
                     container.innerHTML = `
@@ -1594,52 +1596,93 @@ function showLoginForm(type) {
                             <p class="text-sm">Tidak ada global API key yang dikonfigurasi</p>
                         </div>
                     `;
-                    return;
+                } else {
+                    updateGlobalApiKeysStats(keys);
+                    container.innerHTML = keys.map((entry, idx) => {
+                        const fullKey = entry.key || '';
+                        const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
+                        const providerIcon = entry.provider.includes('Gemini') ? 'fa-google' : 'fa-robot';
+                        let providerColor, statusLabel, statusBadgeClass;
+                        
+                        if (entry.provider.includes('Gemini')) {
+                            providerColor = 'blue';
+                        } else if (entry.provider.includes('OpenAI')) {
+                            providerColor = 'green';
+                        } else {
+                            providerColor = 'purple';
+                        }
+                        
+                        if (entry.status === 'exhausted') {
+                            statusLabel = '❌ KUOTA GLOBAL HABIS';
+                            statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300 mt-1';
+                        } else {
+                            statusLabel = entry.isFromDB ? '✅ Aktif (Database)' : '✅ Aktif (Environment)';
+                            statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300 mt-1';
+                        }
+                        
+                        const exhaustedDetail = entry.status === 'exhausted' ? `<p class="text-xs text-red-600 mt-2 font-bold">Kuota habis untuk key ini.</p>` : '';
+                        
+                        // Admin-only actions for DB keys
+                        let adminActions = '';
+                        if (isAdmin && entry.isFromDB) {
+                            const dbIndex = keys.filter((k, i) => k.isFromDB && i <= idx).length - 1;
+                            adminActions = `
+                                <button onclick="removeGlobalAPIKey(${dbIndex})"
+                                    class="ml-2 p-2 text-red-400 hover:text-red-700 transition-colors" title="Hapus dari Database">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            `;
+                        }
+
+                        return `
+                            <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all ${entry.status === 'exhausted' ? 'opacity-70' : ''}">
+                                <div class="flex items-center gap-3 flex-1">
+                                    <div class="w-8 h-8 bg-${providerColor}-100 text-${providerColor}-600 rounded-lg flex items-center justify-center">
+                                        <i class="fas ${providerIcon} text-sm"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <p class="text-xs font-bold text-slate-700">${entry.provider}</p>
+                                        <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
+                                        <span class="${statusBadgeClass}">${statusLabel}</span>
+                                        ${exhaustedDetail}
+                                        ${entry.quotaInfo ? `<p class="text-xs text-slate-500 mt-2"><i class="fas fa-info-circle mr-1"></i>${entry.quotaInfo}</p>` : ''}
+                                        ${entry.note ? `<p class="text-xs text-amber-600 mt-1">📝 ${entry.note}</p>` : ''}
+                                    </div>
+                                    ${adminActions}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
                 }
 
-                updateGlobalApiKeysStats(keys);
-                container.innerHTML = keys.map((entry) => {
-                    const fullKey = entry.key || '';
-                    const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
-                    const providerIcon = entry.provider.includes('Gemini') ? 'fa-google' : 'fa-robot';
-                    let providerColor, statusLabel, statusBadgeClass;
-                    
-                    if (entry.provider.includes('Gemini')) {
-                        providerColor = 'blue';
-                    } else if (entry.provider.includes('OpenAI')) {
-                        providerColor = 'green';
-                    } else {
-                        providerColor = 'purple';
-                    }
-                    
-                    if (entry.status === 'exhausted') {
-                        statusLabel = '❌ KUOTA GLOBAL HABIS';
-                        statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300 mt-1';
-                    } else {
-                        statusLabel = '✅ Aktif (Global)';
-                        statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300 mt-1';
-                    }
-                    
-                    const exhaustedDetail = entry.status === 'exhausted' ? `<p class="text-xs text-red-600 mt-2 font-bold">Kuota habis untuk key ini.</p>` : '';
-                    
-                    return `
-                        <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all ${entry.status === 'exhausted' ? 'opacity-70' : ''}">
-                            <div class="flex items-center gap-3 flex-1">
-                                <div class="w-8 h-8 bg-${providerColor}-100 text-${providerColor}-600 rounded-lg flex items-center justify-center">
-                                    <i class="fas ${providerIcon} text-sm"></i>
-                                </div>
-                                <div>
-                                    <p class="text-xs font-bold text-slate-700">${entry.provider}</p>
-                                    <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
-                                    <span class="${statusBadgeClass}">${statusLabel}</span>
-                                    ${exhaustedDetail}
-                                    ${entry.quotaInfo ? `<p class="text-xs text-slate-500 mt-2"><i class="fas fa-info-circle mr-1"></i>${entry.quotaInfo}</p>` : ''}
-                                    ${entry.note && entry.note !== `Global key #${keys.indexOf(entry) + 1}` ? `<p class="text-xs text-amber-600 mt-1">📝 ${entry.note}</p>` : ''}
-                                </div>
+                // Add Admin "Add Key" Form if applicable
+                if (isAdmin) {
+                    const adminForm = document.createElement('div');
+                    adminForm.className = 'mt-6 pt-6 border-t border-slate-100';
+                    adminForm.innerHTML = `
+                        <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Tambah Global Key (Supabase)</h4>
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="admin-global-provider" class="p-3 bg-white rounded-xl border border-slate-200 text-xs font-bold outline-none">
+                                    <option value="Gemini">Google Gemini</option>
+                                    <option value="OpenAI">OpenAI (ChatGPT)</option>
+                                    <option value="OpenRouter">OpenRouter</option>
+                                    <option value="Groq">Groq</option>
+                                    <option value="DeepSeek">DeepSeek</option>
+                                </select>
+                                <input type="text" id="admin-global-note" placeholder="Catatan (opsional)" class="p-3 bg-white rounded-xl border border-slate-200 text-xs font-bold">
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="password" id="admin-global-key" placeholder="API Key" class="flex-1 p-3 bg-white rounded-xl border border-slate-200 text-xs font-mono">
+                                <button onclick="addGlobalAPIKeyForm()" class="px-4 py-3 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-all">
+                                    <i class="fas fa-plus mr-1"></i>TAMBAH
+                                </button>
                             </div>
                         </div>
                     `;
-                }).join('');
+                    container.appendChild(adminForm);
+                }
+
             } catch (err) {
                 console.error('Error loading global API keys:', err);
                 updateGlobalApiKeysStats([]);
@@ -1651,6 +1694,62 @@ function showLoginForm(type) {
                 `;
             }
         }
+
+        window.addGlobalAPIKeyForm = async function() {
+            const provider = document.getElementById('admin-global-provider').value;
+            const apiKey = document.getElementById('admin-global-key').value;
+            const note = document.getElementById('admin-global-note').value;
+
+            if (!apiKey) return showToast('API Key harus diisi', 'error');
+
+            try {
+                showLoadingOverlay('Menyimpan Global Key...');
+                const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider, apiKey, note })
+                });
+
+                const result = await response.json();
+                hideLoadingOverlay();
+
+                if (result.ok) {
+                    showToast('Global API Key berhasil ditambahkan di Supabase', 'success');
+                    renderGlobalAPIKeys();
+                } else {
+                    showToast(result.error || 'Gagal menambahkan key', 'error');
+                }
+            } catch (err) {
+                hideLoadingOverlay();
+                showToast('Error: ' + err.message, 'error');
+            }
+        };
+
+        window.removeGlobalAPIKey = async function(index) {
+            if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini dari Supabase?')) return;
+
+            try {
+                showLoadingOverlay('Menghapus Global Key...');
+                const response = await fetch(getApiBaseUrl() + '/api/admin/remove-global-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyIndex: index })
+                });
+
+                const result = await response.json();
+                hideLoadingOverlay();
+
+                if (result.ok) {
+                    showToast('Global API Key berhasil dihapus', 'success');
+                    renderGlobalAPIKeys();
+                } else {
+                    showToast(result.error || 'Gagal menghapus key', 'error');
+                }
+            } catch (err) {
+                hideLoadingOverlay();
+                showToast('Error: ' + err.message, 'error');
+            }
+        };
         
         function toggleGlobalAPIKeysList() {
             const list = document.getElementById('global-api-keys-list');
@@ -2275,12 +2374,8 @@ function showLoginForm(type) {
                 // Sync API keys from server before rendering for real-time status
                 syncTeacherAPIKeysFromServer().then(() => {
                     renderTeacherAPIKeys();
+                    renderGlobalAPIKeys();
                 });
-                renderGlobalAPIKeys();
-                if (teacherResultsPollInterval) {
-                    clearInterval(teacherResultsPollInterval);
-                    teacherResultsPollInterval = null;
-                }
             } else {
                 if (teacherResultsPollInterval) {
                     clearInterval(teacherResultsPollInterval);
@@ -6072,21 +6167,7 @@ function showLoginForm(type) {
             }
 
             try {
-                const formData = new FormData();
-                formData.append('materi', materi || '');
-                formData.append('jumlah', String(jumlah));
-                formData.append('tipe', tipe);
-                formData.append('mapel', mapel);
-                formData.append('rombel', rombel);
-                formData.append('typeCounts', JSON.stringify(typeCounts));
-                formData.append('levelCounts', JSON.stringify(levelCounts));
-                formData.append('opsiGambar', opsiGambar);
-                
-                if (file) {
-                    formData.append('file', file);
-                }
-
-                const headers = {}; // FormData browser will set boundary and multipart/form-data
+                const headers = { 'Content-Type': 'application/json' };
                 
                 // Add teacher info to headers for API key pooling
                 if (currentSiswa && currentSiswa.role === 'teacher') {
@@ -6097,7 +6178,7 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: headers,
-                    body: formData
+                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar })
                 });
 
                 const rawResponse = await response.text();

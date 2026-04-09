@@ -141,7 +141,10 @@ const DEFAULT_DB = {
     students: [{ id: 'ADM', password: 'admin321', name: 'Administrator', role: 'admin' }],
     results: [],
     schedules: [],
-    timeLimits: {}
+    timeLimits: {},
+    globalSettings: {
+        apiKeys: []
+    }
 };
 
 // ─── Merge helpers ────────────────────────────────────────────────────────────
@@ -742,7 +745,13 @@ async function markTeacherKeyExhausted(teacherId, key, note = 'Quota 429 detecte
 /**
  * Helper to get teacher API keys from database and process.env
  */
+/**
+ * Helper to get teacher API keys from database and process.env
+ * Now with case-insensitive matching and alternate prefix support
+ */
 async function getTeacherAPIKeys(teacherId, req) {
+    if (!teacherId) return [];
+    
     try {
         const db = await readDB();
         let studentKeys = [];
@@ -760,12 +769,16 @@ async function getTeacherAPIKeys(teacherId, req) {
             }
         }
 
-        // 2. Scan process.env for keys starting with TEACHER_{teacherId}_APIKEY_ (from Vercel manual entry or sync)
-        const teacherSafe = String(teacherId || '').replace(/[^A-Z0-9_]/g, '_').toUpperCase();
+        // 2. Scan process.env for keys (Case-Insensitive)
+        const teacherSafe = String(teacherId).replace(/[^A-Z0-9_]/g, '_').toUpperCase();
         const envPrefix = `TEACHER_${teacherSafe}_APIKEY_`;
+        const envPrefixAlt = `TEACHER_${teacherSafe}_APIKEY`; // No trailing underscore
 
         const envKeys = Object.keys(process.env)
-            .filter(k => k.startsWith(envPrefix))
+            .filter(k => {
+                const uk = k.toUpperCase();
+                return uk.startsWith(envPrefix) || uk === envPrefixAlt;
+            })
             .map(k => process.env[k])
             .filter(v => v && typeof v === 'string' && v.trim().length > 10);
 
@@ -773,14 +786,106 @@ async function getTeacherAPIKeys(teacherId, req) {
         const allKeys = [...new Set([...studentKeys, ...envKeys])];
 
         if (allKeys.length > 0) {
-            console.log(`[AI] Found ${allKeys.length} active API keys for teacher: ${teacherId} (${studentKeys.length} from db, ${envKeys.length} from env)`);
+            console.log(`[AI] Found ${allKeys.length} active API keys for teacher: ${teacherId} (DB: ${studentKeys.length}, ENV: ${envKeys.length}, Prefixes: ${envPrefix}, ${envPrefixAlt})`);
+        } else {
+            // Log sample of ENV keys to help debug if none found
+            const envSample = Object.keys(process.env).slice(0, 10).join(', ');
+            console.log(`[AI] No teacher API keys found for ${teacherId}. Checked prefixes: ${envPrefix}, ${envPrefixAlt}. ENV Sample: ${envSample}`);
         }
 
         return allKeys;
     } catch (e) {
-        console.warn('[AI] Error fetching teacher API keys:', e.message);
+        console.warn(`[AI] Error fetching teacher API keys for ${teacherId}:`, e.message);
         return [];
     }
+}
+
+/**
+ * Helper to get Global API Keys from Database OR Environment Variables
+ */
+async function getGlobalAPIKeys(providerPrefix = '') {
+    const keys = [];
+    const sourceInfo = { db: 0, env: 0 };
+
+    try {
+        // 1. Get from Database
+        const db = await readDB();
+        if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
+            db.globalSettings.apiKeys.forEach(entry => {
+                const entryProvider = String(entry.provider || '').toLowerCase();
+                const targetProvider = String(providerPrefix || '').toLowerCase();
+                
+                if (!providerPrefix || entryProvider.includes(targetProvider)) {
+                    if (entry.key && entry.status !== 'exhausted') {
+                        keys.push(entry.key);
+                        sourceInfo.db++;
+                    }
+                }
+            });
+        }
+
+        // 2. Get from Environment Variables (Legacy/Fallback)
+        let envRaw = '';
+        if (providerPrefix.toLowerCase().includes('gemini')) {
+            envRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('openai')) {
+            envRaw = process.env.OPENAI_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('openrouter')) {
+            envRaw = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || process.env.OPEN_ROUTER_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('grok')) {
+            envRaw = process.env.XAI_API_KEY || process.env.GROK_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('groq')) {
+            envRaw = process.env.GROQ_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('huggingface')) {
+            envRaw = process.env.HUGGINGFACE_API_KEY || process.env.HF_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('anthropic')) {
+            envRaw = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('mistral')) {
+            envRaw = process.env.MISTRAL_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('cohere')) {
+            envRaw = process.env.COHERE_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('together')) {
+            envRaw = process.env.TOGETHER_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('deepseek')) {
+            envRaw = process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '';
+        }
+
+        const envKeys = parseApiKeyList(envRaw);
+        envKeys.forEach(k => {
+            if (!keys.includes(k)) {
+                keys.push(k);
+                sourceInfo.env++;
+            }
+        });
+
+        if (keys.length > 0) {
+            console.log(`[AI] Global keys for ${providerPrefix}: ${keys.length} (DB: ${sourceInfo.db}, ENV: ${sourceInfo.env})`);
+        }
+    } catch (e) {
+        console.warn(`[AI] Error fetching global keys for ${providerPrefix}:`, e.message);
+    }
+
+    return keys;
+}
+
+/**
+ * Unified helper to get ALL available keys (Teacher + Global)
+ */
+async function getAllAvailableKeys(providerName, teacherId, req) {
+    const teacherKeys = await getTeacherAPIKeys(teacherId, req);
+    const globalKeys = await getGlobalAPIKeys(providerName);
+    
+    // Teacher keys get priority (added first)
+    const combined = [...new Set([...teacherKeys, ...globalKeys])];
+    
+    console.log(`[AI] aggregate[${providerName}]: Teacher[${teacherId}] keys: ${teacherKeys.length} | Global keys: ${globalKeys.length} | Combined: ${combined.length}`);
+    
+    return {
+        keys: combined,
+        teacherKeysSet: new Set(teacherKeys),
+        globalKeysCount: globalKeys.length,
+        teacherKeysCount: teacherKeys.length
+    };
 }
 
 /**
@@ -882,19 +987,7 @@ async function pushTeacherAPIKeyToVercel(teacherId, apiKey) {
  * Now includes teacher's personal API keys for quota pooling
  */
 async function callGeminiAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '');
-
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Gemini: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Gemini', req?.teacherId, req);
 
     if (keys.length === 0) {
         return logProviderSkip('Gemini');
@@ -1002,19 +1095,7 @@ async function callGeminiAI(prompt, req) {
  * Helper to call OpenAI / ChatGPT
  */
 async function callOpenAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.OPENAI_API_KEY || '');
-
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] OpenAI: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('OpenAI', req?.teacherId, req);
 
     if (keys.length === 0) return logProviderSkip('OpenAI');
 
@@ -1081,19 +1162,7 @@ async function callOpenAI(prompt, req) {
 }
 
 async function callOpenRouterAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || process.env.OPEN_ROUTER_KEY || '');
-
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] OpenRouter: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('OpenRouter', req?.teacherId, req);
 
     if (keys.length === 0) return logProviderSkip('OpenRouter');
 
@@ -1259,22 +1328,11 @@ async function attachGeneratedImagesToQuestions(questions, req) {
  * Helper to call Hugging Face Inference API
  */
 async function callHuggingFaceAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.HUGGINGFACE_API_KEY || process.env.HF_API_KEY || '');
-
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('HuggingFace', req?.teacherId, req);
 
     // Using the modern router endpoint for OpenAI compatibility
     const hfApiUrl = process.env.HUGGINGFACE_API_URL || 'https://router.huggingface.co/v1/chat/completions';
 
-    console.log('[AI] HuggingFace: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('HuggingFace');
 
     const models = [
@@ -1353,19 +1411,8 @@ async function callHuggingFaceAI(prompt, req) {
  * Helper to call Anthropic Claude menggunakan official SDK
  */
 async function callAnthropicAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Anthropic', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Anthropic: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Anthropic');
 
     const models = ['claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'];
@@ -1423,19 +1470,8 @@ async function callAnthropicAI(prompt, req) {
  * Helper to call Grok (xAI)
  */
 async function callGrokAI(prompt, req) {
-    // Start with global API keys (ONLY xAI/Grok keys)
-    const globalKeys = parseApiKeyList(process.env.XAI_API_KEY || process.env.GROK_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Grok', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Grok: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Grok');
 
     const models = ['grok-2-1212', 'grok-2-mini-1212', 'grok-beta'];
@@ -1504,19 +1540,8 @@ async function callGrokAI(prompt, req) {
  * Helper to call Groq (groq.com)
  */
 async function callGroqAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.GROQ_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Groq', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys];
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Groq: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Groq');
 
     const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
@@ -1584,19 +1609,8 @@ async function callGroqAI(prompt, req) {
  * Helper to call Mistral AI
  */
 async function callMistralAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.MISTRAL_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Mistral', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Mistral: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Mistral');
 
     const models = ['mistral-large-latest', 'mistral-medium', 'mistral-small'];
@@ -1665,19 +1679,8 @@ async function callMistralAI(prompt, req) {
  * Helper to call Cohere
  */
 async function callCohereAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.COHERE_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Cohere', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Cohere: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Cohere');
 
     const models = ['command-r-plus', 'command-r', 'command'];
@@ -1746,19 +1749,8 @@ async function callCohereAI(prompt, req) {
  * Helper to call Together AI
  */
 async function callTogetherAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.TOGETHER_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Together AI', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] Together AI: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Together AI');
 
     const models = ['meta-llama/Llama-3-70b-chat-hf', 'mistralai/Mistral-7B-Instruct-v0.1', 'microsoft/WizardLM-2-8x22B'];
@@ -1827,19 +1819,8 @@ async function callTogetherAI(prompt, req) {
  * Helper to call DeepSeek AI
  */
 async function callDeepSeekAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '');
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('DeepSeek', req?.teacherId, req);
 
-    // Add teacher's personal API keys if available
-    let teacherKeys = [];
-    if (req && req.teacherId) {
-        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
-    }
-
-    const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
-    const teacherKeysSet = new Set(teacherKeys);
-
-    console.log('[AI] DeepSeek: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('DeepSeek');
 
     const models = ['deepseek-chat', 'deepseek-coder'];
@@ -2126,7 +2107,19 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
             db.globalAPIKeysStatus = {};
         }
 
-        // Get Gemini keys from environment
+        // 1. Get keys from Database (Supabase)
+        if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
+            db.globalSettings.apiKeys.forEach((entry, idx) => {
+                globalKeys.push({
+                    ...entry,
+                    addedAt: entry.addedAt || 'Supabase DB',
+                    isGlobal: true,
+                    isFromDB: true
+                });
+            });
+        }
+
+        // 2. Get Gemini keys from environment
         const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
         const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
 
@@ -2232,6 +2225,73 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
     } catch (err) {
         console.error('[GET GLOBAL KEYS ERROR]:', err.message);
         res.status(500).json({ error: 'Gagal mengambil daftar global key: ' + err.message });
+    }
+});
+
+// ─── API: Admin Add Global API Key ───────────────────────────────────────────
+app.post('/api/admin/add-global-key', async (req, res) => {
+    const { provider, apiKey, note } = req.body;
+
+    if (!provider || !apiKey) {
+        return res.status(400).json({ error: 'provider dan apiKey diperlukan' });
+    }
+
+    try {
+        const db = await readDB();
+        if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
+        if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+
+        const trimmedKey = apiKey.trim();
+        
+        // Check for duplicates
+        if (db.globalSettings.apiKeys.some(entry => entry.key === trimmedKey)) {
+            return res.status(409).json({ error: 'API Key ini sudah ada di daftar Global' });
+        }
+
+        db.globalSettings.apiKeys.push({
+            provider,
+            key: trimmedKey,
+            status: 'active',
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            note: note || ''
+        });
+
+        await writeDB(db);
+        console.log(`[ADMIN] Global API key added for provider: ${provider}`);
+
+        return res.json({ ok: true, message: 'Global API Key berhasil ditambahkan' });
+    } catch (err) {
+        console.error('[ADMIN ADD GLOBAL KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menambahkan Global API Key: ' + err.message });
+    }
+});
+
+// ─── API: Admin Remove Global API Key ────────────────────────────────────────
+app.post('/api/admin/remove-global-key', async (req, res) => {
+    const { keyIndex } = req.body;
+
+    if (keyIndex === undefined) {
+        return res.status(400).json({ error: 'keyIndex diperlukan' });
+    }
+
+    try {
+        const db = await readDB();
+        if (!db.globalSettings || !Array.isArray(db.globalSettings.apiKeys)) {
+            return res.status(404).json({ error: 'Konfigurasi Global tidak ditemukan' });
+        }
+
+        if (keyIndex < 0 || keyIndex >= db.globalSettings.apiKeys.length) {
+            return res.status(400).json({ error: 'Index tidak valid' });
+        }
+
+        db.globalSettings.apiKeys.splice(keyIndex, 1);
+        await writeDB(db);
+        
+        return res.json({ ok: true, message: 'Global API Key berhasil dihapus' });
+    } catch (err) {
+        console.error('[ADMIN REMOVE GLOBAL KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menghapus Global API Key: ' + err.message });
     }
 });
 
