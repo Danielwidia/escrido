@@ -1202,31 +1202,32 @@ async function callOpenAIImage(prompt, req) {
 }
 
 async function attachGeneratedImagesToQuestions(questions, req) {
-    const results = [];
-    for (const q of questions) {
+    console.log(`[AI] Parallelizing image generation for ${questions.length} questions...`);
+    
+    const promises = questions.map(async (q) => {
+        // Skip if image already exists
         if (q.images && Array.isArray(q.images) && q.images.length > 0 && q.images.every(src => typeof src === 'string' && src.trim())) {
-            results.push(q);
-            continue;
+            return q;
         }
 
         const promptText = (typeof q.imagePrompt === 'string' && q.imagePrompt.trim()) ? q.imagePrompt.trim() : (typeof q.text === 'string' ? q.text.trim() : '');
         if (!promptText) {
-            results.push(q);
-            continue;
+            return q;
         }
 
         try {
-            const imageBase64 = await callOpenAIImage(`Ilustrasi untuk soal berikut: ${promptText}. Buat gambar ilustratif yang jelas dan sesuai konteks materi pelajaran.`);
+            console.log(`[AI] Generating image for question: "${promptText.substring(0, 30)}..."`);
+            const imageBase64 = await callOpenAIImage(`Ilustrasi untuk soal berikut: ${promptText}. Buat gambar ilustratif yang jelas dan sesuai konteks materi pelajaran.`, req);
             q.images = [imageBase64];
         } catch (e) {
             console.warn('[/api/generate-ai] Gagal Open AI Images, fallback ke Pollinations:', e.message);
             const promptEncoded = encodeURIComponent(promptText + " educational illustration graphic detail");
             q.images = [`https://image.pollinations.ai/prompt/${promptEncoded}?width=800&height=600&nologo=true`];
         }
+        return q;
+    });
 
-        results.push(q);
-    }
-    return results;
+    return await Promise.all(promises);
 }
 
 /**
@@ -1805,9 +1806,26 @@ async function callDeepSeekAI(prompt, req) {
 async function callAI(prompt, req) {
     const errors = [];
 
+    // Helper to wrap a promise with a timeout
+    const withTimeout = (promise, ms, providerName) => {
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error(`Timeout: ${providerName} took longer than ${ms/1000}s`));
+            }, ms);
+        });
+
+        return Promise.race([
+            promise.finally(() => clearTimeout(timeoutId)),
+            timeoutPromise
+        ]);
+    };
+
     const tryProvider = async (name, fn) => {
         try {
-            const result = await fn();
+            // Give each provider a maximum of 45 seconds to respond
+            const result = await withTimeout(fn(), 45000, name);
+            
             if (result === null) return null;
             if (typeof result === 'string') {
                 return { text: result, exhaustedKeys: [] };
@@ -1909,8 +1927,8 @@ app.post('/api/teacher/add-api-key', async (req, res) => {
         await writeDB(db);
         console.log(`[TEACHER] API key added untuk guru: ${teacher.name}`);
 
-        // Push to Vercel (async, don't wait)
-        const vercelEnvVar = await pushTeacherAPIKeyToVercel(teacherId, apiKey.trim());
+        // Push to Vercel (async, truly don't wait)
+        pushTeacherAPIKeyToVercel(teacherId, apiKey.trim());
 
         return res.json({
             ok: true,
