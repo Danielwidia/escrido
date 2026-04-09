@@ -332,6 +332,9 @@ async function readDB() {
         }
         return dbObj;
     }
+    if (process.env.VERCEL) {
+        throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
+    }
     try {
         if (!fs.existsSync(LOCAL_DATA)) return null;
         return JSON.parse(fs.readFileSync(LOCAL_DATA, 'utf8'));
@@ -345,6 +348,9 @@ async function writeDB(obj) {
             .upsert({ id: 1, data: obj, updated_at: new Date() });
         if (error) throw new Error('Supabase writeDB error: ' + error.message);
         return;
+    }
+    if (process.env.VERCEL) {
+        throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
     }
     fs.writeFileSync(LOCAL_DATA, JSON.stringify(obj, null, 2), 'utf8');
 }
@@ -360,6 +366,9 @@ async function readResults() {
             return [];
         }
         return data.map(row => row.data);
+    }
+    if (process.env.VERCEL) {
+        throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
     }
     try {
         if (!fs.existsSync(LOCAL_RESULTS)) return [];
@@ -425,6 +434,9 @@ async function writeResults(results) {
         }
         return;
     }
+    if (process.env.VERCEL) {
+        throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
+    }
     fs.writeFileSync(LOCAL_RESULTS, JSON.stringify(results, null, 2), 'utf8');
 }
 
@@ -481,6 +493,9 @@ async function insertResultSingle(resultObj) {
             }
         }
     } else {
+        if (process.env.VERCEL) {
+            throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
+        }
         const merged = mergeResults(await readResults(), [resultObj]);
         fs.writeFileSync(LOCAL_RESULTS, JSON.stringify(merged, null, 2), 'utf8');
     }
