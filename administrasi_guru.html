@@ -1040,6 +1040,14 @@
                 }
 
                 let response;
+                const headers = {};
+                // Add teacher identification headers
+                if (currentSiswa && currentSiswa.id) {
+                    headers['X-Teacher-ID'] = currentSiswa.id;
+                    headers['X-Teacher-Name'] = currentSiswa.name || 'Admin/Guru';
+                    extraData.teacherId = currentSiswa.id; // Body fallback
+                }
+
                 if (uploadFile) {
                     const formData = new FormData();
                     formData.append('blueprint', uploadFile);
@@ -1048,12 +1056,16 @@
                     }
                     response = await fetch(API_URL + '/api/generate-admin-doc', {
                         method: 'POST',
+                        headers: headers,
                         body: formData
                     });
                 } else {
                     response = await fetch(API_URL + '/api/generate-admin-doc', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            ...headers,
+                            'Content-Type': 'application/json'
+                        },
                         body: JSON.stringify(extraData)
                     });
                 }

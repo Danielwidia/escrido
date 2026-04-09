@@ -6169,16 +6169,19 @@ function showLoginForm(type) {
             try {
                 const headers = { 'Content-Type': 'application/json' };
                 
-                // Add teacher info to headers for API key pooling
-                if (currentSiswa && currentSiswa.role === 'teacher') {
+                // Add teacher info to headers for API key pooling (Removed role check to support admin-teachers)
+                if (currentSiswa && currentSiswa.id) {
                     headers['X-Teacher-ID'] = currentSiswa.id;
-                    headers['X-Teacher-Name'] = currentSiswa.name;
+                    headers['X-Teacher-Name'] = currentSiswa.name || 'Admin/Guru';
                 }
                 
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: headers,
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar })
+                    body: JSON.stringify({ 
+                        materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar,
+                        teacherId: currentSiswa ? currentSiswa.id : null // Body fallback
+                    })
                 });
 
                 const rawResponse = await response.text();
@@ -6491,15 +6494,18 @@ function showLoginForm(type) {
                 const headers = { 'Content-Type': 'application/json' };
                 
                 // Add teacher info to headers for API key pooling
-                if (currentSiswa && currentSiswa.role === 'teacher') {
+                if (currentSiswa && currentSiswa.id) {
                     headers['X-Teacher-ID'] = currentSiswa.id;
-                    headers['X-Teacher-Name'] = currentSiswa.name;
+                    headers['X-Teacher-Name'] = currentSiswa.name || 'Admin/Guru';
                 }
                 
                 const response = await fetch(getApiBaseUrl() + '/api/generate-kisi-kisi', {
                     method: 'POST',
                     headers: headers,
-                    body: JSON.stringify({ questions, mapel, rombel })
+                    body: JSON.stringify({ 
+                        questions, mapel, rombel,
+                        teacherId: currentSiswa ? currentSiswa.id : null // Body fallback
+                    })
                 });
 
                 const result = await response.json();

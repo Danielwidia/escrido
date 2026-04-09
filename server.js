@@ -878,7 +878,9 @@ async function getAllAvailableKeys(providerName, teacherId, req) {
     // Teacher keys get priority (added first)
     const combined = [...new Set([...teacherKeys, ...globalKeys])];
     
-    console.log(`[AI] aggregate[${providerName}]: Teacher[${teacherId}] keys: ${teacherKeys.length} | Global keys: ${globalKeys.length} | Combined: ${combined.length}`);
+    // Log the discovery process for debugging
+    const idSource = req?.headers?.['x-teacher-id'] ? 'Headers' : (req?.body?.teacherId ? 'Body' : 'None');
+    console.log(`[AI] aggregate[${providerName}]: Teacher[${teacherId}] found from ${idSource}. Keys: ${teacherKeys.length} | Global keys: ${globalKeys.length} | Total available: ${combined.length}`);
     
     return {
         keys: combined,
@@ -2296,9 +2298,16 @@ app.post('/api/admin/remove-global-key', async (req, res) => {
 });
 
 app.post('/api/generate-ai', async (req, res) => {
-    // Extract teacher info from headers if available
+    // Extract teacher info from headers if available, with body fallback
     req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
     req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
+    
+    if (req.teacherId) {
+        const idSource = req.headers['x-teacher-id'] ? 'Headers' : 'Body';
+        console.log(`[AI] /api/generate-ai: Identitas terdeteksi [${req.teacherId}] dari ${idSource}`);
+    } else {
+        console.log(`[AI] /api/generate-ai: Tidak ada identitas guru terdeteksi (Teacher ID undefined)`);
+    }
 
     const {
         materi,
@@ -2580,9 +2589,16 @@ app.post('/api/generate-ai', async (req, res) => {
 
 // ─── API: Generate Admin Doc ──────────────────────────────────────────────────
 app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res) => {
-    // Extract teacher info from headers if available
+    // Extract teacher info from headers if available, with body fallback
     req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
     req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
+
+    if (req.teacherId) {
+        const idSource = req.headers['x-teacher-id'] ? 'Headers' : 'Body';
+        console.log(`[AI] /api/generate-admin-doc: Identitas terdeteksi [${req.teacherId}] dari ${idSource}`);
+    } else {
+        console.log(`[AI] /api/generate-admin-doc: Tidak ada identitas guru terdeteksi`);
+    }
 
     let { type, mapel, fase, semester, topik, topic, target, schoolName, teacherName, address } = req.body;
     const extraData = { ...req.body };
@@ -2882,8 +2898,14 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
 
 // ─── API: Kisi-kisi Generate ──────────────────────────────────────────────────
 app.post('/api/generate-kisi-kisi', async (req, res) => {
-    // Extract teacher info from headers if available
+    // Extract teacher info from headers if available, with body fallback
     req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
+    req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
+
+    if (req.teacherId) {
+        const idSource = req.headers['x-teacher-id'] ? 'Headers' : 'Body';
+        console.log(`[AI] /api/generate-kisi-kisi: Identitas terdeteksi [${req.teacherId}] dari ${idSource}`);
+    }
 
     const { questions, mapel = '', rombel = '' } = req.body;
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
