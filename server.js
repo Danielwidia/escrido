@@ -1202,32 +1202,31 @@ async function callOpenAIImage(prompt, req) {
 }
 
 async function attachGeneratedImagesToQuestions(questions, req) {
-    console.log(`[AI] Parallelizing image generation for ${questions.length} questions...`);
-    
-    const promises = questions.map(async (q) => {
-        // Skip if image already exists
+    const results = [];
+    for (const q of questions) {
         if (q.images && Array.isArray(q.images) && q.images.length > 0 && q.images.every(src => typeof src === 'string' && src.trim())) {
-            return q;
+            results.push(q);
+            continue;
         }
 
         const promptText = (typeof q.imagePrompt === 'string' && q.imagePrompt.trim()) ? q.imagePrompt.trim() : (typeof q.text === 'string' ? q.text.trim() : '');
         if (!promptText) {
-            return q;
+            results.push(q);
+            continue;
         }
 
         try {
-            console.log(`[AI] Generating image for question: "${promptText.substring(0, 30)}..."`);
-            const imageBase64 = await callOpenAIImage(`Ilustrasi untuk soal berikut: ${promptText}. Buat gambar ilustratif yang jelas dan sesuai konteks materi pelajaran.`, req);
+            const imageBase64 = await callOpenAIImage(`Ilustrasi untuk soal berikut: ${promptText}. Buat gambar ilustratif yang jelas dan sesuai konteks materi pelajaran.`);
             q.images = [imageBase64];
         } catch (e) {
             console.warn('[/api/generate-ai] Gagal Open AI Images, fallback ke Pollinations:', e.message);
             const promptEncoded = encodeURIComponent(promptText + " educational illustration graphic detail");
             q.images = [`https://image.pollinations.ai/prompt/${promptEncoded}?width=800&height=600&nologo=true`];
         }
-        return q;
-    });
 
-    return await Promise.all(promises);
+        results.push(q);
+    }
+    return results;
 }
 
 /**
@@ -1246,16 +1245,16 @@ async function callHuggingFaceAI(prompt, req) {
     const keys = [...teacherKeys, ...globalKeys]; // Teacher keys first for priority
     const teacherKeysSet = new Set(teacherKeys);
 
-    const hfApiUrl = process.env.HUGGINGFACE_API_URL || 'https://router.huggingface.co';
+    // Using the modern router endpoint for OpenAI compatibility
+    const hfApiUrl = process.env.HUGGINGFACE_API_URL || 'https://router.huggingface.co/v1/chat/completions';
 
     console.log('[AI] HuggingFace: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
-    console.log('[AI] HUGGINGFACE_API_URL used:', hfApiUrl);
     if (keys.length === 0) return logProviderSkip('HuggingFace');
 
     const models = [
-        'tiiuae/falcon-7b-instruct',
-        'google/flan-t5-xl',
-        'gpt2-large'
+        'mistralai/Mistral-7B-Instruct-v0.3',
+        'microsoft/Phi-3-mini-4k-instruct',
+        'HuggingFaceH4/zephyr-7b-beta'
     ];
 
     let lastError;
@@ -1266,51 +1265,46 @@ async function callHuggingFaceAI(prompt, req) {
             try {
                 console.log(`[AI] Trying HuggingFace model: ${model} with key: ${key.substring(0, 10)}...`);
 
-                const response = await fetch(`${hfApiUrl}/models/${model}`, {
+                const response = await fetch(hfApiUrl, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${key}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        inputs: prompt,
-                        parameters: {
-                            max_new_tokens: 512,
-                            temperature: 0.7,
-                            return_full_text: false
-                        }
+                        model: model,
+                        messages: [{ role: 'user', content: prompt }],
+                        max_tokens: 1024,
+                        temperature: 0.7
                     })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    const result = Array.isArray(data)
-                        ? data[0]?.generated_text || data[0]?.text || ''
-                        : data.generated_text || data.text || '';
+                    const result = data.choices?.[0]?.message?.content || '';
 
                     if (result) {
                         console.log(`[AI] ✅ Success with HuggingFace model: ${model}`);
                         return { text: result, exhaustedKeys: exhaustedTeacherKeys };
                     }
-
-                    lastError = `[HuggingFace ${model}] response format invalid`;
-                    console.warn('[AI] HuggingFace returned response without generated text.');
+                    console.warn('[AI] HuggingFace returned empty response body.');
                 } else {
                     const errData = await response.json().catch(() => ({}));
-                    const errMsg = errData.error || errData?.[0]?.error || response.statusText;
+                    const errMsg = errData.error?.message || errData.error || response.statusText;
 
-                    if (response.status === 429) {
-                        lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada HuggingFace model ${model}.`;
-                        console.warn(`[AI] ⚠️ HuggingFace quota exceeded for model: ${model}`);
+                    if (response.status === 429 || response.status === 402) {
+                        const reason = response.status === 429 ? '429 Quota' : '402 Balance';
+                        lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada HuggingFace model ${model} (${reason}).`;
+                        console.warn(`[AI] ⚠️ HuggingFace ${reason} for model: ${model}`);
+                        
                         if (req && req.teacherId && teacherKeysSet.has(key)) {
-                            const marked = await markTeacherKeyExhausted(req.teacherId, key, `HuggingFace ${model} 429`);
+                            const marked = await markTeacherKeyExhausted(req.teacherId, key, `HuggingFace ${model} ${response.status}`);
                             if (marked) {
                                 exhaustedTeacherKeys.push(key);
                                 console.log(`[AI] Marked HuggingFace teacher key as exhausted for teacher ${req.teacherId}`);
                             }
                         } else if (!teacherKeysSet.has(key)) {
-                            // This is a global key
-                            await markGlobalKeyExhausted(key, `HuggingFace ${model} 429`);
+                            await markGlobalKeyExhausted(key, `HuggingFace ${model} ${response.status}`);
                             console.log(`[AI] Marked HuggingFace global key as exhausted`);
                         }
                         continue;
@@ -1403,8 +1397,8 @@ async function callAnthropicAI(prompt, req) {
  * Helper to call Grok (xAI)
  */
 async function callGrokAI(prompt, req) {
-    // Start with global API keys
-    const globalKeys = parseApiKeyList(process.env.XAI_API_KEY || process.env.GROK_API_KEY || process.env.GROQ_API_KEY || '');
+    // Start with global API keys (ONLY xAI/Grok keys)
+    const globalKeys = parseApiKeyList(process.env.XAI_API_KEY || process.env.GROK_API_KEY || '');
 
     // Add teacher's personal API keys if available
     let teacherKeys = [];
@@ -1418,7 +1412,7 @@ async function callGrokAI(prompt, req) {
     console.log('[AI] Grok: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
     if (keys.length === 0) return logProviderSkip('Grok');
 
-    const models = ['grok-beta', 'grok-vision-beta'];
+    const models = ['grok-2-1212', 'grok-2-mini-1212', 'grok-beta'];
     let lastError;
     const exhaustedTeacherKeys = [];
 
@@ -1436,7 +1430,8 @@ async function callGrokAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024
+                        max_tokens: 1024,
+                        temperature: 0.7
                     })
                 });
 
@@ -1448,20 +1443,20 @@ async function callGrokAI(prompt, req) {
                 }
 
                 const errData = await response.json().catch(() => ({}));
-                const errMsg = errData.error?.message || response.statusText;
+                const errMsg = errData.error?.message || errData.error || response.statusText;
 
-                if (response.status === 429) {
-                    lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada Grok model ${model}.`;
-                    console.warn(`[AI] ⚠️ Grok quota exceeded for model: ${model}`);
+                if (response.status === 429 || response.status === 402) {
+                    const statusStr = response.status === 429 ? 'KUOTA HABIS' : 'SALDO HABIS';
+                    lastError = `[${statusStr}] pada Grok model ${model}.`;
+                    console.warn(`[AI] ⚠️ Grok ${statusStr} for model: ${model}`);
                     if (req && req.teacherId && teacherKeysSet.has(key)) {
-                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `Grok ${model} 429`);
+                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `Grok ${model} ${response.status}`);
                         if (marked) {
                             exhaustedTeacherKeys.push(key);
                             console.log(`[AI] Marked Grok teacher key as exhausted for teacher ${req.teacherId}`);
                         }
                     } else if (!teacherKeysSet.has(key)) {
-                        // This is a global key
-                        await markGlobalKeyExhausted(key, `Grok ${model} 429`);
+                        await markGlobalKeyExhausted(key, `Grok ${model} ${response.status}`);
                         console.log(`[AI] Marked Grok global key as exhausted`);
                     }
                     continue;
@@ -1477,6 +1472,86 @@ async function callGrokAI(prompt, req) {
     }
 
     throw new Error(lastError || 'Gagal menggunakan Grok');
+}
+
+/**
+ * Helper to call Groq (groq.com)
+ */
+async function callGroqAI(prompt, req) {
+    // Start with global API keys
+    const globalKeys = parseApiKeyList(process.env.GROQ_API_KEY || '');
+
+    // Add teacher's personal API keys if available
+    let teacherKeys = [];
+    if (req && req.teacherId) {
+        teacherKeys = await getTeacherAPIKeys(req.teacherId, req);
+    }
+
+    const keys = [...teacherKeys, ...globalKeys];
+    const teacherKeysSet = new Set(teacherKeys);
+
+    console.log('[AI] Groq: Global keys count:', globalKeys.length, '| Teacher keys count:', teacherKeys.length, '| Total:', keys.length);
+    if (keys.length === 0) return logProviderSkip('Groq');
+
+    const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'mixtral-8x7b-32768'];
+    let lastError;
+    const exhaustedTeacherKeys = [];
+
+    for (const model of models) {
+        for (const key of keys) {
+            try {
+                console.log(`[AI] Trying Groq model: ${model} with key: ${key.substring(0, 10)}...`);
+
+                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'user', content: prompt }],
+                        max_tokens: 1024,
+                        temperature: 0.7
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const result = data.choices?.[0]?.message?.content || '';
+                    console.log(`[AI] ✅ Success with Groq model: ${model}`);
+                    return { text: result, exhaustedKeys: exhaustedTeacherKeys };
+                }
+
+                const errData = await response.json().catch(() => ({}));
+                const errMsg = errData.error?.message || errData.error || response.statusText;
+
+                if (response.status === 429) {
+                    lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada Groq model ${model}.`;
+                    console.warn(`[AI] ⚠️ Groq quota exceeded for model: ${model}`);
+                    if (req && req.teacherId && teacherKeysSet.has(key)) {
+                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `Groq ${model} 429`);
+                        if (marked) {
+                            exhaustedTeacherKeys.push(key);
+                            console.log(`[AI] Marked Groq teacher key as exhausted for teacher ${req.teacherId}`);
+                        }
+                    } else if (!teacherKeysSet.has(key)) {
+                        await markGlobalKeyExhausted(key, `Groq ${model} 429`);
+                        console.log(`[AI] Marked Groq global key as exhausted`);
+                    }
+                    continue;
+                }
+
+                lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
+                console.error(`[AI] ❌ Groq model ${model} error: ${response.status} ${errMsg}`);
+            } catch (e) {
+                lastError = e.message;
+                console.error(`[AI] Fetch Error with Groq ${model}:`, e.message);
+            }
+        }
+    }
+
+    throw new Error(lastError || 'Gagal menggunakan Groq');
 }
 
 /**
@@ -1768,20 +1843,21 @@ async function callDeepSeekAI(prompt, req) {
                 }
 
                 const errData = await response.json().catch(() => ({}));
-                const errMsg = errData.error?.message || response.statusText;
+                const errMsg = errData.error?.message || errData.error || response.statusText;
 
-                if (response.status === 429) {
-                    lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada DeepSeek model ${model}.`;
-                    console.warn(`[AI] ⚠️ DeepSeek quota exceeded for model: ${model}`);
+                if (response.status === 429 || response.status === 402) {
+                    const statusStr = response.status === 429 ? 'KUOTA HABIS' : 'SALDO HABIS';
+                    lastError = `[${statusStr}] pada DeepSeek model ${model}.`;
+                    console.warn(`[AI] ⚠️ DeepSeek ${statusStr} for model: ${model}`);
                     if (req && req.teacherId && teacherKeysSet.has(key)) {
-                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `DeepSeek ${model} 429`);
+                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `DeepSeek ${model} ${response.status}`);
                         if (marked) {
                             exhaustedTeacherKeys.push(key);
                             console.log(`[AI] Marked DeepSeek teacher key as exhausted for teacher ${req.teacherId}`);
                         }
                     } else if (!teacherKeysSet.has(key)) {
                         // This is a global key
-                        await markGlobalKeyExhausted(key, `DeepSeek ${model} 429`);
+                        await markGlobalKeyExhausted(key, `DeepSeek ${model} ${response.status}`);
                         console.log(`[AI] Marked DeepSeek global key as exhausted`);
                     }
                     continue;
@@ -1806,26 +1882,9 @@ async function callDeepSeekAI(prompt, req) {
 async function callAI(prompt, req) {
     const errors = [];
 
-    // Helper to wrap a promise with a timeout
-    const withTimeout = (promise, ms, providerName) => {
-        let timeoutId;
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(new Error(`Timeout: ${providerName} took longer than ${ms/1000}s`));
-            }, ms);
-        });
-
-        return Promise.race([
-            promise.finally(() => clearTimeout(timeoutId)),
-            timeoutPromise
-        ]);
-    };
-
     const tryProvider = async (name, fn) => {
         try {
-            // Give each provider a maximum of 45 seconds to respond
-            const result = await withTimeout(fn(), 45000, name);
-            
+            const result = await fn();
             if (result === null) return null;
             if (typeof result === 'string') {
                 return { text: result, exhaustedKeys: [] };
@@ -1854,6 +1913,9 @@ async function callAI(prompt, req) {
     if (result) return result;
 
     result = await tryProvider('Grok', () => callGrokAI(prompt, req));
+    if (result) return result;
+
+    result = await tryProvider('Groq', () => callGroqAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('HuggingFace', () => callHuggingFaceAI(prompt, req));
@@ -1927,8 +1989,8 @@ app.post('/api/teacher/add-api-key', async (req, res) => {
         await writeDB(db);
         console.log(`[TEACHER] API key added untuk guru: ${teacher.name}`);
 
-        // Push to Vercel (async, truly don't wait)
-        pushTeacherAPIKeyToVercel(teacherId, apiKey.trim());
+        // Push to Vercel (async, don't wait)
+        const vercelEnvVar = await pushTeacherAPIKeyToVercel(teacherId, apiKey.trim());
 
         return res.json({
             ok: true,
@@ -2099,17 +2161,17 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
             });
         });
 
-        // Get DeepSeek keys from environment
-        const deepseekRaw = process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '';
-        const deepseekKeys = deepseekRaw.split(',').map(k => k.trim()).filter(k => k);
+        // Get Groq keys from environment
+        const groqRaw = process.env.GROQ_API_KEY || '';
+        const groqKeys = groqRaw.split(',').map(k => k.trim()).filter(k => k);
 
-        deepseekKeys.forEach((key, idx) => {
+        groqKeys.forEach((key, idx) => {
             const keyHash = key.substring(key.length - 10);
             const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
 
             globalKeys.push({
                 key: key,
-                provider: 'DeepSeek',
+                provider: 'Groq',
                 status: statusEntry.status,
                 addedAt: 'System / Environment',
                 updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
@@ -2117,7 +2179,7 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
                 isGlobal: true,
                 quotaInfo: statusEntry.status === 'exhausted'
                     ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
-                    : 'DeepSeek: Rate limits sesuai plan (Free tier tersedia)'
+                    : 'Groq: Ultra-fast inference (Llama 3, Mixtral)'
             });
         });
 
@@ -2134,6 +2196,7 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
             openaiCount: openaiKeys.length,
             openrouterCount: openrouterKeys.length,
             deepseekCount: deepseekKeys.length,
+            groqCount: groqKeys.length,
             fallbackNote: 'Global key digunakan sebagai fallback jika personal key tidak tersedia atau kuota habis'
         });
     } catch (err) {
@@ -2142,8 +2205,8 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
     }
 });
 
-app.post('/api/generate-ai', upload.single('file'), async (req, res) => {
-    let {
+app.post('/api/generate-ai', async (req, res) => {
+    const {
         materi,
         jumlah = 5,
         tipe = 'single',
@@ -2153,21 +2216,6 @@ app.post('/api/generate-ai', upload.single('file'), async (req, res) => {
         levelCounts = {},
         opsiGambar = 'none'
     } = req.body;
-
-    // Handle file upload if present
-    if (req.file) {
-        try {
-            console.log(`[AI] Processing uploaded file for question generation: ${req.file.originalname}`);
-            const fileText = await parseBlueprint(req.file.buffer, req.file.originalname, req);
-            if (fileText) {
-                // Combine manual topic and file content
-                materi = (materi ? materi + "\n\n" : "") + "KONTEKS DOKUMEN:\n" + fileText;
-                console.log(`[AI] Extracted ${fileText.length} characters from file.`);
-            }
-        } catch (fileErr) {
-            console.error('[AI] Error parsing file in /api/generate-ai:', fileErr.message);
-        }
-    }
 
     const imageEnabled = String(opsiGambar || 'none').toLowerCase() === 'auto';
 
