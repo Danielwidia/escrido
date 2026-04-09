@@ -1219,8 +1219,9 @@ async function attachGeneratedImagesToQuestions(questions, req) {
             const imageBase64 = await callOpenAIImage(`Ilustrasi untuk soal berikut: ${promptText}. Buat gambar ilustratif yang jelas dan sesuai konteks materi pelajaran.`);
             q.images = [imageBase64];
         } catch (e) {
-            console.warn('[/api/generate-ai] Gagal membuat gambar AI untuk soal:', e.message);
-            q.images = q.images || [];
+            console.warn('[/api/generate-ai] Gagal Open AI Images, fallback ke Pollinations:', e.message);
+            const promptEncoded = encodeURIComponent(promptText + " educational illustration graphic detail");
+            q.images = [`https://image.pollinations.ai/prompt/${promptEncoded}?width=800&height=600&nologo=true`];
         }
 
         results.push(q);
@@ -2159,7 +2160,7 @@ app.post('/api/generate-ai', async (req, res) => {
     };
     const typeDescriptions = {
         single: 'pilihan ganda biasa (1 jawaban benar, 4 opsi)',
-        multiple: 'pilihan ganda kompleks (2-3 jawaban benar, 4 opsi)',
+        multiple: 'pilihan ganda kompleks (minimal 4 opsi, jawaban benar bisa lebih dari 1)',
         text: 'isian / uraian singkat',
         tf: 'benar/salah (minimal 3 pernyataan per soal)',
         matching: 'menjodohkan'
@@ -2193,7 +2194,7 @@ app.post('/api/generate-ai', async (req, res) => {
     }
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single","imagePrompt":"Ilustrasi ..."}]. ';
-    prompt += 'Untuk soal pilihan ganda kompleks gunakan tepat 4 opsi jawaban dan maksimal 3 jawaban benar, "correct" sebagai array indeks jawaban benar, contoh: {"text":"Pertanyaan?","options":["A","B","C","D"],"correct":[0,2],"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"multiple","imagePrompt":"Ilustrasi ..."}. ';
+    prompt += 'Untuk soal pilihan ganda kompleks gunakan minimal 4 opsi jawaban dan jawaban benar bisa lebih dari 1 (buat soal HOTS jika memungkinkan), "correct" sebagai array indeks jawaban benar, contoh: {"text":"Pertanyaan?","options":["A","B","C","D","E"],"correct":[0,2,4],"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"multiple","imagePrompt":"Ilustrasi ..."}. ';
     prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar pernyataan (minimal 3 pernyataan) dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true],"imagePrompt":"Ilustrasi ..."}. ';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array 5 pertanyaan, "answers" sebagai array 5 jawaban, dan "correct" sebagai array 5 string yang menunjukkan jawaban benar untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2","Pertanyaan 3","Pertanyaan 4","Pertanyaan 5"],"answers":["Jawaban A","Jawaban B","Jawaban C","Jawaban D","Jawaban E"],"correct":["Jawaban A","Jawaban B","Jawaban C","Jawaban D","Jawaban E"]}.';
 
@@ -2240,6 +2241,13 @@ app.post('/api/generate-ai', async (req, res) => {
 
             // Normalize TF questions
             if (normalized.type === 'tf') {
+                if (!normalized.options || normalized.options.length === 0) {
+                    if (Array.isArray(normalized.statements) && normalized.statements.length > 0) {
+                        normalized.options = normalized.statements;
+                    } else if (Array.isArray(normalized.pernyataan) && normalized.pernyataan.length > 0) {
+                        normalized.options = normalized.pernyataan;
+                    }
+                }
                 if (!Array.isArray(normalized.options)) {
                     normalized.options = [];
                 }
@@ -2295,13 +2303,11 @@ app.post('/api/generate-ai', async (req, res) => {
                 if (!Array.isArray(normalized.options)) {
                     normalized.options = [];
                 }
-                // Ensure exactly 4 options for multiple choice
+                // Ensure at least 4 options for multiple choice
                 if (normalized.options.length < 4) {
                     while (normalized.options.length < 4) {
                         normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
                     }
-                } else if (normalized.options.length > 4) {
-                    normalized.options = normalized.options.slice(0, 4);
                 }
                 if (!Array.isArray(normalized.correct)) {
                     // If correct is not array, try to convert single number to array
@@ -2311,16 +2317,13 @@ app.post('/api/generate-ai', async (req, res) => {
                         normalized.correct = [];
                     }
                 }
-                // Ensure all correct values are numbers and within options range (0-3)
+                // Ensure all correct values are numbers and within options range
                 normalized.correct = normalized.correct
-                    .filter(c => typeof c === 'number' && c >= 0 && c < 4)
+                    .filter(c => typeof c === 'number' && c >= 0 && c < normalized.options.length)
                     .map(c => Math.floor(c));
                 // Remove duplicates
                 normalized.correct = [...new Set(normalized.correct)];
-                // Limit to max 3 correct answers
-                if (normalized.correct.length > 3) {
-                    normalized.correct = normalized.correct.slice(0, 3);
-                }
+                
                 // If only one correct answer, change to single
                 if (normalized.correct.length === 1) {
                     normalized.type = 'single';
@@ -2449,7 +2452,7 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         if (extraData?.opsiGambar === 'placeholder') {
             promptText += `\nUntuk soal yang memerlukan ilustrasi gambar, JANGAN gunakan placeholder gambar biasa. Gunakan blok HTML berikut sebagai "Area Ilustrasi" agar terlihat profesional:\n<div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; background-color: #f8fafc; margin: 15px 0;"><i class="fas fa-image" style="font-size: 32px; color: #94a3b8; margin-bottom: 10px; display: block;"></i><p style="font-weight: bold; color: #475569; margin: 0; font-size: 14px;">[Area Ilustrasi: DESKRIPSI_GAMBAR]</p><p style="font-size: 11px; color: #94a3b8; margin-top: 5px;">(Guru dapat menyisipkan gambar spesifik di sini)</p></div>\nGanti teks DESKRIPSI_GAMBAR dengan nama/objek gambar yang relevan (misal: "Struktur Akar Tumbuhan").`;
         } else if (extraData?.opsiGambar === 'auto') {
-            promptText += `\nUntuk soal yang memerlukan ilustrasi gambar, tampilkan gambar asli secara otomatis dengan memanfaatkan layanan pihak ketiga menggunakan tag HTML ini: <br><img src="https://image.pollinations.ai/prompt/[ENGLISH_VISUAL_DESCRIPTION]?width=500&height=300&nologo=true" alt="Ilustrasi AI" style="border-radius: 8px; margin: 15px 0; max-width: 100%; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0;">\nGantikan [ENGLISH_VISUAL_DESCRIPTION] with deskripsi visual yang sangat detail dalam BAHASA INGGRIS yang merangkum maksud soal (misalnya: "detailed educational anatomical cross section diagram of human heart on white background"). Semakin detail instruksinya, gambar akan tampil semakin akurat.`;
+            promptText += `\nUntuk soal yang memerlukan ilustrasi gambar, tampilkan gambar asli secara otomatis dengan memanfaatkan layanan pihak ketiga menggunakan tag HTML ini: <br><img src="https://image.pollinations.ai/prompt/[ENGLISH_VISUAL_DESCRIPTION]?width=500&height=300&nologo=true" alt="Ilustrasi AI" style="border-radius: 8px; margin: 15px 0; max-width: 100%; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0;">\nGantikan [ENGLISH_VISUAL_DESCRIPTION] with deskripsi visual yang sangat detail dalam BAHASA INGGRIS yang merangkum maksud soal. WAJIB: Ganti SEMUA SPASI pada deskripsi bahasa Inggris tersebut dengan %20 agar link gambar valid (misalnya: "detailed%20educational%20human%20heart"). Jika Anda juga me-generate JSON Database, tambahkan link tersebut dalam array pada properti "images", contoh: {"text": "...", "images": ["https://image.pollinations..."]}.`;
         }
 
         if (extraData?.generateKisiKisi) {
@@ -2461,7 +2464,7 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         }
 
         if (extraData?.simpanBank) {
-            promptText += `\nSANGAT PENTING (INSTRUKSI DATABASE): Pada bagian PALING AKHIR dokumen dokumen HTML Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini persis: <script id="ai-json-data" type="application/json"> [ARRAY_JSON] </script>. ARRAY_JSON adalah format pertanyaan seperti ini: { "text": "Pertanyaan?", "options": ["A","B","C","D"], "correct": 0, "type": "single", "mapel": "${mapel}", "rombel": "${fase}" }.\nWAJIB GUNAKAN TYPE BERIKUT: "single" (PG), "multiple" (PG Kompleks), "text" (Uraian), "tf" (Benar/Salah), "matching" (Menjodohkan). Opsi array kosongkan untuk tipe Isian/Benar-Salah/Menjodohkan. Correct dapat berupa indeks jawaban (untuk PG) atau string kunci jawaban.`;
+            promptText += `\nSANGAT PENTING (INSTRUKSI DATABASE): Pada bagian PALING AKHIR dokumen dokumen HTML Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini persis: <script id="ai-json-data" type="application/json"> [ARRAY_JSON] </script>. ARRAY_JSON adalah format pertanyaan seperti ini: { "text": "Pertanyaan?", "options": ["A","B","C","D"], "correct": 0, "type": "single", "mapel": "${mapel}", "rombel": "${fase}" }.\nWAJIB GUNAKAN TYPE BERIKUT: "single" (PG), "multiple" (PG Kompleks), "text" (Uraian), "tf" (Benar/Salah), "matching" (Menjodohkan). Opsi array kosongkan untuk tipe Isian. Untuk tipe tf (Benar/Salah), isi "options" dengan minimal 3 pernyataan. Correct dapat berupa indeks jawaban (untuk PG) atau string/boolean kunci jawaban. Ingat untuk memisahkan gambar ke properti "images": ["URL"] jika ada gambar agar gambar tampil pada aplikasi ujian siswa.`;
         }
     } else if (type === 'ppt-pintar') {
         docType = `Presentasi PowerPoint Pintar`;
