@@ -1022,11 +1022,8 @@ async function callGeminiAI(prompt, req) {
 
     let lastError;
     const exhaustedTeacherKeys = [];
-    const timeoutWarning = setTimeout(() => {
-        console.warn(`[AI] ⚠️ Gemini takes >8s. On Vercel Hobby, this may timeout (10s limit).`);
-    }, 8000);
 
-    try {
+    {
         for (const modelObj of models) {
             const { name: model, version } = modelObj;
             for (const key of keys) {
@@ -1049,7 +1046,6 @@ async function callGeminiAI(prompt, req) {
                         const data = await response.json();
                         const result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
                         console.log(`[AI] ✅ Success with model: ${model}`);
-                        clearTimeout(timeoutWarning);
                         return { text: result, exhaustedKeys: exhaustedTeacherKeys };
                     }
 
@@ -1083,8 +1079,6 @@ async function callGeminiAI(prompt, req) {
                 }
             }
         }
-    } finally {
-        clearTimeout(timeoutWarning);
     }
 
     const errMessage = /kuota|quota|limit|habis/i.test(lastError || '')
