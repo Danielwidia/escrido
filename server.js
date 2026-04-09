@@ -740,27 +740,43 @@ async function markTeacherKeyExhausted(teacherId, key, note = 'Quota 429 detecte
 }
 
 /**
- * Helper to get teacher API keys from database
+ * Helper to get teacher API keys from database and process.env
  */
 async function getTeacherAPIKeys(teacherId, req) {
     try {
         const db = await readDB();
-        if (!db.students) return [];
-
-        const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
-        if (!teacher || !Array.isArray(teacher.apiKeys)) return [];
-
-        const normalized = normalizeTeacherApiKeysArray(teacher.apiKeys);
-        if (normalized.length !== teacher.apiKeys.length || teacher.apiKeys.some(k => typeof k === 'string' || (typeof k === 'object' && !('status' in k)))) {
-            teacher.apiKeys = normalized;
-            await writeDB(db);
+        let studentKeys = [];
+        
+        // 1. Get from database
+        if (db.students) {
+            const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
+            if (teacher && Array.isArray(teacher.apiKeys)) {
+                const normalized = normalizeTeacherApiKeysArray(teacher.apiKeys);
+                if (normalized.length !== teacher.apiKeys.length || teacher.apiKeys.some(k => typeof k === 'string' || (typeof k === 'object' && !('status' in k)))) {
+                    teacher.apiKeys = normalized;
+                    await writeDB(db);
+                }
+                studentKeys = normalized.filter(entry => entry.status !== 'exhausted').map(entry => entry.key);
+            }
         }
 
-        const validKeys = normalized.filter(entry => entry.status !== 'exhausted').map(entry => entry.key);
-        if (validKeys.length > 0) {
-            console.log(`[AI] Found ${validKeys.length} active API keys from teacher: ${teacher.name}`);
+        // 2. Scan process.env for keys starting with TEACHER_{teacherId}_APIKEY_ (from Vercel manual entry or sync)
+        const teacherSafe = String(teacherId || '').replace(/[^A-Z0-9_]/g, '_').toUpperCase();
+        const envPrefix = `TEACHER_${teacherSafe}_APIKEY_`;
+        
+        const envKeys = Object.keys(process.env)
+            .filter(k => k.startsWith(envPrefix))
+            .map(k => process.env[k])
+            .filter(v => v && typeof v === 'string' && v.trim().length > 10);
+
+        // Combine and unique
+        const allKeys = [...new Set([...studentKeys, ...envKeys])];
+
+        if (allKeys.length > 0) {
+            console.log(`[AI] Found ${allKeys.length} active API keys for teacher: ${teacherId} (${studentKeys.length} from db, ${envKeys.length} from env)`);
         }
-        return validKeys;
+        
+        return allKeys;
     } catch (e) {
         console.warn('[AI] Error fetching teacher API keys:', e.message);
         return [];
@@ -2206,6 +2222,10 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
 });
 
 app.post('/api/generate-ai', async (req, res) => {
+    // Extract teacher info from headers if available
+    req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
+    req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
+
     const {
         materi,
         jumlah = 5,
@@ -2486,6 +2506,10 @@ app.post('/api/generate-ai', async (req, res) => {
 
 // ─── API: Generate Admin Doc ──────────────────────────────────────────────────
 app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res) => {
+    // Extract teacher info from headers if available
+    req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
+    req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
+
     let { type, mapel, fase, semester, topik, topic, target, schoolName, teacherName, address } = req.body;
     const extraData = { ...req.body };
     type = type || target;
@@ -2784,6 +2808,9 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
 
 // ─── API: Kisi-kisi Generate ──────────────────────────────────────────────────
 app.post('/api/generate-kisi-kisi', async (req, res) => {
+    // Extract teacher info from headers if available
+    req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
+
     const { questions, mapel = '', rombel = '' } = req.body;
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
         return res.status(400).json({ error: 'Questions are required' });
