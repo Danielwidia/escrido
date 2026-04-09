@@ -746,7 +746,7 @@ async function getTeacherAPIKeys(teacherId, req) {
     try {
         const db = await readDB();
         let studentKeys = [];
-        
+
         // 1. Get from database
         if (db.students) {
             const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
@@ -763,7 +763,7 @@ async function getTeacherAPIKeys(teacherId, req) {
         // 2. Scan process.env for keys starting with TEACHER_{teacherId}_APIKEY_ (from Vercel manual entry or sync)
         const teacherSafe = String(teacherId || '').replace(/[^A-Z0-9_]/g, '_').toUpperCase();
         const envPrefix = `TEACHER_${teacherSafe}_APIKEY_`;
-        
+
         const envKeys = Object.keys(process.env)
             .filter(k => k.startsWith(envPrefix))
             .map(k => process.env[k])
@@ -775,7 +775,7 @@ async function getTeacherAPIKeys(teacherId, req) {
         if (allKeys.length > 0) {
             console.log(`[AI] Found ${allKeys.length} active API keys for teacher: ${teacherId} (${studentKeys.length} from db, ${envKeys.length} from env)`);
         }
-        
+
         return allKeys;
     } catch (e) {
         console.warn('[AI] Error fetching teacher API keys:', e.message);
@@ -939,7 +939,13 @@ async function callGeminiAI(prompt, req) {
                     const response = await fetch(`https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${key}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                maxOutputTokens: 4096,
+                                temperature: 0.3
+                            }
+                        })
                     });
 
                     if (response.ok) {
@@ -1029,7 +1035,9 @@ async function callOpenAI(prompt, req) {
                     },
                     body: JSON.stringify({
                         model: model,
-                        messages: [{ role: 'user', content: prompt }]
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3,
+                        max_tokens: 4096
                     })
                 });
 
@@ -1090,11 +1098,13 @@ async function callOpenRouterAI(prompt, req) {
     if (keys.length === 0) return logProviderSkip('OpenRouter');
 
     const models = [
-        'openrouter/free',
-        'google/gemini-2.0-flash-exp:free',
-        'meta-llama/llama-3.3-70b:free',
-        'mistralai/mistral-small-24b:free',
+        'google/gemini-2.0-flash-001:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
         'qwen/qwen-3.5-plus:free'
+        'qwen/qwen-2.5-72b-instruct:free',
+        'deepseek/deepseek-chat:free',
+        'mistralai/mistral-small-24b-instruct-2501:free',
+        'openrouter/free'
     ];
     let lastError;
     const exhaustedTeacherKeys = [];
@@ -1113,8 +1123,8 @@ async function callOpenRouterAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        temperature: 0.7,
-                        max_tokens: 1024
+                        temperature: 0.3,
+                        max_tokens: 4096
                     })
                 });
 
@@ -1290,8 +1300,8 @@ async function callHuggingFaceAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024,
-                        temperature: 0.7
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1312,7 +1322,7 @@ async function callHuggingFaceAI(prompt, req) {
                         const reason = response.status === 429 ? '429 Quota' : '402 Balance';
                         lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada HuggingFace model ${model} (${reason}).`;
                         console.warn(`[AI] ⚠️ HuggingFace ${reason} for model: ${model}`);
-                        
+
                         if (req && req.teacherId && teacherKeysSet.has(key)) {
                             const marked = await markTeacherKeyExhausted(req.teacherId, key, `HuggingFace ${model} ${response.status}`);
                             if (marked) {
@@ -1446,8 +1456,8 @@ async function callGrokAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024,
-                        temperature: 0.7
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1527,8 +1537,8 @@ async function callGroqAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024,
-                        temperature: 0.7
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1607,7 +1617,8 @@ async function callMistralAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1687,7 +1698,8 @@ async function callCohereAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         message: prompt,
-                        max_tokens: 1024
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1767,7 +1779,8 @@ async function callTogetherAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -1847,7 +1860,8 @@ async function callDeepSeekAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 1024
+                        max_tokens: 4096,
+                        temperature: 0.3
                     })
                 });
 
@@ -2425,7 +2439,7 @@ app.post('/api/generate-ai', async (req, res) => {
                     .map(c => Math.floor(c));
                 // Remove duplicates
                 normalized.correct = [...new Set(normalized.correct)];
-                
+
                 // If only one correct answer, change to single
                 if (normalized.correct.length === 1) {
                     normalized.type = 'single';
