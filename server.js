@@ -848,6 +848,8 @@ async function getGlobalAPIKeys(providerPrefix = '') {
             envRaw = process.env.TOGETHER_API_KEY || '';
         } else if (providerPrefix.toLowerCase().includes('deepseek')) {
             envRaw = process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '';
+        } else if (providerPrefix.toLowerCase().includes('vercel')) {
+            envRaw = process.env.VERCEL_AI_API_KEY || process.env.AI_GATEWAY_API_KEY || '';
         }
 
         const envKeys = parseApiKeyList(envRaw);
@@ -1169,13 +1171,15 @@ async function callOpenRouterAI(prompt, req) {
     if (keys.length === 0) return logProviderSkip('OpenRouter');
 
     const models = [
-        'google/gemini-2.0-flash-001:free',
+        'google/gemini-2.5-pro-exp-03-25:free',
+        'google/gemini-2.0-flash-exp:free',
+        'google/gemini-flash-1.5:free',
         'meta-llama/llama-3.3-70b-instruct:free',
-        'qwen/qwen-3.5-plus:free',
-        'qwen/qwen-2.5-72b-instruct:free',
+        'deepseek/deepseek-r1:free',
         'deepseek/deepseek-chat:free',
+        'qwen/qwen2.5-72b-instruct:free',
+        'nvidia/llama-3.1-nemotron-70b-instruct:free',
         'mistralai/mistral-small-24b-instruct-2501:free',
-        'openrouter/free'
     ];
     let lastError;
     const exhaustedTeacherKeys = [];
@@ -1889,6 +1893,102 @@ async function callDeepSeekAI(prompt, req) {
 }
 
 /**
+ * Helper to call Vercel AI Gateway
+ * Mendukung banyak model dari berbagai provider lewat satu API key
+ * Daftar model: https://vercel.com/ai/models
+ */
+async function callVercelAI(prompt, req) {
+    const { keys, teacherKeysSet } = await getAllAvailableKeys('Vercel', req?.teacherId, req);
+
+    if (keys.length === 0) return logProviderSkip('Vercel AI');
+
+    // Vercel AI Gateway: format model adalah "provider/model-name"
+    // Semua model ini bisa diakses lewat satu Vercel AI API key
+    const models = [
+        'openai/gpt-4o',
+        'anthropic/claude-3-5-sonnet-20241022',
+        'google/gemini-2.0-flash',
+        'meta-llama/llama-3.3-70b-instruct',
+        'openai/gpt-4o-mini',
+        'anthropic/claude-3-haiku-20240307',
+        'google/gemini-1.5-flash',
+        'mistral/mistral-large-latest',
+        'deepseek/deepseek-chat'
+    ];
+
+    // Vercel AI Gateway menggunakan OpenAI-compatible API
+    const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
+
+    let lastError;
+    const exhaustedTeacherKeys = [];
+
+    for (const model of models) {
+        for (const key of keys) {
+            try {
+                console.log(`[AI] Trying Vercel AI Gateway model: ${model} with key: ${key.substring(0, 10)}...`);
+
+                const response = await fetch(GATEWAY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'user', content: prompt }],
+                        max_tokens: 4096,
+                        temperature: 0.3
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const result = data.choices?.[0]?.message?.content || '';
+                    if (result) {
+                        console.log(`[AI] ✅ Success with Vercel AI Gateway model: ${model}`);
+                        return { text: result, exhaustedKeys: exhaustedTeacherKeys };
+                    }
+                    console.warn(`[AI] Vercel AI Gateway returned empty response for model: ${model}`);
+                    continue;
+                }
+
+                const errData = await response.json().catch(() => ({}));
+                const errMsg = errData.error?.message || errData.error || response.statusText;
+
+                if (response.status === 429) {
+                    lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada Vercel AI Gateway model ${model}.`;
+                    console.warn(`[AI] ⚠️ Vercel AI Gateway quota exceeded for model: ${model}`);
+                    if (req && req.teacherId && teacherKeysSet.has(key)) {
+                        const marked = await markTeacherKeyExhausted(req.teacherId, key, `Vercel AI ${model} 429`);
+                        if (marked) {
+                            exhaustedTeacherKeys.push(key);
+                            console.log(`[AI] Marked Vercel AI teacher key as exhausted for teacher ${req.teacherId}`);
+                        }
+                    } else if (!teacherKeysSet.has(key)) {
+                        await markGlobalKeyExhausted(key, `Vercel AI ${model} 429`);
+                        console.log(`[AI] Marked Vercel AI global key as exhausted`);
+                    }
+                    continue;
+                } else if (response.status === 401 || response.status === 403) {
+                    lastError = `Vercel AI Gateway: API Key tidak valid atau tidak punya akses ke model ${model}. Pastikan key diisi di dashboard Vercel.`;
+                    console.error(`[AI] ❌ Vercel AI Gateway auth error (${response.status}) for model: ${model}`);
+                    break; // Key invalid, stop trying more models with same key
+                }
+
+                lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
+                console.error(`[AI] ❌ Vercel AI Gateway model ${model} error: ${response.status} ${errMsg}`);
+
+            } catch (e) {
+                lastError = e.message;
+                console.error(`[AI] Fetch Error with Vercel AI Gateway ${model}:`, e.message);
+            }
+        }
+    }
+
+    throw new Error(lastError || 'Gagal menggunakan Vercel AI Gateway');
+}
+
+/**
  * Unified AI caller with fully automatic fallback mechanism
  * Now includes teacher's personal API keys for quota pooling
  */
@@ -1920,6 +2020,9 @@ async function callAI(prompt, req) {
     if (result) return result;
 
     result = await tryProvider('Gemini', () => callGeminiAI(prompt, req));
+    if (result) return result;
+
+    result = await tryProvider('Vercel AI', () => callVercelAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('OpenRouter', () => callOpenRouterAI(prompt, req));
