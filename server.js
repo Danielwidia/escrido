@@ -1100,7 +1100,7 @@ async function callOpenRouterAI(prompt, req) {
     const models = [
         'google/gemini-2.0-flash-001:free',
         'meta-llama/llama-3.3-70b-instruct:free',
-        'qwen/qwen-3.5-plus:free'
+        'qwen/qwen-3.5-plus:free',
         'qwen/qwen-2.5-72b-instruct:free',
         'deepseek/deepseek-chat:free',
         'mistralai/mistral-small-24b-instruct-2501:free',
