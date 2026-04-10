@@ -311,9 +311,9 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         if (!Array.isArray(normalized.options)) normalized.options = [];
         if (normalized.options.length < 3 && Array.isArray(normalized.statements)) normalized.options = normalized.statements;
         if (normalized.options.length < 3 && Array.isArray(normalized.pernyataan)) normalized.options = normalized.pernyataan;
-        
+
         while (normalized.options.length < 3) normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
-        
+
         if (!Array.isArray(normalized.correct)) {
             normalized.correct = normalized.options.map(() => false);
         } else {
@@ -325,7 +325,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
     } else if (normalized.type === 'matching') {
         if (!Array.isArray(normalized.questions)) normalized.questions = [];
         if (!Array.isArray(normalized.answers)) normalized.answers = [];
-        
+
         const qLen = normalized.questions.length;
         if (!Array.isArray(normalized.correct)) {
             normalized.correct = Array(qLen).fill(normalized.answers[0] || '');
@@ -339,7 +339,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         if (normalized.options.length < 4) {
             while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
         }
-        
+
         let corr = [];
         if (Array.isArray(normalized.correct)) {
             corr = normalized.correct;
@@ -354,7 +354,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
             const n = parseInt(c);
             return isNaN(n) ? null : n;
         }).filter(c => c !== null && c >= 0 && c < normalized.options.length);
-        
+
         normalized.correct = [...new Set(normalized.correct)];
         if (normalized.correct.length === 0) normalized.correct = [0];
         if (normalized.correct.length === 1) {
@@ -380,7 +380,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         } else {
             normalized.correct = parseInt(normalized.correct) || 0;
         }
-        
+
         if (normalized.correct < 0 || normalized.correct >= normalized.options.length) normalized.correct = 0;
     } else if (normalized.type === 'text') {
         normalized.correct = normalizeTextCorrect(normalized.correct);
@@ -845,7 +845,7 @@ async function markTeacherKeyExhausted(teacherId, key, note = 'Quota 429 detecte
  */
 async function getTeacherAPIKeys(teacherId, req) {
     if (!teacherId) return [];
-    
+
     try {
         const db = await readDB();
         let studentKeys = [];
@@ -908,7 +908,7 @@ async function getGlobalAPIKeys(providerPrefix = '') {
             db.globalSettings.apiKeys.forEach(entry => {
                 const entryProvider = String(entry.provider || '').toLowerCase();
                 const targetProvider = String(providerPrefix || '').toLowerCase();
-                
+
                 if (!providerPrefix || entryProvider.includes(targetProvider)) {
                     if (entry.key && entry.status !== 'exhausted') {
                         keys.push(entry.key);
@@ -970,14 +970,14 @@ async function getGlobalAPIKeys(providerPrefix = '') {
 async function getAllAvailableKeys(providerName, teacherId, req) {
     const teacherKeys = await getTeacherAPIKeys(teacherId, req);
     const globalKeys = await getGlobalAPIKeys(providerName);
-    
+
     // Teacher keys get priority (added first)
     const combined = [...new Set([...teacherKeys, ...globalKeys])];
-    
+
     // Log the discovery process for debugging
     const idSource = req?.headers?.['x-teacher-id'] ? 'Headers' : (req?.body?.teacherId ? 'Body' : 'None');
     console.log(`[AI] aggregate[${providerName}]: Teacher[${teacherId}] found from ${idSource}. Keys: ${teacherKeys.length} | Global keys: ${globalKeys.length} | Total available: ${combined.length}`);
-    
+
     return {
         keys: combined,
         teacherKeysSet: new Set(teacherKeys),
@@ -1416,6 +1416,23 @@ async function attachGeneratedImagesToQuestions(questions, req) {
         results.push(q);
     }
     return results;
+}
+
+/**
+ * Fungsi untuk mengambil hanya bagian JSON dari respon AI yang kotor
+ */
+function cleanAIResponse(text) {
+    try {
+        // Cari karakter [ dan ] pertama dan terakhir
+        const start = text.indexOf('[');
+        const end = text.lastIndexOf(']');
+        if (start !== -1 && end !== -1) {
+            return text.substring(start, end + 1);
+        }
+        return text;
+    } catch (e) {
+        return text;
+    }
 }
 
 /**
@@ -2435,7 +2452,7 @@ app.post('/api/admin/add-global-key', async (req, res) => {
         if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
 
         const trimmedKey = apiKey.trim();
-        
+
         // Check for duplicates
         if (db.globalSettings.apiKeys.some(entry => entry.key === trimmedKey)) {
             return res.status(409).json({ error: 'API Key ini sudah ada di daftar Global' });
@@ -2480,7 +2497,7 @@ app.post('/api/admin/remove-global-key', async (req, res) => {
 
         db.globalSettings.apiKeys.splice(keyIndex, 1);
         await writeDB(db);
-        
+
         return res.json({ ok: true, message: 'Global API Key berhasil dihapus' });
     } catch (err) {
         console.error('[ADMIN REMOVE GLOBAL KEY ERROR]:', err.message);
@@ -2492,7 +2509,7 @@ app.post('/api/generate-ai', async (req, res) => {
     // Extract teacher info from headers if available, with body fallback
     req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
     req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
-    
+
     if (req.teacherId) {
         const idSource = req.headers['x-teacher-id'] ? 'Headers' : 'Body';
         console.log(`[AI] /api/generate-ai: Identitas terdeteksi [${req.teacherId}] dari ${idSource}`);
@@ -2554,36 +2571,58 @@ app.post('/api/generate-ai', async (req, res) => {
     if (sedang > 0) levelParts.push(`${sedang} sedang`);
     if (hots > 0) levelParts.push(`${hots} HOTS`);
 
-    let prompt = `Buatkan ${actualJumlah} soal berkualitas tinggi `;
+    // --- PROMPT YANG DITINGKATKAN ---
+    let prompt = `Anda adalah pakar pengembang kurikulum dan pembuat soal ujian profesional. 
+Buatkan ${actualJumlah} soal berkualitas tinggi sesuai standar Kurikulum Merdeka `;
+
     if (composition) {
-        prompt += `dengan komposisi ${composition} `;
+        prompt += `dengan komposisi tipe soal: ${composition}. `;
     } else {
-        prompt += `bertipe ${typeDescriptions[tipe] || 'pilihan ganda'} `;
+        prompt += `dengan tipe ${typeDescriptions[tipe] || 'pilihan ganda'}. `;
     }
-    prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} mengenai: ${materi}. `;
-    
-    // Emphasis on Higher Order Thinking Skills (HOTS)
+
+    prompt += `Mata pelajaran: ${mapel}, Fase/Kelas: ${rombel}, Materi: ${materi}.
+
+KRITERIA KUALITAS:
+1. BAHASA: Gunakan Bahasa Indonesia formal sesuai PUEBI/EYD. Hindari kalimat ambigu.
+2. DISTRAKTOR: Untuk pilihan ganda, buatlah pengecoh yang logis dan homogen (tampak benar bagi yang tidak menguasai materi).
+3. MANDIRI: Setiap soal harus berdiri sendiri secara informasi.`;
+
+    // Peningkatan instruksi HOTS (Higher Order Thinking Skills)
     if (hots > 0) {
-        prompt += `PENTING: Soal berlabel HOTS (Higher Order Thinking Skills) HARUS menguji kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Gunakan stimulus yang relevan dan menuntut penalaran logis, bukan sekadar hafalan. `;
+        prompt += `
+4. HOTS (PENTING): Minimal ${hots} soal harus kategori HOTS. Gunakan stimulus (teks, tabel, kasus, atau kode program) yang menuntut kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Soal HOTS tidak boleh sekadar hafalan, melainkan pemecahan masalah.`;
     }
 
-    prompt += `PENTING: Jika soal didasarkan pada sebuah teks bacaan (passage/stimulus), maka teks bacaan tersebut WAJIB disertakan di awal field "text" sebelum pertanyaan dimulai. Jangan hanya memberikan pertanyaannya saja. Gunakan format yang rapi (misal: "Teks Bacaan: ... \n\n Pertanyaan: ..."). `;
-    
+    prompt += `
+5. STIMULUS: Jika soal membutuhkan teks bacaan atau stimulus, tuliskan stimulus tersebut di awal field "text" dengan format:
+   [STIMULUS]
+   ...isi teks/stimulus...
+   
+   [PERTANYAAN]
+   ...isi pertanyaan...`;
+
     if (levelParts.length > 0) {
-        prompt += `Distribusi tingkat kesulitan: ${levelParts.join(', ')}. `;
-    }
-    
-    if (imageEnabled) {
-        prompt += 'Sertakan field "imagePrompt" yang berisi deskripsi ilustrasi (DALL-E style) untuk setiap soal. Pastikan ilustrasi memperjelas konteks soal. Jika soal tidak memerlukan gambar, biarkan kosong. ';
+        prompt += `\nDistribusi tingkat kesulitan: ${levelParts.join(', ')}.`;
     }
 
-    prompt += 'Format Output: JSON array valid saja. ';
-    prompt += 'Contoh format: [{"text":"[Stimulus...] \n\n Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single","level":"mudah","imagePrompt":""}]. ';
-    prompt += 'PENTING untuk Jenis Soal: ';
-    prompt += '- multiple (PG Kompleks): "correct" adalah array indeks benar (contoh: [0, 2]). Minimal 4 opsi. ';
-    prompt += '- tf (Benar/Salah): "options" berisi minimal 3 pernyataan, "correct" adalah array boolean (true/false) dengan panjang sama dengan options. ';
-    prompt += '- matching (Menjodohkan): "questions" adalah array 5 item kiri, "answers" adalah array 5 item kanan, and "correct" adalah array 5 string jawaban benar (item dari array "answers"). ';
-    prompt += '- text: "correct" berisi kunci jawaban/poin utama dalam bentuk teks singkat.';
+    if (imageEnabled) {
+        prompt += '\nSertakan field "imagePrompt" yang berisi deskripsi ilustrasi (DALL-E style) untuk setiap soal. Pastikan ilustrasi memperjelas konteks soal. Jika soal tidak memerlukan gambar, biarkan kosong.';
+    }
+    // Tambahan khusus untuk mata pelajaran Informatika
+    if (mapel && mapel.toLowerCase().includes('informatika')) {
+        prompt += `\nKhusus Informatika: Sertakan potongan kode atau skenario logika jika relevan. Pastikan indentasi kode dalam JSON menggunakan \\n agar terbaca rapi.`;
+    }
+
+    prompt += `\n\nFormat Output: WAJIB JSON array valid saja, tanpa penjelasan atau teks lain di luar JSON.
+Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang","imagePrompt":""}]
+
+PENTING untuk tiap tipe soal:
+- single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D).
+- multiple (PG Kompleks): "correct" adalah array indeks benar, contoh: [0, 2]. Minimal 4 opsi.
+- tf (Benar/Salah): "options" berisi maksimal 3 pernyataan, "correct" adalah array boolean [true, false, true] dengan panjang sama.
+- matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers".
+- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat.`;
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}, imageEnabled=${imageEnabled}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
@@ -2592,31 +2631,26 @@ app.post('/api/generate-ai', async (req, res) => {
         let text = aiResult.text || '';
         const exhaustedKeys = aiResult.exhaustedKeys || [];
 
-        // Clean up JSON response
-        text = text.replace(/```json\n?|```/g, '').trim();
-        const match = text.match(/\[[\s\S]*\]/);
-        if (!match) {
-            console.error('[/api/generate-ai] AI returned no JSON array. Raw response:', text.substring(0, 500));
-            return res.status(500).json({ error: 'AI tidak mengembalikan data soal yang valid. Coba lagi.' });
-        }
-
+        // Clean up JSON response using helper
+        const jsonText = cleanAIResponse(text);
+        
         let parsed;
         try {
-            // Clean up common JSON issues from AI responses
-            let jsonText = match[0]
+            // Further clean up common JSON issues from AI responses
+            const sanitizedJsonText = jsonText
                 .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
                 .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');  // Quote unquoted keys
 
-            parsed = JSON.parse(jsonText);
+            parsed = JSON.parse(sanitizedJsonText);
         } catch (jsonError) {
             console.error('[/api/generate-ai] JSON parsing failed:', jsonError.message);
-            console.error('[/api/generate-ai] Attempted to parse:', match[0].substring(1200, 1300)); // Show around error position
-            console.error('[/api/generate-ai] Full AI response:', text.substring(0, 2000));
+            console.error('[/api/generate-ai] AI Raw response:', text.substring(0, 1000));
             return res.status(500).json({
                 error: 'AI mengembalikan JSON yang tidak valid. Coba lagi atau gunakan provider AI lain.',
                 details: jsonError.message
             });
         }
+
 
         // Normalize question formats using centralized function
         let normalizedQuestions = parsed.map(q => normalizeQuestion(q, mapel, rombel, req.teacherId));
@@ -3011,12 +3045,17 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
         const aiResult = await callAI(prompt, req);
         let text = aiResult.text || '';
 
-        // Clean up JSON response
-        text = text.replace(/```json\n?|```/g, '').trim();
-        const match = text.match(/\[[\s\S]*\]/);
-        if (!match) return res.status(500).json({ error: 'No JSON array in AI response' });
-
-        const parsed = JSON.parse(match[0]);
+        // Clean up JSON response using helper
+        const jsonText = cleanAIResponse(text);
+        
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonText);
+        } catch (jsonError) {
+            console.error('[/api/generate-kisi-kisi] JSON parsing failed:', jsonError.message);
+            return res.status(500).json({ error: 'Format JSON dari AI tidak valid.' });
+        }
+        
         return res.json({ ok: true, kisiKisi: parsed });
     } catch (e) {
         const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
