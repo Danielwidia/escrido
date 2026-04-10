@@ -1130,7 +1130,7 @@ async function callGeminiAI(prompt, req) {
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: prompt }] }],
                             generationConfig: {
-                                maxOutputTokens: 4096,
+                                maxOutputTokens: 8192,
                                 temperature: 0.3
                             }
                         })
@@ -1210,7 +1210,7 @@ async function callOpenAI(prompt, req) {
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
                         temperature: 0.3,
-                        max_tokens: 4096
+                        max_tokens: 8192
                     })
                 });
 
@@ -1287,7 +1287,7 @@ async function callOpenRouterAI(prompt, req) {
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
                         temperature: 0.3,
-                        max_tokens: 4096
+                        max_tokens: 8192
                     })
                 });
 
@@ -1452,7 +1452,7 @@ async function callHuggingFaceAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1524,7 +1524,7 @@ async function callAnthropicAI(prompt, req) {
 
                 const message = await anthropic.messages.create({
                     model: model,
-                    max_tokens: 1024,
+                    max_tokens: 8192,
                     messages: [{ role: 'user', content: prompt }]
                 });
 
@@ -1586,7 +1586,7 @@ async function callGrokAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1656,7 +1656,7 @@ async function callGroqAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1725,7 +1725,7 @@ async function callMistralAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1795,7 +1795,7 @@ async function callCohereAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         message: prompt,
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1865,7 +1865,7 @@ async function callTogetherAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -1935,7 +1935,7 @@ async function callDeepSeekAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
@@ -2024,7 +2024,7 @@ async function callVercelAI(prompt, req) {
                     body: JSON.stringify({
                         model: model,
                         messages: [{ role: 'user', content: prompt }],
-                        max_tokens: 4096,
+                        max_tokens: 8192,
                         temperature: 0.3
                     })
                 });
