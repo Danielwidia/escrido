@@ -1011,7 +1011,25 @@ function showLoginForm(type) {
         // --- AUTH ---
         // showLoginForm moved to top
 
-        function handleLogin() {
+        /**
+         * Displays an error message in the login modal.
+         * @param {string} message - The error message to display.
+         */
+        function showError(message) {
+            const errorDiv = document.getElementById('login-error');
+            if (!errorDiv) return;
+
+            errorDiv.innerHTML = `<i class="fas fa-exclamation-circle text-xs"></i> <span class="text-xs font-bold">${message}</span>`;
+            errorDiv.classList.remove('hidden');
+            
+            // Auto-hide after 5 seconds
+            if (window.loginErrorTimeout) clearTimeout(window.loginErrorTimeout);
+            window.loginErrorTimeout = setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        function handleLogin(role) {
             const u = document.getElementById('username').value.trim().toUpperCase();
             const p = document.getElementById('password').value.trim();
 
@@ -1085,6 +1103,18 @@ function showLoginForm(type) {
             if (overlay) {
                 overlay.classList.add('hidden');
                 overlay.classList.remove('flex');
+            }
+
+            // Clear login error when typing
+            const loginId = document.getElementById('username');
+            const loginPass = document.getElementById('password');
+            const errorDiv = document.getElementById('login-error');
+            
+            if (loginId && errorDiv) {
+                loginId.addEventListener('input', () => errorDiv.classList.add('hidden'));
+            }
+            if (loginPass && errorDiv) {
+                loginPass.addEventListener('input', () => errorDiv.classList.add('hidden'));
             }
         });
 
