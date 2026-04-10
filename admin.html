@@ -158,6 +158,16 @@
                             <p class="text-slate-400 text-xs font-bold uppercase mb-2">Hasil Ujian</p>
                             <h3 id="stat-results" class="text-3xl font-black">0</h3>
                         </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">API Keys Aktif</p>
+                            <h3 id="stat-api-active" class="text-3xl font-black">0</h3>
+                        </div>
+                        <div
+                            class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-red-500">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-2">Kuota Habis</p>
+                            <h3 id="stat-api-exhausted" class="text-3xl font-black">0</h3>
+                        </div>
                     </div>
                     <div class="mt-8">
                         <h3 class="text-xl font-black text-slate-800 mb-4">Akses Sistem</h3>
@@ -168,6 +178,28 @@
                             </div>
                             <p class="text-xs text-slate-500 mt-2">Gunakan salah satu alamat di atas untuk mengakses
                                 sistem dari perangkat lain di jaringan yang sama.</p>
+                        </div>
+                    </div>
+                    <div class="mt-8">
+                        <h3 class="text-xl font-black text-slate-800 mb-4">API Keys Global</h3>
+                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                            <p class="text-slate-400 text-xs font-bold uppercase mb-3">Kelola API Keys untuk Fitur AI</p>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-600 mb-2 block">Tambah API Key Baru</label>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="new-api-key" placeholder="Masukkan API Key"
+                                            class="flex-1 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-rose-500">
+                                        <button onclick="addGlobalApiKey()"
+                                            class="px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all">
+                                            <i class="fas fa-plus"></i> Tambah
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="api-keys-list" class="space-y-2 max-h-40 overflow-y-auto">
+                                    <!-- API Keys will be listed here -->
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -882,13 +882,19 @@ function showLoginForm(type) {
             const students = Array.isArray(db?.students) ? db.students : [];
             const results = Array.isArray(db?.results) ? db.results : [];
 
-            const ids = ['stat-subjects', 'stat-questions', 'stat-rombel', 'stat-students', 'stat-results'];
+            const globalApiKeys = Array.isArray(db?.globalSettings?.apiKeys) ? db.globalSettings.apiKeys : [];
+            const activeApiKeys = globalApiKeys.filter(k => k.status !== 'exhausted').length;
+            const exhaustedApiKeys = globalApiKeys.filter(k => k.status === 'exhausted').length;
+
+            const ids = ['stat-subjects', 'stat-questions', 'stat-rombel', 'stat-students', 'stat-results', 'stat-api-active', 'stat-api-exhausted'];
             const vals = [
                 subjects.length,
                 questions.length,
                 rombels.length,
                 students.filter(x => x.role !== 'admin').length,
-                results.filter(r => !r.deleted).length
+                results.filter(r => !r.deleted).length,
+                activeApiKeys,
+                exhaustedApiKeys
             ];
             ids.forEach((id, i) => { if (document.getElementById(id)) document.getElementById(id).innerText = vals[i]; });
         }
@@ -1747,6 +1753,7 @@ function showLoginForm(type) {
                 if (result.ok) {
                     showToast('Global API Key berhasil ditambahkan di Supabase', 'success');
                     renderGlobalAPIKeys();
+                    updateStats(); // Update stats after adding
                 } else {
                     showToast(result.error || 'Gagal menambahkan key', 'error');
                 }
@@ -1755,6 +1762,68 @@ function showLoginForm(type) {
                 showToast('Error: ' + err.message, 'error');
             }
         };
+
+        window.addGlobalApiKey = async function() {
+            const apiKey = document.getElementById('new-api-key').value.trim();
+            if (!apiKey) return showToast('API Key harus diisi', 'error');
+
+            try {
+                showLoadingOverlay('Menyimpan Global Key...');
+                const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: 'OpenAI', apiKey, note: '' }) // Default provider
+                });
+
+                const result = await response.json();
+                hideLoadingOverlay();
+
+                if (result.ok) {
+                    showToast('Global API Key berhasil ditambahkan', 'success');
+                    document.getElementById('new-api-key').value = '';
+                    renderApiKeysList(); // Refresh list
+                    updateStats(); // Update stats
+                } else {
+                    showToast(result.error || 'Gagal menambahkan key', 'error');
+                }
+            } catch (err) {
+                hideLoadingOverlay();
+                showToast('Error: ' + err.message, 'error');
+            }
+        };
+
+        async function renderApiKeysList() {
+            const container = document.getElementById('api-keys-list');
+            if (!container) return;
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
+                const result = await response.json();
+
+                if (result.ok && Array.isArray(result.globalKeys)) {
+                    const keys = result.globalKeys;
+                    container.innerHTML = keys.length === 0 ? 
+                        '<p class="text-xs text-slate-500">Belum ada API Key global</p>' :
+                        keys.map((key, index) => `
+                            <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                                <div class="flex-1">
+                                    <span class="text-xs font-mono text-slate-700">${key.key.substring(0, 20)}...</span>
+                                    <span class="text-xs text-slate-500 ml-2">${key.provider || 'Unknown'}</span>
+                                    ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
+                                </div>
+                                <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-xs text-red-500">Gagal memuat API Keys</p>';
+                }
+            } catch (err) {
+                console.error('Error loading API keys:', err);
+                container.innerHTML = '<p class="text-xs text-red-500">Error memuat API Keys</p>';
+            }
+        }
 
         window.removeGlobalAPIKey = async function(index) {
             if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini dari Supabase?')) return;
@@ -3003,7 +3072,7 @@ function showLoginForm(type) {
                 populateRaportFilters();
                 renderRaport();
             }
-            if (sec === 'overview') { updateStats(); fetchIPs(); }
+            if (sec === 'overview') { updateStats(); fetchIPs(); renderApiKeysList(); }
             if (sec === 'settings') {
                 const admin = db.students.find(x => x.role === 'admin');
                 document.getElementById('set-admin-id').value = admin.id;
