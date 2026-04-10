@@ -2101,28 +2101,31 @@ async function callAI(prompt, req) {
         }
     };
 
-    let result = await tryProvider('Anthropic', () => callAnthropicAI(prompt, req));
-    if (result) return result;
-
-    result = await tryProvider('OpenAI', () => callOpenAI(prompt, req));
-    if (result) return result;
-
-    result = await tryProvider('Gemini', () => callGeminiAI(prompt, req));
+    let result = await tryProvider('Gemini', () => callGeminiAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('Vercel AI', () => callVercelAI(prompt, req));
     if (result) return result;
 
+    result = await tryProvider('OpenAI', () => callOpenAI(prompt, req));
+    if (result) return result;
+
     result = await tryProvider('OpenRouter', () => callOpenRouterAI(prompt, req));
+    if (result) return result;
+
+    result = await tryProvider('HuggingFace', () => callHuggingFaceAI(prompt, req));
+    if (result) return result;
+
+    result = await tryProvider('DeepSeek', () => callDeepSeekAI(prompt, req));
+    if (result) return result;
+
+    result = await tryProvider('Anthropic', () => callAnthropicAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('Grok', () => callGrokAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('Groq', () => callGroqAI(prompt, req));
-    if (result) return result;
-
-    result = await tryProvider('HuggingFace', () => callHuggingFaceAI(prompt, req));
     if (result) return result;
 
     result = await tryProvider('Mistral', () => callMistralAI(prompt, req));
@@ -2132,9 +2135,6 @@ async function callAI(prompt, req) {
     if (result) return result;
 
     result = await tryProvider('Together AI', () => callTogetherAI(prompt, req));
-    if (result) return result;
-
-    result = await tryProvider('DeepSeek', () => callDeepSeekAI(prompt, req));
     if (result) return result;
 
     if (errors.length === 0) {
