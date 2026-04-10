@@ -2323,6 +2323,8 @@ function showLoginForm(type) {
                 }
                 record.subQuestions = subQuestions;
                 record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
+                // Untuk kompatibilitas, isi juga options
+                record.options = subQuestions.map(sq => sq.statement);
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
@@ -3689,6 +3691,8 @@ function showLoginForm(type) {
                 }
                 record.subQuestions = subQuestions;
                 record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
+                // Untuk kompatibilitas, isi juga options
+                record.options = subQuestions.map(sq => sq.statement);
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
@@ -5430,7 +5434,10 @@ function showLoginForm(type) {
                         oninput="setAnswerText(this.value)">${value}</textarea>`;
             } else if (q.type === 'tf') {
                 const ansArr = examData.answers[idx] || [];
-                optionHtml = q.options.map((stmt, j) => {
+                // Use subQuestions for TF statements
+                const statements = q.subQuestions && Array.isArray(q.subQuestions) ? q.subQuestions.map(sq => sq.statement) : 
+                                  (q.options && Array.isArray(q.options) ? q.options : []);
+                optionHtml = statements.map((stmt, j) => {
                     const val = ansArr[j];
                     return `
                     <div class="flex items-center w-full p-4 md:p-5 rounded-2xl border-2 transition-all ${val === true ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : ''}">

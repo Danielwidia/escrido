@@ -357,6 +357,8 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         // Pastikan correct array sesuai dengan subQuestions
         if (Array.isArray(normalized.subQuestions)) {
             normalized.correct = normalized.subQuestions.map(sq => sq.answer);
+            // Untuk kompatibilitas dengan frontend, isi juga options
+            normalized.options = normalized.subQuestions.map(sq => sq.statement);
         }
     } else if (normalized.type === 'matching') {
         if (!Array.isArray(normalized.questions)) normalized.questions = [];
