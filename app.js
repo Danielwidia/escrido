@@ -5340,10 +5340,40 @@ function showLoginForm(type) {
             const qs = db.questions.filter(q => q.mapel === mapel && q.rombel === currentSiswa.rombel);
 
             // PENTING: Normalisasi setiap soal (tambahkan type jika belum ada)
-            const normalizedQuestions = qs.map(q => ({
+            let normalizedQuestions = qs.map(q => ({
                 ...q,
                 type: q.type || 'single'  // Default ke 'single' jika tidak ada type
             }));
+
+            // Normalisasi khusus untuk soal tf (konversi format lama ke baru)
+            normalizedQuestions = normalizedQuestions.map(q => {
+                if (q.type === 'tf') {
+                    const normalized = { ...q };
+                    // Konversi dari format lama (options + correct boolean array) ke format baru
+                    if (!normalized.subQuestions && Array.isArray(normalized.options) && Array.isArray(normalized.correct)) {
+                        normalized.subQuestions = normalized.options.map((stmt, i) => {
+                            const ans = normalized.correct[i];
+                            return { statement: stmt, answer: ans === true || ans === 'Benar' || ans === 'benar' ? 'Benar' : 'Salah' };
+                        });
+                        // Pastikan tepat 3 pernyataan
+                        if (normalized.subQuestions.length > 3) {
+                            normalized.subQuestions = normalized.subQuestions.slice(0, 3);
+                        }
+                        while (normalized.subQuestions.length < 3) {
+                            normalized.subQuestions.push({ 
+                                statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
+                                answer: 'Benar' 
+                            });
+                        }
+                        // Update correct array
+                        normalized.correct = normalized.subQuestions.map(sq => sq.answer);
+                        // Untuk kompatibilitas, isi juga options
+                        normalized.options = normalized.subQuestions.map(sq => sq.statement);
+                    }
+                    return normalized;
+                }
+                return q;
+            });
 
             // initialise answers based on question type (multiple => [], text => "", single => null)
             const answers = normalizedQuestions.map(q => {
