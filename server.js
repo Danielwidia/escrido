@@ -2482,6 +2482,28 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
             });
         });
 
+        // Get DeepSeek keys from environment
+        const deepseekRaw = process.env.DEEPSEEK_API_KEY || '';
+        const deepseekKeys = deepseekRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        deepseekKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'DeepSeek',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'DeepSeek: Rate limits sesuai plan (Free tier tersedia)'
+            });
+        });
+
         const exhaustedCount = globalKeys.filter(k => k.status === 'exhausted').length;
         const activeCount = globalKeys.length - exhaustedCount;
 
@@ -2500,6 +2522,158 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
         });
     } catch (err) {
         console.error('[GET GLOBAL KEYS ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal mengambil daftar global key: ' + err.message });
+    }
+});
+
+// ─── API: Admin Get Global API Keys ──────────────────────────────────────────
+app.get('/api/admin/global-api-keys', async (req, res) => {
+    try {
+        const globalKeys = [];
+        const db = await readDB();
+        if (!db.globalAPIKeysStatus) {
+            db.globalAPIKeysStatus = {};
+        }
+
+        // 1. Get keys from Database (Supabase)
+        if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
+            db.globalSettings.apiKeys.forEach((entry, idx) => {
+                globalKeys.push({
+                    ...entry,
+                    addedAt: entry.addedAt || 'Supabase DB',
+                    isGlobal: true,
+                    isFromDB: true
+                });
+            });
+        }
+
+        // 2. Get Gemini keys from environment
+        const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        geminiKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'Google Gemini',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'Gemini: 15 requests/min (free tier), unlimited dengan billing'
+            });
+        });
+
+        // Get OpenAI keys from environment
+        const openaiRaw = process.env.OPENAI_API_KEY || '';
+        const openaiKeys = openaiRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        openaiKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'OpenAI (ChatGPT)',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'OpenAI: Rate limits sesuai plan (Standard: 3,500 RPM / 200,000 TPM)'
+            });
+        });
+
+        const openrouterRaw = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || process.env.OPEN_ROUTER_KEY || '';
+        const openrouterKeys = openrouterRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        openrouterKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'OpenRouter',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'OpenRouter: Rate limits sesuai plan penyedia'
+            });
+        });
+
+        // Get Groq keys from environment
+        const groqRaw = process.env.GROQ_API_KEY || '';
+        const groqKeys = groqRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        groqKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'Groq',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'Groq: Ultra-fast inference (Llama 3, Mixtral)'
+            });
+        });
+
+        // Get DeepSeek keys from environment
+        const deepseekRaw = process.env.DEEPSEEK_API_KEY || '';
+        const deepseekKeys = deepseekRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        deepseekKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+
+            globalKeys.push({
+                key: key,
+                provider: 'DeepSeek',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'DeepSeek: Rate limits sesuai plan (Free tier tersedia)'
+            });
+        });
+
+        const exhaustedCount = globalKeys.filter(k => k.status === 'exhausted').length;
+        const activeCount = globalKeys.length - exhaustedCount;
+
+        return res.json({
+            ok: true,
+            globalKeys: globalKeys,
+            totalCount: globalKeys.length,
+            activeCount: activeCount,
+            exhaustedCount: exhaustedCount,
+            geminiCount: geminiKeys.length,
+            openaiCount: openaiKeys.length,
+            openrouterCount: openrouterKeys.length,
+            deepseekCount: deepseekKeys.length,
+            groqCount: groqKeys.length,
+            fallbackNote: 'Global key digunakan sebagai fallback jika personal key tidak tersedia atau kuota habis'
+        });
+    } catch (err) {
+        console.error('[ADMIN GET GLOBAL KEYS ERROR]:', err.message);
         res.status(500).json({ error: 'Gagal mengambil daftar global key: ' + err.message });
     }
 });

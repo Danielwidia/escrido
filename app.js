@@ -1797,7 +1797,12 @@ function showLoginForm(type) {
             if (!container) return;
 
             try {
-                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
+                const response = await fetch(getApiBaseUrl() + '/api/admin/global-api-keys');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
 
                 if (result.ok && Array.isArray(result.globalKeys)) {
@@ -1807,7 +1812,7 @@ function showLoginForm(type) {
                         keys.map((key, index) => `
                             <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
                                 <div class="flex-1">
-                                    <span class="text-xs font-mono text-slate-700">${key.key.substring(0, 20)}...</span>
+                                    <span class="text-xs font-mono text-slate-700">${key.key ? key.key.substring(0, 20) + '...' : 'Invalid key'}</span>
                                     <span class="text-xs text-slate-500 ml-2">${key.provider || 'Unknown'}</span>
                                     ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
                                 </div>
@@ -1817,11 +1822,11 @@ function showLoginForm(type) {
                             </div>
                         `).join('');
                 } else {
-                    container.innerHTML = '<p class="text-xs text-red-500">Gagal memuat API Keys</p>';
+                    container.innerHTML = `<p class="text-xs text-red-500">Error: ${result.error || 'Response tidak valid'}</p>`;
                 }
             } catch (err) {
                 console.error('Error loading API keys:', err);
-                container.innerHTML = '<p class="text-xs text-red-500">Error memuat API Keys</p>';
+                container.innerHTML = `<p class="text-xs text-red-500">Gagal memuat API Keys: ${err.message}</p>`;
             }
         }
 
