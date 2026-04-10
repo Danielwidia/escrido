@@ -372,8 +372,13 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         }
     } else if (normalized.type === 'multiple') {
         if (!Array.isArray(normalized.options)) normalized.options = [];
+        
+        // TEPAT 4 opsi (tidak boleh kurang, tidak boleh lebih)
         if (normalized.options.length < 4) {
             while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
+        } else if (normalized.options.length > 4) {
+            // Potong jika lebih dari 4 opsi
+            normalized.options = normalized.options.slice(0, 4);
         }
 
         let corr = [];
@@ -392,8 +397,15 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         }).filter(c => c !== null && c >= 0 && c < normalized.options.length);
 
         normalized.correct = [...new Set(normalized.correct)];
+        
+        // MAKSIMAL 3 jawaban benar untuk multiple choice
+        if (normalized.correct.length > 3) {
+            normalized.correct = normalized.correct.slice(0, 3);
+        }
+        
         if (normalized.correct.length === 0) normalized.correct = [0];
         if (normalized.correct.length === 1) {
+            // Jika hanya 1 jawaban benar, ubah ke tipe single
             normalized.type = 'single';
             normalized.correct = normalized.correct[0];
         }
@@ -2604,9 +2616,9 @@ app.post('/api/generate-ai', async (req, res) => {
     };
     const typeDescriptions = {
         single: 'pilihan ganda biasa (1 jawaban benar, 4 opsi)',
-        multiple: 'pilihan ganda kompleks (minimal 4 opsi, jawaban benar bisa lebih dari 1)',
+        multiple: 'pilihan ganda kompleks (tepat 4 opsi, 2-3 jawaban benar)',
         text: 'isian / uraian singkat',
-        tf: 'benar/salah (minimal 3 pernyataan per soal)',
+        tf: 'benar/salah (tepat 3 pernyataan per soal)',
         matching: 'menjodohkan'
     };
 
@@ -2666,6 +2678,12 @@ KRITERIA KUALITAS:
         prompt += `\nKhusus Informatika: Sertakan potongan kode atau skenario logika jika relevan. Pastikan indentasi kode dalam JSON menggunakan \\n agar terbaca rapi.`;
     }
 
+    prompt += `\nKhusus untuk tipe soal 'multiple' (Pilihan Ganda Kompleks):
+- WAJIB gunakan TEPAT 4 opsi (A, B, C, D). Jangan 5 atau lebih.
+- WAJIB ada 2-3 jawaban yang benar (tidak boleh hanya 1, tidak boleh lebih dari 3).
+- Buatlah pengecoh yang homogen dan plausibel (tampak benar bagi yang kurang menguasai materi).
+- Format "correct" adalah array indeks yang benar, contoh: [0, 2] atau [1, 2, 3].`;
+
     prompt += `\nKhusus untuk tipe soal 'tf' (Benar/Salah):
 - WAJIB buat 1 nomor soal yang berisi TEPAT 3 PERNYATAAN terkait topik yang SAMA.
 - Semua 3 pernyataan dalam satu soal harus berhubungan dan membahas aspek berbeda dari topik yang sama.
@@ -2687,7 +2705,7 @@ Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A",
 
 PENTING untuk tiap tipe soal:
 - single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D).
-- multiple (PG Kompleks): "correct" adalah array indeks benar, contoh: [0, 2]. Minimal 4 opsi.
+- multiple (PG Kompleks): "correct" adalah array indeks benar MAKSIMAL 3, contoh: [0, 2]. Wajib TEPAT 4 opsi (A,B,C,D), jangan 5 atau lebih.
 - tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. JANGAN GUNAKAN "options" field untuk tf.
 - matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers".
 - text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat.`;
