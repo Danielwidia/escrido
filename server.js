@@ -291,12 +291,106 @@ function normalizeTextCorrect(correct) {
     return (result.toLowerCase() === 'undefined' || result.toLowerCase() === 'null') ? '' : result;
 }
 
-function normalizeQuestionCorrect(question) {
-    const normalized = { ...question };
-    if (normalized.type === 'text') {
+function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId = null) {
+    const normalized = { ...q };
+
+    // Standard metadata
+    if (!normalized.mapel) normalized.mapel = defaultMapel;
+    if (!normalized.rombel) normalized.rombel = defaultRombel;
+    if (!normalized.teacherId) normalized.teacherId = teacherId;
+    if (!normalized.id) normalized.id = Date.now() + Math.random().toString(36).substr(2, 6);
+    if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
+    if (!normalized.images) normalized.images = [];
+    if (!normalized.text) normalized.text = '';
+
+    // Normalize type
+    normalized.type = normalizeQuestionType(normalized.type);
+
+    // Normalize specific types
+    if (normalized.type === 'tf') {
+        if (!Array.isArray(normalized.options)) normalized.options = [];
+        if (normalized.options.length < 3 && Array.isArray(normalized.statements)) normalized.options = normalized.statements;
+        if (normalized.options.length < 3 && Array.isArray(normalized.pernyataan)) normalized.options = normalized.pernyataan;
+        
+        while (normalized.options.length < 3) normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
+        
+        if (!Array.isArray(normalized.correct)) {
+            normalized.correct = normalized.options.map(() => false);
+        } else {
+            // Ensure boolean array of correct length
+            const corr = normalized.correct.map(c => Boolean(c));
+            while (corr.length < normalized.options.length) corr.push(false);
+            normalized.correct = corr.slice(0, normalized.options.length);
+        }
+    } else if (normalized.type === 'matching') {
+        if (!Array.isArray(normalized.questions)) normalized.questions = [];
+        if (!Array.isArray(normalized.answers)) normalized.answers = [];
+        
+        const qLen = normalized.questions.length;
+        if (!Array.isArray(normalized.correct)) {
+            normalized.correct = Array(qLen).fill(normalized.answers[0] || '');
+        } else {
+            const corr = normalized.correct.map(c => String(c));
+            while (corr.length < qLen) corr.push(normalized.answers[0] || '');
+            normalized.correct = corr.slice(0, qLen);
+        }
+    } else if (normalized.type === 'multiple') {
+        if (!Array.isArray(normalized.options)) normalized.options = [];
+        if (normalized.options.length < 4) {
+            while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
+        }
+        
+        let corr = [];
+        if (Array.isArray(normalized.correct)) {
+            corr = normalized.correct;
+        } else if (typeof normalized.correct === 'string') {
+            corr = normalized.correct.split(',').map(s => s.trim());
+        } else if (typeof normalized.correct === 'number') {
+            corr = [normalized.correct];
+        }
+
+        normalized.correct = corr.map(c => {
+            if (typeof c === 'string' && /^[A-E]$/i.test(c)) return c.toUpperCase().charCodeAt(0) - 65;
+            const n = parseInt(c);
+            return isNaN(n) ? null : n;
+        }).filter(c => c !== null && c >= 0 && c < normalized.options.length);
+        
+        normalized.correct = [...new Set(normalized.correct)];
+        if (normalized.correct.length === 0) normalized.correct = [0];
+        if (normalized.correct.length === 1) {
+            normalized.type = 'single';
+            normalized.correct = normalized.correct[0];
+        }
+    } else if (normalized.type === 'single') {
+        if (!Array.isArray(normalized.options)) normalized.options = [];
+        if (normalized.options.length < 4) {
+            while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
+        }
+
+        if (Array.isArray(normalized.correct)) {
+            if (normalized.correct.length > 1) {
+                normalized.type = 'multiple';
+            } else {
+                normalized.correct = normalized.correct[0] || 0;
+            }
+        }
+
+        if (typeof normalized.correct === 'string' && /^[A-E]$/i.test(normalized.correct)) {
+            normalized.correct = normalized.correct.toUpperCase().charCodeAt(0) - 65;
+        } else {
+            normalized.correct = parseInt(normalized.correct) || 0;
+        }
+        
+        if (normalized.correct < 0 || normalized.correct >= normalized.options.length) normalized.correct = 0;
+    } else if (normalized.type === 'text') {
         normalized.correct = normalizeTextCorrect(normalized.correct);
     }
+
     return normalized;
+}
+
+function normalizeQuestionCorrect(question) {
+    return normalizeQuestion(question);
 }
 
 function parseApiKeyList(raw) {
@@ -2460,25 +2554,36 @@ app.post('/api/generate-ai', async (req, res) => {
     if (sedang > 0) levelParts.push(`${sedang} sedang`);
     if (hots > 0) levelParts.push(`${hots} HOTS`);
 
-    let prompt = `Buatkan ${actualJumlah} soal `;
+    let prompt = `Buatkan ${actualJumlah} soal berkualitas tinggi `;
     if (composition) {
         prompt += `dengan komposisi ${composition} `;
     } else {
         prompt += `bertipe ${typeDescriptions[tipe] || 'pilihan ganda'} `;
     }
-    prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} tentang: ${materi}. `;
-    prompt += `PENTING: Jika soal didasarkan pada sebuah teks bacaan (passage), maka teks bacaan tersebut WAJIB disertakan di awal field "text" sebelum pertanyaan dimulai. Jangan hanya memberikan pertanyaannya saja. Gunakan format yang rapi (misal: "Teks Bacaan: ... \n\n Pertanyaan: ..."). `;
+    prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} mengenai: ${materi}. `;
+    
+    // Emphasis on Higher Order Thinking Skills (HOTS)
+    if (hots > 0) {
+        prompt += `PENTING: Soal berlabel HOTS (Higher Order Thinking Skills) HARUS menguji kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Gunakan stimulus yang relevan dan menuntut penalaran logis, bukan sekadar hafalan. `;
+    }
+
+    prompt += `PENTING: Jika soal didasarkan pada sebuah teks bacaan (passage/stimulus), maka teks bacaan tersebut WAJIB disertakan di awal field "text" sebelum pertanyaan dimulai. Jangan hanya memberikan pertanyaannya saja. Gunakan format yang rapi (misal: "Teks Bacaan: ... \n\n Pertanyaan: ..."). `;
+    
     if (levelParts.length > 0) {
-        prompt += `Sebarkan level soal sebagai ${levelParts.join(', ')}. `;
+        prompt += `Distribusi tingkat kesulitan: ${levelParts.join(', ')}. `;
     }
+    
     if (imageEnabled) {
-        prompt += 'Karena opsi gambar otomatis dipilih, sertakan field "imagePrompt" yang berisi deskripsi ilustrasi singkat untuk setiap soal bergambar. Pastikan ilustrasi relevan, tidak ambigu, dan sesuai konteks materi. Jika soal tidak memerlukan gambar, berikan nilai kosong pada "imagePrompt". ';
+        prompt += 'Sertakan field "imagePrompt" yang berisi deskripsi ilustrasi (DALL-E style) untuk setiap soal. Pastikan ilustrasi memperjelas konteks soal. Jika soal tidak memerlukan gambar, biarkan kosong. ';
     }
-    prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
-    prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single","imagePrompt":"Ilustrasi ..."}]. ';
-    prompt += 'Untuk soal pilihan ganda kompleks gunakan minimal 4 opsi jawaban dan jawaban benar bisa lebih dari 1 (buat soal HOTS jika memungkinkan), "correct" sebagai array indeks jawaban benar, contoh: {"text":"Pertanyaan?","options":["A","B","C","D","E"],"correct":[0,2,4],"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"multiple","imagePrompt":"Ilustrasi ..."}. ';
-    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar pernyataan (minimal 3 pernyataan) dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true],"imagePrompt":"Ilustrasi ..."}. ';
-    prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array 5 pertanyaan, "answers" sebagai array 5 jawaban, dan "correct" sebagai array 5 string yang menunjukkan jawaban benar untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2","Pertanyaan 3","Pertanyaan 4","Pertanyaan 5"],"answers":["Jawaban A","Jawaban B","Jawaban C","Jawaban D","Jawaban E"],"correct":["Jawaban A","Jawaban B","Jawaban C","Jawaban D","Jawaban E"]}.';
+
+    prompt += 'Format Output: JSON array valid saja. ';
+    prompt += 'Contoh format: [{"text":"[Stimulus...] \n\n Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single","level":"mudah","imagePrompt":""}]. ';
+    prompt += 'PENTING untuk Jenis Soal: ';
+    prompt += '- multiple (PG Kompleks): "correct" adalah array indeks benar (contoh: [0, 2]). Minimal 4 opsi. ';
+    prompt += '- tf (Benar/Salah): "options" berisi minimal 3 pernyataan, "correct" adalah array boolean (true/false) dengan panjang sama dengan options. ';
+    prompt += '- matching (Menjodohkan): "questions" adalah array 5 item kiri, "answers" adalah array 5 item kanan, and "correct" adalah array 5 string jawaban benar (item dari array "answers"). ';
+    prompt += '- text: "correct" berisi kunci jawaban/poin utama dalam bentuk teks singkat.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}, imageEnabled=${imageEnabled}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
@@ -2513,136 +2618,10 @@ app.post('/api/generate-ai', async (req, res) => {
             });
         }
 
-        // Normalize question formats
-        let normalizedQuestions = parsed.map(q => {
-            const normalized = { ...q };
+        // Normalize question formats using centralized function
+        let normalizedQuestions = parsed.map(q => normalizeQuestion(q, mapel, rombel, req.teacherId));
 
-            // Ensure mapel and rombel are set
-            if (!normalized.mapel) normalized.mapel = mapel;
-            if (!normalized.rombel) normalized.rombel = rombel;
-
-            // Normalize TF questions
-            if (normalized.type === 'tf') {
-                if (!normalized.options || normalized.options.length === 0) {
-                    if (Array.isArray(normalized.statements) && normalized.statements.length > 0) {
-                        normalized.options = normalized.statements;
-                    } else if (Array.isArray(normalized.pernyataan) && normalized.pernyataan.length > 0) {
-                        normalized.options = normalized.pernyataan;
-                    }
-                }
-                if (!Array.isArray(normalized.options)) {
-                    normalized.options = [];
-                }
-                // Ensure at least 3 statements for TF questions
-                while (normalized.options.length < 3) {
-                    normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
-                }
-                if (!Array.isArray(normalized.correct)) {
-                    // If correct is not array, try to convert or set default
-                    normalized.correct = normalized.options.map(() => false);
-                } else if (normalized.correct.length !== normalized.options.length) {
-                    // Pad or truncate correct array to match options length
-                    const correctLength = normalized.correct.length;
-                    const optionsLength = normalized.options.length;
-                    if (correctLength < optionsLength) {
-                        normalized.correct = [...normalized.correct, ...Array(optionsLength - correctLength).fill(false)];
-                    } else if (correctLength > optionsLength) {
-                        normalized.correct = normalized.correct.slice(0, optionsLength);
-                    }
-                }
-                // Ensure all correct values are boolean
-                normalized.correct = normalized.correct.map(c => Boolean(c));
-            }
-
-            // Normalize matching questions
-            if (normalized.type === 'matching') {
-                if (!Array.isArray(normalized.questions)) {
-                    normalized.questions = [];
-                }
-                if (!Array.isArray(normalized.answers)) {
-                    normalized.answers = [];
-                }
-                if (!Array.isArray(normalized.correct)) {
-                    // Default: match first questions to first answers
-                    normalized.correct = normalized.questions.slice(0, Math.min(normalized.questions.length, normalized.answers.length));
-                } else if (normalized.correct.length !== normalized.questions.length) {
-                    // Adjust correct array length
-                    const questionsLength = normalized.questions.length;
-                    if (normalized.correct.length < questionsLength) {
-                        // Pad with empty strings or first available answer
-                        const padding = Array(questionsLength - normalized.correct.length).fill(normalized.answers[0] || '');
-                        normalized.correct = [...normalized.correct, ...padding];
-                    } else {
-                        normalized.correct = normalized.correct.slice(0, questionsLength);
-                    }
-                }
-                // Ensure all correct values are strings
-                normalized.correct = normalized.correct.map(c => String(c));
-            }
-
-            // Normalize multiple choice questions
-            if (normalized.type === 'multiple') {
-                if (!Array.isArray(normalized.options)) {
-                    normalized.options = [];
-                }
-                // Ensure at least 4 options for multiple choice
-                if (normalized.options.length < 4) {
-                    while (normalized.options.length < 4) {
-                        normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
-                    }
-                }
-                if (!Array.isArray(normalized.correct)) {
-                    // If correct is not array, try to convert single number to array
-                    if (typeof normalized.correct === 'number') {
-                        normalized.correct = [normalized.correct];
-                    } else {
-                        normalized.correct = [];
-                    }
-                }
-                // Ensure all correct values are numbers and within options range
-                normalized.correct = normalized.correct
-                    .filter(c => typeof c === 'number' && c >= 0 && c < normalized.options.length)
-                    .map(c => Math.floor(c));
-                // Remove duplicates
-                normalized.correct = [...new Set(normalized.correct)];
-
-                // If only one correct answer, change to single
-                if (normalized.correct.length === 1) {
-                    normalized.type = 'single';
-                    normalized.correct = normalized.correct[0];
-                } else if (normalized.correct.length === 0) {
-                    // If no correct answers, mark as invalid
-                    normalized.invalid = true;
-                }
-            }
-
-            // Normalize single choice questions
-            if (normalized.type === 'single') {
-                if (Array.isArray(normalized.correct)) {
-                    if (normalized.correct.length > 1) {
-                        // If multiple correct in single, change to multiple
-                        normalized.type = 'multiple';
-                    } else if (normalized.correct.length === 1) {
-                        normalized.correct = normalized.correct[0];
-                    } else {
-                        normalized.correct = 0; // default
-                    }
-                }
-                if (typeof normalized.correct !== 'number' || normalized.correct < 0 || normalized.correct >= (normalized.options?.length || 4)) {
-                    normalized.correct = 0;
-                }
-            }
-
-            // If type is single but correct is array, change to multiple
-            if (normalized.type === 'single' && Array.isArray(normalized.correct)) {
-                normalized.type = 'multiple';
-            }
-
-            // Ensure other required fields
-            if (!normalized.images) normalized.images = [];
-            if (!normalized.text) normalized.text = '';
-            return normalizeQuestionCorrect(normalized);
-        }).filter(q => {
+        normalizedQuestions = normalizedQuestions.filter(q => {
             // For matching questions, check for questions/answers; for others, check for text
             if (q.type === 'matching') {
                 return !q.invalid && Array.isArray(q.questions) && q.questions.length > 0;
@@ -2739,9 +2718,10 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         promptText = `Buatkan ${docType} (Bentuk: ${extraData?.jenis || 'Soal Ujian Tertulis'}) untuk mata pelajaran ${mapel} ${topicHint} fase ${fase}. Sajikan dalam bentuk format matriks yang merinci: Indikator Soal, Level Kognitif (seperti L1/L2/L3 atau C1-C6), and Bentuk Soal.`;
     } else if (type === 'soal-jawaban') {
         docType = `Soal dan Kunci Jawaban`;
-        promptText = `Buatkan instrumen Soal dan Kunci Jawaban untuk mata pelajaran ${mapel} fase ${fase} ${topicHint}. Rincian jumlah dan bentuk soal yang diharapkan adalah: ${extraData?.jumlahPerBentuk || '5 soal Pilihan Ganda'}. Usahakan tipe soal HOTS (Higher Order Thinking Skills). Berikan juga pembahasan singkat untuk masing-masing soal. `;
-        promptText += `PENTING: Jika soal didasarkan pada teks bacaan (passage), sertakan teks bacaan tersebut secara utuh di dalam konten soal sebelum pertanyaan dimulai. `;
-        promptText += `\nUntuk soal uraian tipe text, buatlah kunci jawaban yang sangat singkat: hanya 1 kalimat padat dan jelas, maksimal 5 kata.`;
+        promptText = `Buatkan instrumen Soal dan Kunci Jawaban berkualitas tinggi untuk mata pelajaran ${mapel} fase ${fase} ${topicHint}. Rincian jumlah dan bentuk soal: ${extraData?.jumlahPerBentuk || '5 soal Pilihan Ganda'}. 
+        PENTING: Soal berlabel HOTS (Higher Order Thinking Skills) HARUS menguji kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Gunakan stimulus yang relevan dan menuntut penalaran logis. 
+        PENTING: Jika soal didasarkan pada teks bacaan (passage/stimulus), sertakan teks bacaan tersebut secara utuh di dalam konten soal sebelum pertanyaan dimulai. 
+        \nUntuk soal uraian tipe text, buatlah kunci jawaban yang sangat singkat: hanya 1 kalimat padat dan jelas, maksimal 5 kata.`;
 
         if (extraData?.opsiGambar === 'placeholder') {
             promptText += `\nUntuk soal yang memerlukan ilustrasi gambar, JANGAN gunakan placeholder gambar biasa. Gunakan blok HTML berikut sebagai "Area Ilustrasi" agar terlihat profesional:\n<div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; background-color: #f8fafc; margin: 15px 0;"><i class="fas fa-image" style="font-size: 32px; color: #94a3b8; margin-bottom: 10px; display: block;"></i><p style="font-weight: bold; color: #475569; margin: 0; font-size: 14px;">[Area Ilustrasi: DESKRIPSI_GAMBAR]</p><p style="font-size: 11px; color: #94a3b8; margin-top: 5px;">(Guru dapat menyisipkan gambar spesifik di sini)</p></div>\nGanti teks DESKRIPSI_GAMBAR dengan nama/objek gambar yang relevan (misal: "Struktur Akar Tumbuhan").`;
@@ -2758,7 +2738,15 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         }
 
         if (extraData?.simpanBank) {
-            promptText += `\nSANGAT PENTING (INSTRUKSI DATABASE): Pada bagian PALING AKHIR dokumen dokumen HTML Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini persis: <script id="ai-json-data" type="application/json"> [ARRAY_JSON] </script>. ARRAY_JSON adalah format pertanyaan seperti ini: { "text": "Pertanyaan?", "options": ["A","B","C","D"], "correct": 0, "type": "single", "mapel": "${mapel}", "rombel": "${fase}" }.\nWAJIB GUNAKAN TYPE BERIKUT: "single" (PG), "multiple" (PG Kompleks), "text" (Uraian), "tf" (Benar/Salah), "matching" (Menjodohkan). Opsi array kosongkan untuk tipe Isian. Untuk tipe tf (Benar/Salah), isi "options" dengan minimal 3 pernyataan. Correct dapat berupa indeks jawaban (untuk PG) atau string/boolean kunci jawaban. Ingat untuk memisahkan gambar ke properti "images": ["URL"] jika ada gambar agar gambar tampil pada aplikasi ujian siswa.`;
+            promptText += `\nSANGAT PENTING (INSTRUKSI DATABASE): Agar soal dapat otomatis disimpan ke database, pada bagian PALING AKHIR dokumen Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini: <script id="ai-json-data" type="application/json"> [ARRAY_JSON] </script>. 
+            Gunakan format JSON standar: { "text": "[Stimulus...] \\n\\n Pertanyaan?", "options": ["A","B","C","D"], "correct": 0, "type": "single", "mapel": "${mapel}", "rombel": "${fase}" }.
+            JENIS SOAL:
+            - single: "correct" index (0, 1...).
+            - multiple: "correct" array index (contoh: [0, 2]).
+            - tf: "options" minimal 3 pernyataan, "correct" array boolean (panjang sama dengan options).
+            - matching: "questions" array 5 item kiri, "answers" array 5 item kanan, "correct" array 5 string jawaban (item dari array "answers").
+            - text: "correct" string kunci jawaban singkat.
+            Pisahkan gambar ke properti "images": ["URL"] jika menggunakan opsi gambar auto/link.`;
         }
     } else if (type === 'ppt-pintar') {
         docType = `Presentasi PowerPoint Pintar`;
@@ -2957,13 +2945,8 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                     // Tambahkan ke database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
-                    // Inject basic standard properties
-                    parsedQuestions = parsedQuestions.map(q => normalizeQuestionCorrect({
-                        ...q,
-                        mapel: q.mapel || mapel,
-                        rombel: q.rombel || fase,
-                        type: normalizeQuestionType(q.type)
-                    }));
+                    // Inject basic standard properties with unique ID and timestamps using centralized function
+                    parsedQuestions = parsedQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
                     db.questions = [...db.questions, ...parsedQuestions];
                     await writeDB(db);
                     console.log(`[AI Bank Soal] Successfully saved ${parsedQuestions.length} questions to database.`);
