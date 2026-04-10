@@ -498,6 +498,16 @@
         // Correct key from index.html: "EXAM_DORKAS_REMOTE_SERVER_URL"
         const API_URL = localStorage.getItem('EXAM_DORKAS_REMOTE_SERVER_URL') || '';
 
+        // Load current logged-in teacher from session (same key used by index.html)
+        let currentSiswa = null;
+        try {
+            const _sessionRaw = localStorage.getItem('EXAM_DORKAS_SESSION');
+            if (_sessionRaw) {
+                const _session = JSON.parse(_sessionRaw);
+                if (_session && _session.user) currentSiswa = _session.user;
+            }
+        } catch (_e) { /* ignore parse errors */ }
+
         function saveIdentity() {
             localStorage.setItem('ADMIN_IDENTITAS_SEKOLAH', document.getElementById('input-sekolah').value);
             localStorage.setItem('ADMIN_IDENTITAS_GURU', document.getElementById('input-guru').value);
