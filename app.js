@@ -2216,7 +2216,20 @@ function showLoginForm(type) {
             document.getElementById('q-images-list').innerHTML = '';
             window.storedImages = [];
             document.getElementById('q-opts-container').innerHTML = '<input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi A"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi B"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi C"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi D">';
-            document.getElementById('q-tf-container').innerHTML = '<div class="tf-row flex items-center gap-2"><input type="text" class="tf-statement flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pernyataan"><select class="tf-correct p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Benar/Salah--</option><option value="true">Benar</option><option value="false">Salah</option></select><button type="button" onclick="removeTfRow(this)" class="text-red-500">&times;</button></div><button type="button" onclick="addTfRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pernyataan</button>';
+            document.getElementById('q-tf-container').innerHTML = `
+                <div class="space-y-3">
+                    ${[1, 2, 3].map(i => `
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <label class="text-xs font-bold">Pernyataan ${i}</label>
+                            <input type="text" class="tf-statement-${i} w-full p-2 mb-2 rounded border" placeholder="Masukkan pernyataan...">
+                            <select class="tf-answer-${i} w-full p-2 rounded border">
+                                <option value="Benar">Benar</option>
+                                <option value="Salah">Salah</option>
+                            </select>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
             document.getElementById('q-matching-container').innerHTML = '<div class="grid grid-cols-3 gap-4"><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan (Kiri)</label><div id="q-matching-questions" class="space-y-2"><div class="matching-q-row flex items-center gap-2"><input type="text" class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pertanyaan 1"><button type="button" onclick="removeMatchingQRow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pertanyaan</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban (Kanan)</label><div id="q-matching-answers" class="space-y-2"><div class="matching-a-row flex items-center gap-2"><input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban 1" oninput="updateMatchingCorrects()"><button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah Jawaban</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pasangan Benar</label><div id="q-matching-corrects" class="space-y-2"><div class="matching-c-row"><select class="matching-correct flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Pilih--</option></select></div></div></div></div>';
             // Add 4 more rows to make 5 total
             for (let i = 0; i < 4; i++) {
@@ -2297,19 +2310,18 @@ function showLoginForm(type) {
                 if (!ans) return alert('Tuliskan jawaban esai yang benar!');
                 record.correct = ans;
             } else if (type === 'tf') {
-                const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length < 3) return alert('Tambahkan minimal 3 pernyataan!');
-                const stmts = [];
-                const corrs = [];
-                for (const r of rows) {
-                    const stmt = r.querySelector('.tf-statement').value.trim();
-                    const sel = r.querySelector('.tf-correct').value;
-                    if (!stmt || sel === '') return alert('Lengkapi pernyataan dan pilih Benar/Salah!');
-                    stmts.push(stmt);
-                    corrs.push(sel === 'true');
+                const subQuestions = [];
+                const answers = [];
+                for (let i = 1; i <= 3; i++) {
+                    const stmt = document.querySelector(`.tf-statement-${i}`).value.trim();
+                    const ans = document.querySelector(`.tf-answer-${i}`).value;
+                    if (!stmt) return alert(`Lengkapi Pernyataan ${i}!`);
+                    if (!ans) return alert(`Pilih Benar/Salah untuk Pernyataan ${i}!`);
+                    subQuestions.push({ statement: stmt, answer: ans });
+                    answers.push(ans);
                 }
-                record.options = stmts;
-                record.correct = corrs;
+                record.subQuestions = subQuestions;
+                record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
@@ -3236,6 +3248,21 @@ function showLoginForm(type) {
                 optsContainer.classList.add('hidden');
                 answerTextContainer.classList.add('hidden');
                 tfContainer.classList.remove('hidden');
+                // Set up 3 fixed input rows for tf questions
+                tfContainer.innerHTML = `
+                    <div class="space-y-3">
+                        ${[1, 2, 3].map(i => `
+                            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                <label class="text-xs font-bold">Pernyataan ${i}</label>
+                                <input type="text" class="tf-statement-${i} w-full p-2 mb-2 rounded border" placeholder="Masukkan pernyataan...">
+                                <select class="tf-answer-${i} w-full p-2 rounded border">
+                                    <option value="Benar">Benar</option>
+                                    <option value="Salah">Salah</option>
+                                </select>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
             } else if (currentQType === 'matching') {
                 optsContainer.classList.add('hidden');
                 answerTextContainer.classList.add('hidden');
@@ -3415,19 +3442,29 @@ function showLoginForm(type) {
             document.getElementById('q-type').value = q.type || 'single';
             onQuestionTypeChange();
             if (q.type === 'tf') {
-                // clear existing rows then populate
-                const tfCont = document.getElementById('q-tf-container');
-                tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
-                (q.options || []).forEach((stmt, i) => {
-                    addTfRow();
-                });
-                // now fill values
-                document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
-                    const inp = row.querySelector('.tf-statement');
-                    const sel = row.querySelector('.tf-correct');
-                    if (inp) inp.value = q.options[i] || '';
-                    if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
-                });
+                // Populate the 3 fixed input rows
+                if (q.subQuestions && Array.isArray(q.subQuestions)) {
+                    q.subQuestions.forEach((sq, i) => {
+                        if (i < 3) {
+                            const stmtInput = document.querySelector(`.tf-statement-${i + 1}`);
+                            const ansSelect = document.querySelector(`.tf-answer-${i + 1}`);
+                            if (stmtInput) stmtInput.value = sq.statement || '';
+                            if (ansSelect) ansSelect.value = sq.answer || 'Benar';
+                        }
+                    });
+                } else if (q.options && Array.isArray(q.options)) {
+                    // Fallback for old format
+                    q.options.forEach((stmt, i) => {
+                        if (i < 3) {
+                            const stmtInput = document.querySelector(`.tf-statement-${i + 1}`);
+                            const ansSelect = document.querySelector(`.tf-answer-${i + 1}`);
+                            if (stmtInput) stmtInput.value = stmt || '';
+                            if (ansSelect && q.correct && Array.isArray(q.correct)) {
+                                ansSelect.value = q.correct[i] ? 'Benar' : 'Salah';
+                            }
+                        }
+                    });
+                }
             } else if (q.type === 'matching') {
                 // clear existing rows then populate
                 const qCont = document.getElementById('q-matching-questions');
@@ -3639,19 +3676,18 @@ function showLoginForm(type) {
                 if (!ans) return alert('Tuliskan jawaban esai yang benar!');
                 record.correct = ans;
             } else if (type === 'tf') {
-                const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length < 3) return alert('Tambahkan minimal 3 pernyataan!');
-                const stmts = [];
-                const corrs = [];
-                for (const r of rows) {
-                    const stmt = r.querySelector('.tf-statement').value.trim();
-                    const sel = r.querySelector('.tf-correct').value;
-                    if (!stmt || sel === '') return alert('Lengkapi pernyataan dan pilih Benar/Salah!');
-                    stmts.push(stmt);
-                    corrs.push(sel === 'true');
+                const subQuestions = [];
+                const answers = [];
+                for (let i = 1; i <= 3; i++) {
+                    const stmt = document.querySelector(`.tf-statement-${i}`).value.trim();
+                    const ans = document.querySelector(`.tf-answer-${i}`).value;
+                    if (!stmt) return alert(`Lengkapi Pernyataan ${i}!`);
+                    if (!ans) return alert(`Pilih Benar/Salah untuk Pernyataan ${i}!`);
+                    subQuestions.push({ statement: stmt, answer: ans });
+                    answers.push(ans);
                 }
-                record.options = stmts;
-                record.correct = corrs;
+                record.subQuestions = subQuestions;
+                record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));

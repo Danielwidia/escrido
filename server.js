@@ -308,19 +308,11 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
 
     // Normalize specific types
     if (normalized.type === 'tf') {
-        if (!Array.isArray(normalized.options)) normalized.options = [];
-        if (normalized.options.length < 3 && Array.isArray(normalized.statements)) normalized.options = normalized.statements;
-        if (normalized.options.length < 3 && Array.isArray(normalized.pernyataan)) normalized.options = normalized.pernyataan;
-
-        while (normalized.options.length < 3) normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
-
-        if (!Array.isArray(normalized.correct)) {
-            normalized.correct = normalized.options.map(() => false);
-        } else {
-            // Ensure boolean array of correct length
-            const corr = normalized.correct.map(c => Boolean(c));
-            while (corr.length < normalized.options.length) corr.push(false);
-            normalized.correct = corr.slice(0, normalized.options.length);
+        // Memastikan subQuestions ada, jika dari AI formatnya lama, kita bungkus
+        if (!normalized.subQuestions && normalized.text) {
+            normalized.subQuestions = [
+                { statement: normalized.text, answer: normalized.correct }
+            ];
         }
     } else if (normalized.type === 'matching') {
         if (!Array.isArray(normalized.questions)) normalized.questions = [];
@@ -2614,13 +2606,27 @@ KRITERIA KUALITAS:
         prompt += `\nKhusus Informatika: Sertakan potongan kode atau skenario logika jika relevan. Pastikan indentasi kode dalam JSON menggunakan \\n agar terbaca rapi.`;
     }
 
+    prompt += `\nKhusus untuk tipe soal 'tf' (Benar/Salah), buatlah 1 nomor soal yang berisi 3 pernyataan terkait topik tersebut. 
+Format jawaban harus berupa array dari 3 nilai (Benar/Salah).
+Struktur JSON untuk tipe 'tf':
+{
+  "text": "Berikut adalah pernyataan mengenai [Topik]. Tentukan benar atau salah setiap pernyataan tersebut!",
+  "type": "tf",
+  "subQuestions": [
+    {"statement": "Pernyataan 1...", "answer": "Benar"},
+    {"statement": "Pernyataan 2...", "answer": "Salah"},
+    {"statement": "Pernyataan 3...", "answer": "Benar"}
+  ],
+  "correct": ["Benar", "Salah", "Benar"]
+}`;
+
     prompt += `\n\nFormat Output: WAJIB JSON array valid saja, tanpa penjelasan atau teks lain di luar JSON.
 Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang","imagePrompt":""}]
 
 PENTING untuk tiap tipe soal:
 - single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D).
 - multiple (PG Kompleks): "correct" adalah array indeks benar, contoh: [0, 2]. Minimal 4 opsi.
-- tf (Benar/Salah): "options" berisi maksimal 3 pernyataan, "correct" adalah array boolean [true, false, true] dengan panjang sama.
+- tf (Benar/Salah): "subQuestions" berisi array 3 objek dengan "statement" dan "answer", "correct" adalah array ["Benar", "Salah", "Benar"] dengan panjang 3.
 - matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers".
 - text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat.`;
 
@@ -2633,7 +2639,7 @@ PENTING untuk tiap tipe soal:
 
         // Clean up JSON response using helper
         const jsonText = cleanAIResponse(text);
-        
+
         let parsed;
         try {
             // Further clean up common JSON issues from AI responses
@@ -2651,50 +2657,49 @@ PENTING untuk tiap tipe soal:
             });
         }
 
-
         // Normalize question formats using centralized function
         let normalizedQuestions = parsed.map(q => normalizeQuestion(q, mapel, rombel, req.teacherId));
 
-        normalizedQuestions = normalizedQuestions.filter(q => {
-            // For matching questions, check for questions/answers; for others, check for text
-            if (q.type === 'matching') {
-                return !q.invalid && Array.isArray(q.questions) && q.questions.length > 0;
-            }
-            return !q.invalid && q.text && q.text.trim();
-        });
-
-        if (imageEnabled) {
-            try {
-                normalizedQuestions = await attachGeneratedImagesToQuestions(normalizedQuestions, req);
-            } catch (e) {
-                console.warn('[/api/generate-ai] Warning: gagal menambahkan gambar AI ke soal:', e.message);
-            }
+    normalizedQuestions = normalizedQuestions.filter(q => {
+        // For matching questions, check for questions/answers; for others, check for text
+        if (q.type === 'matching') {
+            return !q.invalid && Array.isArray(q.questions) && q.questions.length > 0;
         }
+        return !q.invalid && q.text && q.text.trim();
+    });
 
-        console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
-        return res.json({ ok: true, questions: normalizedQuestions, exhaustedKeys });
-    } catch (e) {
-        console.error('[/api/generate-ai] Fatal error:', e.message);
-        const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
-        const needsApiKeys = /tidak ada api key|tidak memiliki api key|API Key Gemini/i.test(e.message);
-        const exhaustedKeys = Array.isArray(e.exhaustedKeys) ? e.exhaustedKeys : [];
-        const allKeysExhausted = /semua.*(provider|api|key|quota|kuota)/i.test(e.message) || needsApiKeys;
-
-        // Enrich error message with redirect hint if all keys exhausted
-        let errorMessage = e.message;
-        if (allKeysExhausted && !needsApiKeys) {
-            errorMessage = '🔴 Semua API Key Anda sudah habis atau tidak dikonfigurasi. Silakan tambahkan API Key baru di halaman API Keys untuk melanjutkan. Anda akan dibawa ke halaman tersebut secara otomatis.';
+    if (imageEnabled) {
+        try {
+            normalizedQuestions = await attachGeneratedImagesToQuestions(normalizedQuestions, req);
+        } catch (e) {
+            console.warn('[/api/generate-ai] Warning: gagal menambahkan gambar AI ke soal:', e.message);
         }
-
-        return res.status(500).json({
-            error: errorMessage,
-            quotaExhausted,
-            needsApiKeys,
-            allKeysExhausted,
-            exhaustedKeys,
-            redirectToApiKeys: allKeysExhausted && req && req.teacherId
-        });
     }
+
+    console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
+    return res.json({ ok: true, questions: normalizedQuestions, exhaustedKeys });
+} catch (e) {
+    console.error('[/api/generate-ai] Fatal error:', e.message);
+    const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
+    const needsApiKeys = /tidak ada api key|tidak memiliki api key|API Key Gemini/i.test(e.message);
+    const exhaustedKeys = Array.isArray(e.exhaustedKeys) ? e.exhaustedKeys : [];
+    const allKeysExhausted = /semua.*(provider|api|key|quota|kuota)/i.test(e.message) || needsApiKeys;
+
+    // Enrich error message with redirect hint if all keys exhausted
+    let errorMessage = e.message;
+    if (allKeysExhausted && !needsApiKeys) {
+        errorMessage = '🔴 Semua API Key Anda sudah habis atau tidak dikonfigurasi. Silakan tambahkan API Key baru di halaman API Keys untuk melanjutkan. Anda akan dibawa ke halaman tersebut secara otomatis.';
+    }
+
+    return res.status(500).json({
+        error: errorMessage,
+        quotaExhausted,
+        needsApiKeys,
+        allKeysExhausted,
+        exhaustedKeys,
+        redirectToApiKeys: allKeysExhausted && req && req.teacherId
+    });
+}
 });
 
 // ─── API: Generate Admin Doc ──────────────────────────────────────────────────
@@ -3047,7 +3052,7 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
 
         // Clean up JSON response using helper
         const jsonText = cleanAIResponse(text);
-        
+
         let parsed;
         try {
             parsed = JSON.parse(jsonText);
@@ -3055,7 +3060,7 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
             console.error('[/api/generate-kisi-kisi] JSON parsing failed:', jsonError.message);
             return res.status(500).json({ error: 'Format JSON dari AI tidak valid.' });
         }
-        
+
         return res.json({ ok: true, kisiKisi: parsed });
     } catch (e) {
         const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
