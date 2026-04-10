@@ -872,6 +872,7 @@ function showLoginForm(type) {
             }
 
             updateStats();
+            return serverSaveSuccess;
         }
 
         function updateStats() {
@@ -6295,7 +6296,19 @@ function showLoginForm(type) {
                     }));
 
                     db.questions = [...db.questions, ...newQuestions];
-                    await save();
+
+                    let saved = await save();
+                    let retryCount = 0;
+                    while (!saved && retryCount < 3) {
+                        retryCount += 1;
+                        const tryAgain = window.confirm(`Gagal menyimpan soal AI ke database server. Coba lagi? (${retryCount}/3)`);
+                        if (!tryAgain) break;
+                        saved = await save();
+                    }
+
+                    if (!saved) {
+                        throw new Error('Soal AI berhasil dibuat secara lokal, tetapi gagal menyimpan ke database server setelah beberapa percobaan. Silakan periksa koneksi dan coba lagi.');
+                    }
 
                     alert(`Berhasil membuat ${newQuestions.length} soal baru dengan AI!`);
                     closeModals();

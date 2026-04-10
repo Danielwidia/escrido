@@ -308,11 +308,55 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
 
     // Normalize specific types
     if (normalized.type === 'tf') {
-        // Memastikan subQuestions ada, jika dari AI formatnya lama, kita bungkus
-        if (!normalized.subQuestions && normalized.text) {
-            normalized.subQuestions = [
-                { statement: normalized.text, answer: normalized.correct }
-            ];
+        // Konversi dari format lama (options + correct array) ke format baru (subQuestions)
+        if (!normalized.subQuestions) {
+            if (Array.isArray(normalized.options) && Array.isArray(normalized.correct)) {
+                // Format lama: options adalah array pernyataan, correct adalah boolean/string array
+                normalized.subQuestions = normalized.options.map((stmt, i) => {
+                    const ans = normalized.correct[i];
+                    let answer = 'Benar';
+                    if (ans === false || ans === 'Salah' || ans === 'salah') {
+                        answer = 'Salah';
+                    }
+                    return { statement: stmt, answer };
+                });
+                // Pastikan tepat 3 pernyataan
+                normalized.subQuestions = normalized.subQuestions.slice(0, 3);
+                while (normalized.subQuestions.length < 3) {
+                    normalized.subQuestions.push({ 
+                        statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
+                        answer: 'Benar' 
+                    });
+                }
+                // Pastikan correct array sesuai dengan subQuestions
+                normalized.correct = normalized.subQuestions.map(sq => sq.answer);
+            } else if (normalized.text) {
+                // Format fallback: ambil dari text field
+                normalized.subQuestions = [
+                    { statement: normalized.text, answer: normalized.correct || 'Benar' }
+                ];
+            } else {
+                // Inisialisasi default jika meraba
+                normalized.subQuestions = [
+                    { statement: 'Pernyataan 1', answer: 'Benar' },
+                    { statement: 'Pernyataan 2', answer: 'Benar' },
+                    { statement: 'Pernyataan 3', answer: 'Benar' }
+                ];
+            }
+        }
+        // Validasi: subQuestions harus tepat 3 item
+        if (Array.isArray(normalized.subQuestions) && normalized.subQuestions.length !== 3) {
+            normalized.subQuestions = normalized.subQuestions.slice(0, 3);
+            while (normalized.subQuestions.length < 3) {
+                normalized.subQuestions.push({ 
+                    statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
+                    answer: 'Benar' 
+                });
+            }
+        }
+        // Pastikan correct array sesuai dengan subQuestions
+        if (Array.isArray(normalized.subQuestions)) {
+            normalized.correct = normalized.subQuestions.map(sq => sq.answer);
         }
     } else if (normalized.type === 'matching') {
         if (!Array.isArray(normalized.questions)) normalized.questions = [];
@@ -432,11 +476,27 @@ async function readDB() {
 
 async function writeDB(obj) {
     if (USE_SUPABASE) {
-        const { error } = await supabase
-            .from('cbt_database')
-            .upsert({ id: 1, data: obj, updated_at: new Date() });
-        if (error) throw new Error('Supabase writeDB error: ' + error.message);
-        return;
+        const questionCount = Array.isArray(obj.questions) ? obj.questions.length : 0;
+        const studentCount = Array.isArray(obj.students) ? obj.students.length : 0;
+        const resultCount = Array.isArray(obj.results) ? obj.results.length : 0;
+
+        console.log(`[Supabase] writeDB starting: questions=${questionCount}, students=${studentCount}, results=${resultCount}`);
+        try {
+            const { data, error } = await supabase
+                .from('cbt_database')
+                .upsert({ id: 1, data: obj, updated_at: new Date() });
+
+            if (error) {
+                console.error('[Supabase] writeDB failed:', error);
+                throw new Error('Supabase writeDB error: ' + error.message);
+            }
+
+            console.log('[Supabase] writeDB success:', Array.isArray(data) ? `rows=${data.length}` : 'ok');
+            return;
+        } catch (err) {
+            console.error('[Supabase] writeDB exception:', err);
+            throw err;
+        }
     }
     if (process.env.VERCEL) {
         throw new Error('Supabase configuration is required on Vercel. Local JSON database is not supported.');
@@ -2606,19 +2666,21 @@ KRITERIA KUALITAS:
         prompt += `\nKhusus Informatika: Sertakan potongan kode atau skenario logika jika relevan. Pastikan indentasi kode dalam JSON menggunakan \\n agar terbaca rapi.`;
     }
 
-    prompt += `\nKhusus untuk tipe soal 'tf' (Benar/Salah), buatlah 1 nomor soal yang berisi 3 pernyataan terkait topik tersebut. 
-Format jawaban harus berupa array dari 3 nilai (Benar/Salah).
-Struktur JSON untuk tipe 'tf':
+    prompt += `\nKhusus untuk tipe soal 'tf' (Benar/Salah):
+- WAJIB buat 1 nomor soal yang berisi TEPAT 3 PERNYATAAN terkait topik yang SAMA.
+- Semua 3 pernyataan dalam satu soal harus berhubungan dan membahas aspek berbeda dari topik yang sama.
+- Format WAJIB menggunakan struktur ini:
 {
-  "text": "Berikut adalah pernyataan mengenai [Topik]. Tentukan benar atau salah setiap pernyataan tersebut!",
+  "text": "Tentukan apakah pernyataan berikut benar atau salah!",
   "type": "tf",
   "subQuestions": [
-    {"statement": "Pernyataan 1...", "answer": "Benar"},
-    {"statement": "Pernyataan 2...", "answer": "Salah"},
-    {"statement": "Pernyataan 3...", "answer": "Benar"}
+    {"statement": "Pernyataan 1 tentang [Topik]...", "answer": "Benar"},
+    {"statement": "Pernyataan 2 tentang [Topik]...", "answer": "Salah"},
+    {"statement": "Pernyataan 3 tentang [Topik]...", "answer": "Benar"}
   ],
   "correct": ["Benar", "Salah", "Benar"]
-}`;
+}
+CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. Hanya buat SATU soal yang memiliki 3 pernyataan berhubungan dalam "subQuestions" field.`;
 
     prompt += `\n\nFormat Output: WAJIB JSON array valid saja, tanpa penjelasan atau teks lain di luar JSON.
 Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang","imagePrompt":""}]
@@ -2626,7 +2688,7 @@ Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A",
 PENTING untuk tiap tipe soal:
 - single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D).
 - multiple (PG Kompleks): "correct" adalah array indeks benar, contoh: [0, 2]. Minimal 4 opsi.
-- tf (Benar/Salah): "subQuestions" berisi array 3 objek dengan "statement" dan "answer", "correct" adalah array ["Benar", "Salah", "Benar"] dengan panjang 3.
+- tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. JANGAN GUNAKAN "options" field untuk tf.
 - matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers".
 - text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat.`;
 
