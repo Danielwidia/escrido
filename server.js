@@ -2639,6 +2639,13 @@ app.post('/api/generate-ai', async (req, res) => {
 
     // --- PROMPT YANG DITINGKATKAN ---
     let prompt = `Anda adalah pakar pengembang kurikulum dan pembuat soal ujian profesional. 
+
+⚠️ INSTRUKSI KRITIS JUMLAH SOAL:
+Anda WAJIB membuat PERSIS ${actualJumlah} soal dalam JSON array. Tidak boleh kurang, tidak boleh lebih. Contohnya:
+- Jika diminta 5 soal → return array dengan TEPAT 5 elemen soal
+- Jika diminta 10 soal → return array dengan TEPAT 10 elemen soal
+Setiap soal dalam array HARUS valid dan memiliki field "text" yang berisi pertanyaan atau stimulus lengkap.
+
 Buatkan ${actualJumlah} soal berkualitas tinggi sesuai standar Kurikulum Merdeka `;
 
     if (composition) {
@@ -2652,12 +2659,13 @@ Buatkan ${actualJumlah} soal berkualitas tinggi sesuai standar Kurikulum Merdeka
 KRITERIA KUALITAS:
 1. BAHASA: Gunakan Bahasa Indonesia formal sesuai PUEBI/EYD. Hindari kalimat ambigu.
 2. DISTRAKTOR: Untuk pilihan ganda, buatlah pengecoh yang logis dan homogen (tampak benar bagi yang tidak menguasai materi).
-3. MANDIRI: Setiap soal harus berdiri sendiri secara informasi.`;
+3. MANDIRI: Setiap soal harus berdiri sendiri secara informasi.
+4. FIELD TEXT WAJIB: Setiap soal HARUS memiliki field "text" yang tidak boleh kosong atau hanya spasi. Field ini harus berisi pertanyaan lengkap atau stimulus + pertanyaan.`;
 
     // Peningkatan instruksi HOTS (Higher Order Thinking Skills)
     if (hots > 0) {
         prompt += `
-4. HOTS (PENTING): Minimal ${hots} soal harus kategori HOTS. Gunakan stimulus (teks, tabel, kasus, atau kode program) yang menuntut kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Soal HOTS tidak boleh sekadar hafalan, melainkan pemecahan masalah.`;
+5. HOTS (PENTING): Minimal ${hots} soal harus kategori HOTS. Gunakan stimulus (teks, tabel, kasus, atau kode program) yang menuntut kemampuan analisis (C4), evaluasi (C5), atau kreasi (C6). Soal HOTS tidak boleh sekadar hafalan, melainkan pemecahan masalah.`;
     }
 
     prompt += `
@@ -2702,15 +2710,17 @@ KRITERIA KUALITAS:
 }
 CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. Hanya buat SATU soal yang memiliki 3 pernyataan berhubungan dalam "subQuestions" field.`;
 
-    prompt += `\n\nFormat Output: WAJIB JSON array valid saja, tanpa penjelasan atau teks lain di luar JSON.
-Contoh: [{"text":"[STIMULUS] Teks... \\n\\n [PERTANYAAN] Apa...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang","imagePrompt":""}]
+    prompt += `\n\nFormat Output: WAJIB JSON array valid yang berisi PERSIS ${actualJumlah} soal, tanpa penjelasan atau teks lain di luar JSON.
+VALIDASI ARRAY: Array harus memiliki TEPAT ${actualJumlah} elemen, tidak boleh kurang. Periksa kembali sebelum submit.
+Contoh format BENAR (dengan 2 soal):
+[{"text":"[STIMULUS] Teks bacaan... \\n\\n [PERTANYAAN] Apa yang...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang"},{"text":"Pernyataan berikut...","type":"tf","subQuestions":[{"statement":"Pernyataan 1...","answer":"Benar"},{"statement":"Pernyataan 2...","answer":"Salah"},{"statement":"Pernyataan 3...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${rombel}"}]
 
 PENTING untuk tiap tipe soal:
-- single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D).
-- multiple (PG Kompleks): "correct" adalah array indeks benar MAKSIMAL 3, contoh: [0, 2]. Wajib TEPAT 4 opsi (A,B,C,D), jangan 5 atau lebih.
-- tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. JANGAN GUNAKAN "options" field untuk tf.
-- matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers".
-- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat.`;
+- single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D). "text" harus berisi pertanyaan lengkap.
+- multiple (PG Kompleks): "correct" adalah array indeks benar MAKSIMAL 3, contoh: [0, 2]. Wajib TEPAT 4 opsi (A,B,C,D), jangan 5 atau lebih. "text" harus berisi pertanyaan lengkap.
+- tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. "text" harus ada. JANGAN GUNAKAN "options" field untuk tf.
+- matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers". "text" harus ada.
+- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat. "text" harus berisi pertanyaan lengkap.`;
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}, imageEnabled=${imageEnabled}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
@@ -2749,6 +2759,21 @@ PENTING untuk tiap tipe soal:
         }
         return !q.invalid && q.text && q.text.trim();
     });
+
+    // VALIDASI KRITIS: Periksa apakah jumlah soal sesuai dengan permintaan
+    const generatedCount = normalizedQuestions.length;
+    if (generatedCount < actualJumlah) {
+        console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} valid questions, but ${actualJumlah} were requested. Some questions from AI response were filtered out.`);
+        console.warn(`[/api/generate-ai] This may indicate AI is not following format instructions properly. Consider improving prompt clarity or checking AI provider output.`);
+        // Log the parsed but filtered questions for debugging
+        const filteredOut = parsed.length - generatedCount;
+        if (filteredOut > 0) {
+            console.warn(`[/api/generate-ai] Filtered out ${filteredOut} invalid questions out of ${parsed.length} total`);
+        }
+    } else if (generatedCount > actualJumlah) {
+        console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} questions but only ${actualJumlah} were requested. Trimming excess questions.`);
+        normalizedQuestions = normalizedQuestions.slice(0, actualJumlah);
+    }
 
     if (imageEnabled) {
         try {
