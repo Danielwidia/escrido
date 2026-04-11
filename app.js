@@ -1760,17 +1760,31 @@ function showLoginForm(type) {
             const apiKey = document.getElementById('new-api-key').value.trim();
             if (!apiKey) return showToast('API Key harus diisi', 'error');
 
+            // Auto-detect provider based on API key format
+            let detectedProvider = 'OpenAI'; // Default fallback
+            if (apiKey.startsWith('AIzaSy')) {
+                detectedProvider = 'Gemini';
+            } else if (apiKey.startsWith('sk-')) {
+                detectedProvider = 'OpenAI';
+            } else if (apiKey.startsWith('sk-or-v1-') || apiKey.startsWith('sk-or-')) {
+                detectedProvider = 'OpenRouter';
+            } else if (apiKey.startsWith('gsk_')) {
+                detectedProvider = 'Groq';
+            } else if (apiKey.startsWith('sk-') && apiKey.includes('deepseek')) {
+                detectedProvider = 'DeepSeek';
+            }
+
             try {
                 const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider: 'OpenAI', apiKey, note: '' }) // Default provider
+                    body: JSON.stringify({ provider: detectedProvider, apiKey, note: '' })
                 });
 
                 const result = await response.json();
 
                 if (result.ok) {
-                    showToast('Global API Key berhasil ditambahkan', 'success');
+                    showToast(`Global API Key berhasil ditambahkan (${detectedProvider})`, 'success');
                     document.getElementById('new-api-key').value = '';
                     renderApiKeysList(); // Refresh list
                     updateStats(); // Update stats
