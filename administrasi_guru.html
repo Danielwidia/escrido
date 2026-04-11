@@ -1022,6 +1022,11 @@
                     extraData.opsiGambar = document.getElementById('input-opsi-gambar')?.value || 'none';
                     extraData.generateKisi = document.getElementById('input-generate-kisi')?.checked ? true : false;
                     extraData.simpanBank = document.getElementById('input-simpan-bank')?.checked ? true : false;
+                    
+                    // DEBUG: Show alert to confirm checkbox state
+                    const checkboxState = document.getElementById('input-simpan-bank')?.checked;
+                    alert(`DEBUG: Checkbox "Simpan ke Bank Soal" = ${checkboxState ? 'DICENTANG' : 'TIDAK DICENTANG'}\nextraData.simpanBank = ${extraData.simpanBank}`);
+                    
                     extraData.pisahLembar = document.getElementById('input-pisah-lembar')?.checked ? true : false;
 
                     // Add Level Soal

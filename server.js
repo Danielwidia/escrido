@@ -1502,29 +1502,202 @@ function cleanAIResponse(text) {
 }
 
 function extractAiJsonData(text) {
-    if (!text || typeof text !== 'string') return null;
+    if (!text || typeof text !== 'string') {
+        console.log(`[AI Bank Soal] extractAiJsonData: Invalid input`);
+        return null;
+    }
+
+    console.log(`[AI Bank Soal] extractAiJsonData: Processing text of length ${text.length}`);
 
     // First try: exact script tag match
     const scriptMatch = text.match(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>([\s\S]*?)<\/script>/i);
     if (scriptMatch && scriptMatch[1]) {
+        console.log(`[AI Bank Soal] extractAiJsonData: Found script tag, content length: ${scriptMatch[1].trim().length}`);
         return scriptMatch[1].trim();
     }
+    console.log(`[AI Bank Soal] extractAiJsonData: No script tag found`);
 
     // Second try: look for JSON array at the end of the text (last 2000 characters)
     const endText = text.substring(Math.max(0, text.length - 2000));
     const fallbackMatch = endText.match(/(\[\s*\{[\s\S]*?\}\s*\])$/m);
     if (fallbackMatch && fallbackMatch[1]) {
+        console.log(`[AI Bank Soal] extractAiJsonData: Found JSON at end of text, length: ${fallbackMatch[1].trim().length}`);
         return fallbackMatch[1].trim();
     }
+    console.log(`[AI Bank Soal] extractAiJsonData: No JSON at end of text`);
 
     // Third try: look for any JSON array in the entire text
     const anyArrayMatch = text.match(/(\[\s*\{[\s\S]*?\}\s*\])/m);
-    return anyArrayMatch ? anyArrayMatch[1].trim() : null;
+    if (anyArrayMatch && anyArrayMatch[1]) {
+        console.log(`[AI Bank Soal] extractAiJsonData: Found JSON anywhere in text, length: ${anyArrayMatch[1].trim().length}`);
+        return anyArrayMatch[1].trim();
+    }
+    console.log(`[AI Bank Soal] extractAiJsonData: No JSON array found anywhere`);
+
+    return null;
+}
+
+function extractOptionsFromText(text) {
+    const options = [];
+    if (!text || typeof text !== 'string') return options;
+
+    const optionPattern = /([A-Da-d])[\.|\)]\s*([\s\S]*?)(?=\s*[A-Da-d][\.|\)]\s*|$)/g;
+    let match;
+    while ((match = optionPattern.exec(text)) !== null) {
+        const label = match[1].toUpperCase();
+        const optionText = match[2].trim();
+        if (optionText) {
+            options.push(optionText);
+        }
+        if (options.length >= 4) break;
+    }
+
+    return options;
 }
 
 /**
- * Helper to call Hugging Face Inference API
+ * Parse questions from HTML content as last resort fallback
  */
+function parseQuestionsFromHtml(htmlText, mapel, fase) {
+    const questions = [];
+    if (!htmlText || typeof htmlText !== 'string') return questions;
+
+    console.log(`[AI Bank Soal] parseQuestionsFromHtml: Processing HTML of length ${htmlText.length}`);
+
+    // Look for numbered questions (1., 2., etc.)
+    const questionPattern = /(\d+)\.\s*([^?]+)\?([\s\S]*?)(?=\d+\.|$)/g;
+    let match;
+
+    while ((match = questionPattern.exec(htmlText)) !== null) {
+        const questionNumber = match[1];
+        const questionText = match[2].trim() + '?';
+        const restOfQuestion = match[3];
+
+        console.log(`[AI Bank Soal] parseQuestionsFromHtml: Found question ${questionNumber}: ${questionText.substring(0, 50)}...`);
+
+        // Try to extract options (A., B., C., D.)
+        let options = extractOptionsFromText(restOfQuestion);
+        if (options.length < 4) {
+            options = extractOptionsFromText(htmlText);
+        }
+
+        // Try to find correct answer (usually marked with * or in bold)
+        let correct = 0; // default to A
+        const correctPatterns = [
+            /\*([A-D])\*/i,
+            /<strong>\s*([A-D])\s*<\/strong>/i,
+            /jawaban:\s*([A-D])/i,
+            /benar:\s*([A-D])/i
+        ];
+
+        for (const pattern of correctPatterns) {
+            const correctMatch = restOfQuestion.match(pattern);
+            if (correctMatch) {
+                const answer = correctMatch[1].toUpperCase();
+                correct = ['A', 'B', 'C', 'D'].indexOf(answer);
+                if (correct >= 0) break;
+            }
+        }
+
+        if (options.length >= 4) {
+            const question = {
+                text: questionText,
+                options: options.slice(0, 4), // Take only first 4 options
+                correct: correct,
+                type: 'single',
+                mapel: mapel,
+                rombel: fase,
+                level: 'sedang' // default level
+            };
+            questions.push(question);
+            console.log(`[AI Bank Soal] parseQuestionsFromHtml: Successfully parsed question with ${options.length} options`);
+        } else {
+            console.log(`[AI Bank Soal] parseQuestionsFromHtml: Question ${questionNumber} has only ${options.length} options, skipping`);
+        }
+    }
+
+    console.log(`[AI Bank Soal] parseQuestionsFromHtml: Total questions parsed: ${questions.length}`);
+    return questions;
+}
+
+/**
+ * Force parse questions from HTML - more aggressive approach
+ */
+function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
+    const questions = [];
+    if (!htmlText || typeof htmlText !== 'string') return questions;
+
+    console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
+
+    // Remove HTML tags to get clean text
+    const cleanText = htmlText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    console.log(`[AI Bank Soal] Cleaned text length: ${cleanText.length}`);
+
+    // Look for question patterns in clean text
+    const patterns = [
+        // Pattern 1: Numbered questions with options
+        /(\d+)\.\s*([^.!?]+[.!?])\s*(?:A\.\s*([^.!?]+[.!?])\s*B\.\s*([^.!?]+[.!?])\s*C\.\s*([^.!?]+[.!?])\s*D\.\s*([^.!?]+[.!?]))/gi,
+        // Pattern 2: Questions followed by options
+        /(\d+)\)\s*([^.!?]+[.!?])\s*(?:a\)\s*([^.!?]+[.!?])\s*b\)\s*([^.!?]+[.!?])\s*c\)\s*([^.!?]+[.!?])\s*d\)\s*([^.!?]+[.!?]))/gi,
+        // Pattern 3: Simple numbered questions
+        /(\d+)\.\s*([^.!?]+[.!?])/gi
+    ];
+
+    for (const pattern of patterns) {
+        let match;
+        let questionCount = 0;
+
+        while ((match = pattern.exec(cleanText)) !== null && questionCount < 10) { // Limit to 10 questions max
+            questionCount++;
+            const questionNum = match[1];
+            const questionText = match[2].trim();
+
+            console.log(`[AI Bank Soal] Found question ${questionNum}: ${questionText.substring(0, 50)}...`);
+
+            // Extract options if available
+            const options = [];
+            if (match[3] && match[4] && match[5] && match[6]) {
+                options.push(match[3].trim(), match[4].trim(), match[5].trim(), match[6].trim());
+            } else {
+                // Generate dummy options if not found
+                options.push('Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D');
+                console.log(`[AI Bank Soal] No options found, using dummy options`);
+            }
+
+            let options = [];
+            if (match[3] && match[4] && match[5] && match[6]) {
+                options.push(match[3].trim(), match[4].trim(), match[5].trim(), match[6].trim());
+            } else {
+                options = extractOptionsFromText(match[0]);
+            }
+
+            if (options.length < 4) {
+                console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Question ${questionNum} has only ${options.length} options, skipping`);
+                continue;
+            }
+
+            const question = {
+                text: questionText,
+                options: options.slice(0, 4),
+                correct: 0,
+                type: 'single',
+                mapel: mapel,
+                rombel: fase,
+                level: 'sedang'
+            };
+
+            questions.push(question);
+            console.log(`[AI Bank Soal] Successfully created question ${questionNum} with ${options.length} options`);
+        }
+
+        if (questions.length > 0) break; // Stop at first successful pattern
+    }
+
+        // If no questions found with patterns, keep fallback minimal and do not create dummy MCQ options
+        if (questions.length === 0) {
+            console.log(`[AI Bank Soal] No questions found with patterns, skipping forced MCQ creation`);
+    return questions;
+}
 async function callHuggingFaceAI(prompt, req) {
     const { keys, teacherKeysSet } = await getAllAvailableKeys('HuggingFace', req?.teacherId, req);
 
@@ -3459,6 +3632,12 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
     req.teacherId = req.headers['x-teacher-id'] || req.body.teacherId;
     req.teacherName = req.headers['x-teacher-name'] || req.body.teacherName;
 
+    console.log(`[/api/generate-admin-doc] === REQUEST RECEIVED ===`);
+    console.log(`[/api/generate-admin-doc] Body keys:`, Object.keys(req.body));
+    console.log(`[/api/generate-admin-doc] extraData:`, JSON.stringify(req.body.extraData, null, 2));
+    console.log(`[/api/generate-admin-doc] simpanBank value:`, req.body.extraData?.simpanBank);
+    console.log(`[/api/generate-admin-doc] simpanBank type:`, typeof req.body.extraData?.simpanBank);
+
     if (req.teacherId) {
         const idSource = req.headers['x-teacher-id'] ? 'Headers' : 'Body';
         console.log(`[AI] /api/generate-admin-doc: Identitas terdeteksi [${req.teacherId}] dari ${idSource}`);
@@ -3775,49 +3954,54 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
         let parsedQuestions = null;
         let bankSaveError = null;
         const shouldSaveToBank = extraData && (extraData.simpanBank === true || String(extraData.simpanBank).toLowerCase() === 'true');
+
+        console.log(`[/api/generate-admin-doc] shouldSaveToBank evaluation:`);
+        console.log(`[/api/generate-admin-doc] - extraData exists: ${!!extraData}`);
+        console.log(`[/api/generate-admin-doc] - extraData.simpanBank: ${extraData?.simpanBank}`);
+        console.log(`[/api/generate-admin-doc] - extraData.simpanBank === true: ${extraData?.simpanBank === true}`);
+        console.log(`[/api/generate-admin-doc] - String(extraData.simpanBank).toLowerCase(): ${String(extraData?.simpanBank).toLowerCase()}`);
+        console.log(`[/api/generate-admin-doc] - Final shouldSaveToBank: ${shouldSaveToBank}`);
+        
+        // DEBUG: Force alert to show server state
+        console.log(`\n\n=== DEBUG ALERT FROM SERVER ===`);
+        console.log(`simpanBank parameter received: ${extraData?.simpanBank}`);
+        console.log(`shouldSaveToBank result: ${shouldSaveToBank}`);
+        console.log(`Will attempt bank save: ${shouldSaveToBank ? 'YES' : 'NO'}`);
+        console.log(`===============================\n\n`);
+
         if (shouldSaveToBank) {
-            console.log(`[AI Bank Soal] Checking for JSON data in AI response (length: ${text.length})`);
-            let jsonSource = extractAiJsonData(text);
-            console.log(`[AI Bank Soal] Extracted JSON source length: ${jsonSource ? jsonSource.length : 0}`);
+            console.log(`[AI Bank Soal] === FORCE SAVE MODE ENABLED ===`);
+            console.log(`[AI Bank Soal] Will attempt to save questions regardless of AI compliance`);
 
-            // Fallback: Jika tidak ada tag script, ekstrak JSON dari respons utama
-            if (!jsonSource) {
-                console.log(`[AI Bank Soal] No script tag found, trying to extract JSON from main response...`);
-                // Cari JSON array di respons utama
-                const jsonMatch = text.match(/(\[\s*\{[\s\S]*?\}\s*\])/);
-                if (jsonMatch && jsonMatch[1]) {
-                    jsonSource = jsonMatch[1].trim();
-                    console.log(`[AI Bank Soal] Found JSON in main response, length: ${jsonSource.length}`);
-                    console.log(`[AI Bank Soal] JSON preview: ${jsonSource.substring(0, 200)}...`);
-                    // Sisipkan tag script ke respons HTML untuk konsistensi
-                    text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
-                } else {
-                    console.log(`[AI Bank Soal] No JSON array found in main response either.`);
-                    console.log(`[AI Bank Soal] Response preview (last 500 chars): ${text.substring(Math.max(0, text.length - 500))}`);
-                }
-            }
+            // FORCE APPROACH: Always try to extract/create JSON from HTML response
+            let jsonSource = null;
 
-            // Ultimate fallback: Jika masih tidak ada JSON, coba ekstrak dari seluruh respons
-            if (!jsonSource) {
-                console.log(`[AI Bank Soal] Attempting ultimate fallback extraction from entire response...`);
-                // Cari pola JSON array yang lebih luas
-                const ultimateMatch = text.match(/(\[[\s\S]*?\])/);
-                if (ultimateMatch && ultimateMatch[1]) {
-                    try {
-                        // Coba parse untuk memastikan valid
-                        JSON.parse(ultimateMatch[1]);
-                        jsonSource = ultimateMatch[1].trim();
-                        console.log(`[AI Bank Soal] Ultimate fallback successful, JSON length: ${jsonSource.length}`);
-                        text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
-                    } catch (e) {
-                        console.log(`[AI Bank Soal] Ultimate fallback JSON invalid: ${e.message}`);
-                    }
-                } else {
-                    console.log(`[AI Bank Soal] No JSON found anywhere in response`);
-                }
-            }
-
+            // First: Try to find existing JSON/script tag
+            jsonSource = extractAiJsonData(text);
             if (jsonSource) {
+                console.log(`[AI Bank Soal] Found existing JSON/script tag, using it`);
+            } else {
+                console.log(`[AI Bank Soal] No JSON/script tag found, attempting to parse from HTML...`);
+
+                // Force parse from HTML content
+                try {
+                    const parsedFromHtml = forceParseQuestionsFromHtml(text, mapel, fase);
+                    if (parsedFromHtml && parsedFromHtml.length > 0) {
+                        jsonSource = JSON.stringify(parsedFromHtml);
+                        console.log(`[AI Bank Soal] Successfully force-parsed ${parsedFromHtml.length} questions from HTML`);
+                        // Add the JSON to response for consistency
+                        text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
+                    } else {
+                        bankSaveError = 'Tidak dapat mengekstrak soal dari respons AI. Respons tidak mengandung format soal yang dapat diparse.';
+                        console.log(`[AI Bank Soal] Force parsing failed: ${bankSaveError}`);
+                    }
+                } catch (e) {
+                    bankSaveError = `Error parsing HTML: ${e.message}`;
+                    console.log(`[AI Bank Soal] Force parsing error: ${bankSaveError}`);
+                }
+            }
+
+            if (jsonSource && !bankSaveError) {
                 console.log(`[AI Bank Soal] JSON source preview: ${jsonSource.substring(0, 200)}...`);
                 try {
                     const cleanedJson = cleanAIResponse(jsonSource)
