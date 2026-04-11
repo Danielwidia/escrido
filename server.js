@@ -4082,33 +4082,44 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
             // Build extraction prompt from the generated HTML document
             // First, count questions in the HTML for validation
             const htmlQuestionMatches = text.match(/<li[^>]*>/gi) || [];
-            const estimatedQuestionCount = Math.max(htmlQuestionMatches.length, 
-                (text.match(/^\d+\./gm) || []).length);
+            const numberedQuestions = text.match(/^\d+\./gm) || [];
+            const estimatedQuestionCount = Math.max(htmlQuestionMatches.length, numberedQuestions.length);
             
-            const extractionPrompt = `Berikut adalah dokumen soal ujian dalam format HTML:
+            console.log(`[AI Bank Soal] HTML analysis: ${htmlQuestionMatches.length} <li> tags, ${numberedQuestions.length} numbered questions`);
+            console.log(`[AI Bank Soal] Estimated question count: ${estimatedQuestionCount}`);
+            
+            const extractionPrompt = `ANALISIS DOKUMEN SOAL DAN EKSTRAK SEMUA SOAL:
 
+DOKUMEN HTML:
 ${text}
 
-LANGKAH 1: Hitung jumlah soal total dalam dokumen. Jumlahnya: ${estimatedQuestionCount} soal (atau lebih).
-LANGKAH 2: Ekstrak SEMUA soal tersebut tanpa terkecuali dan ubah menjadi JSON array yang valid.
-Output HANYA JSON array valid, tanpa penjelasan, markdown, atau tag HTML.
+INSTRUKSI EKSTRAKSI:
+1. CARI semua soal dalam dokumen HTML di atas
+2. HITUNG total soal: ${estimatedQuestionCount} soal (atau lebih jika ada yang terlewat)
+3. EKSTRAK setiap soal satu per satu tanpa terkecuali
+4. OUTPUT hanya JSON array valid dengan semua soal
 
-Format setiap soal HARUS lengkap:
-- single (PG): {"text":"...","options":["A","B","C","D"],"correct":0,"type":"single"}
-- text (uraian): {"text":"...","correct":"jawaban singkat","type":"text"}
-- tf (B/S): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"}]}
-- multiple: {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple"}
+CONTOH OUTPUT YANG BENAR:
+[{"text":"Apa ibukota Indonesia?","options":["Jakarta","Surabaya","Bandung","Medan"],"correct":0,"type":"single"},{"text":"Jelaskan proses fotosintesis","correct":"Proses pembuatan makanan oleh tumbuhan","type":"text"}]
 
-ATURAN MUTLAK:
-1. SEMUA soal dari dokumen HARUS ada dalam output, tidak boleh terlewat atau terpotong
-2. Array WAJIB punya ${estimatedQuestionCount}+ soal dengan semua field lengkap
-3. Setiap soal: "text" (wajib), "correct" (wajib), "type" (wajib), "options" (untuk single/multiple)
-4. Untuk single: correct = integer (0=A, 1=B, 2=C, 3=D)
-5. Kuip ganda dalam text: ganti single quote (') atau escape (\\")
-6. VALIDASI: Sebelum submit, pastikan array memiliki ${estimatedQuestionCount}+ soal valid
-7. Jika perlu memotong, prioritaskan soal awal supaya tidak ada gap
+FORMAT SOAL WAJIB:
+- {"text":"pertanyaan lengkap","options":["A. pilihan","B. pilihan","C. pilihan","D. pilihan"],"correct":0,"type":"single"}
+- {"text":"pertanyaan uraian","correct":"jawaban singkat","type":"text"}
 
-OUTPUT MULAI DENGAN [ DAN DIAKHIRI ]:`;
+ATURAN KRITIS:
+✅ EKSTRAK SEMUA SOAL - TIDAK BOLEH ADA YANG TERLEWAT
+✅ Setiap soal HARUS punya "text", "correct", "type"
+✅ Untuk pilihan ganda: HARUS punya "options" array dengan 4 pilihan
+✅ "correct" untuk single = angka 0-3 (A=0, B=1, C=2, D=3)
+✅ JANGAN potong output - semua soal harus ada
+✅ Jika ada kutip ganda dalam text, ganti dengan single quote
+
+VALIDASI SEBELUM OUTPUT:
+- Hitung soal di HTML: ${estimatedQuestionCount}+
+- Pastikan array JSON memiliki jumlah yang sama
+- Setiap soal lengkap dan valid
+
+OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
 
             try {
                 const extractResult = await callAI(extractionPrompt, req);
@@ -4245,6 +4256,18 @@ OUTPUT MULAI DENGAN [ DAN DIAKHIRI ]:`;
                     }
 
                     console.log(`[AI Bank Soal] Successfully extracted ${parsedQuestions.length} questions via second AI call`);
+                    
+                    // Validate extraction completeness
+                    const expectedFromHTML = (text.match(/<li[^>]*>/gi) || []).length;
+                    const expectedFromNumbers = (text.match(/^\d+\./gm) || []).length;
+                    const expectedTotal = Math.max(expectedFromHTML, expectedFromNumbers);
+                    
+                    if (parsedQuestions.length < expectedTotal) {
+                        console.warn(`[AI Bank Soal] ⚠️ WARNING: Extracted ${parsedQuestions.length} questions but expected ${expectedTotal} from HTML analysis`);
+                        console.warn(`[AI Bank Soal] ⚠️ This indicates incomplete extraction - some questions may be missing`);
+                    } else {
+                        console.log(`[AI Bank Soal] ✅ Extraction complete: ${parsedQuestions.length} questions extracted (expected: ${expectedTotal})`);
+                    }
                     console.log(`[AI Bank Soal] === DETAILED EXTRACTION REPORT ===`);
                     console.log(`[AI Bank Soal] Total extracted: ${parsedQuestions.length}`);
                     parsedQuestions.forEach((q, idx) => {
@@ -4306,11 +4329,21 @@ OUTPUT MULAI DENGAN [ DAN DIAKHIRI ]:`;
                     console.log(`[AI Bank Soal] Starting HTML parsing with text length: ${text.length}`);
                     console.log(`[AI Bank Soal] HTML sample: ${text.substring(0, 200)}...`);
                     
+                    // Count expected questions from HTML for comparison
+                    const expectedFromHTML = (text.match(/<li[^>]*>/gi) || []).length;
+                    const expectedFromNumbers = (text.match(/^\d+\./gm) || []).length;
+                    const expectedTotal = Math.max(expectedFromHTML, expectedFromNumbers);
+                    console.log(`[AI Bank Soal] HTML fallback - Expected questions: ${expectedTotal} (HTML tags: ${expectedFromHTML}, numbered: ${expectedFromNumbers})`);
+                    
                     const fallbackQuestions = forceParseQuestionsFromHtml(text, mapel, fase);
                     console.log(`[AI Bank Soal] HTML parsing completed. Found ${fallbackQuestions?.length || 0} questions`);
                     
                     if (fallbackQuestions && fallbackQuestions.length > 0) {
                         console.log(`[AI Bank Soal] ✅ Fallback HTML parsing succeeded with ${fallbackQuestions.length} questions`);
+                        
+                        if (fallbackQuestions.length < expectedTotal) {
+                            console.warn(`[AI Bank Soal] ⚠️ HTML parsing extracted ${fallbackQuestions.length} but expected ${expectedTotal} - some questions may be missing`);
+                        }
                         
                         // Normalize and save to database
                         const db = (await readDB()) || { questions: [] };
@@ -4358,12 +4391,27 @@ OUTPUT MULAI DENGAN [ DAN DIAKHIRI ]:`;
         }
 
         console.log(`[/api/generate-admin-doc] Success for ${docType}`);
+        
+        // Final validation: Check if saved questions match expectations
+        const htmlTags = (text.match(/<li[^>]*>/gi) || []).length;
+        const numberedItems = (text.match(/^\d+\./gm) || []).length;
+        const expectedCount = Math.max(htmlTags, numberedItems);
+        const actualSaved = Array.isArray(parsedQuestions) ? parsedQuestions.length : 0;
+        
+        if (shouldSaveToBank && actualSaved < expectedCount) {
+            console.warn(`[/api/generate-admin-doc] ⚠️ FINAL WARNING: Only ${actualSaved} questions saved to bank, but HTML analysis shows ${expectedCount} expected questions`);
+            console.warn(`[/api/generate-admin-doc] ⚠️ This indicates incomplete question extraction`);
+        } else if (shouldSaveToBank && actualSaved >= expectedCount) {
+            console.log(`[/api/generate-admin-doc] ✅ Question extraction complete: ${actualSaved} questions saved (expected: ${expectedCount})`);
+        }
+        
         return res.json({
             ok: true,
             html: text,
             savedToBankSoal: !!parsedQuestions,
             requestedSaveToBankSoal: shouldSaveToBank,
-            savedQuestionsCount: Array.isArray(parsedQuestions) ? parsedQuestions.length : 0,
+            savedQuestionsCount: actualSaved,
+            expectedQuestionsCount: expectedCount,
             bankSaveError
         });
     } catch (e) {
