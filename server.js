@@ -1659,15 +1659,6 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             if (match[3] && match[4] && match[5] && match[6]) {
                 options.push(match[3].trim(), match[4].trim(), match[5].trim(), match[6].trim());
             } else {
-                // Generate dummy options if not found
-                options.push('Jawaban A', 'Jawaban B', 'Jawaban C', 'Jawaban D');
-                console.log(`[AI Bank Soal] No options found, using dummy options`);
-            }
-
-            let options = [];
-            if (match[3] && match[4] && match[5] && match[6]) {
-                options.push(match[3].trim(), match[4].trim(), match[5].trim(), match[6].trim());
-            } else {
                 options = extractOptionsFromText(match[0]);
             }
 
@@ -1693,9 +1684,11 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         if (questions.length > 0) break; // Stop at first successful pattern
     }
 
-        // If no questions found with patterns, keep fallback minimal and do not create dummy MCQ options
-        if (questions.length === 0) {
-            console.log(`[AI Bank Soal] No questions found with patterns, skipping forced MCQ creation`);
+    if (questions.length === 0) {
+        console.log(`[AI Bank Soal] No questions found by any pattern`);
+    }
+
+    console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Total questions created: ${questions.length}`);
     return questions;
 }
 async function callHuggingFaceAI(prompt, req) {
