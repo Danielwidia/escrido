@@ -3950,12 +3950,14 @@ KRITERIA KUALITAS:
     }
 
     prompt += `
-5. STIMULUS: Jika soal membutuhkan teks bacaan atau stimulus, tuliskan stimulus tersebut di awal field "text" dengan format:
-   [STIMULUS]
-   ...isi teks/stimulus...
+5. STIMULUS: Jika soal membutuhkan teks bacaan atau stimulus, gabungkan stimulus dan pertanyaan dalam satu field "text" dengan format berikut:
+   [STIMULUS]teks bacaan lengkap di sini[/STIMULUS]
+   [PERTANYAAN]pertanyaan di sini[/PERTANYAAN]
    
-   [PERTANYAAN]
-   ...isi pertanyaan...`;
+   Contoh:
+   "text": "[STIMULUS]Dalam berpikir komputasional, ada beberapa tahap yang harus dilakukan.[/STIMULUS]\n[PERTANYAAN]Tahap pertama dalam berpikir komputasional adalah...?[/PERTANYAAN]",
+   "options": ["A. Abstraksi", "B. Dekomposisi", "C. Algoritma", "D. Evaluasi"],
+   "correct": 1`;
 
     if (levelParts.length > 0) {
         prompt += `\nDistribusi tingkat kesulitan: ${levelParts.join(', ')}.`;

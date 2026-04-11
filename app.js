@@ -2495,7 +2495,7 @@ function showLoginForm(type) {
             const q = db.questions[index];
             let msg = `Soal: ${q.text}\n\nType: ${q.type}\nMapel: ${q.mapel}\nRombel: ${q.rombel}\n\n`;
             if (q.type === 'single' || q.type === 'multiple') {
-                msg += `Opsi: ${q.options.join(', ')}\n`;
+                msg += `Opsi:\n${q.options.map((opt, idx) => `${['A', 'B', 'C', 'D'][idx]}. ${opt}`).join('\n')}\n`;
                 msg += `Kunci: ${Array.isArray(q.correct) ? q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(',') : ['A', 'B', 'C', 'D'][q.correct]}`;
             } else if (q.type === 'tf') {
                 msg += q.options.map((s, i) => `${s}: ${q.correct[i] ? 'Benar' : 'Salah'}`).join('\n');
@@ -2865,7 +2865,26 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div class="line-clamp-2 break-words font-medium text-slate-800 text-sm leading-relaxed">${q.text}</div>
+                        <div class="break-words font-medium text-slate-800 text-sm leading-relaxed">
+                            ${formatQuestionText(q.text)}
+                            ${(q.type === 'single' || q.type === 'multiple') && q.options ? 
+                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
+                                    ${q.options.map((opt, idx) => `<div><strong>${['A', 'B', 'C', 'D'][idx]}.</strong> ${opt}</div>`).join('')}
+                                </div>` : 
+                                q.type === 'tf' && q.subQuestions ? 
+                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
+                                    ${q.subQuestions.map((sq, idx) => `<div><strong>${idx + 1}.</strong> ${sq.statement} <em>(${sq.answer})</em></div>`).join('')}
+                                </div>` : 
+                                q.type === 'text' ? 
+                                `<div class="text-xs text-slate-500 italic mt-2">Jawaban: ${q.correct || 'Teks bebas'}</div>` : 
+                                q.type === 'matching' ? 
+                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
+                                    <div><strong>Pertanyaan:</strong> ${q.questions ? q.questions.slice(0, 2).join(', ') + (q.questions.length > 2 ? '...' : '') : ''}</div>
+                                    <div><strong>Jawaban:</strong> ${q.answers ? q.answers.slice(0, 2).join(', ') + (q.answers.length > 2 ? '...' : '') : ''}</div>
+                                </div>` : 
+                                ''
+                            }
+                        </div>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -2897,6 +2916,49 @@ function showLoginForm(type) {
             if (list.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-slate-500 text-sm">Tidak ada soal ditemukan.</td></tr>`;
             }
+        }
+
+        function formatQuestionText(questionText) {
+            if (!questionText) return '';
+            
+            // Check if text contains new stimulus format
+            const stimulusMatch = questionText.match(/\[STIMULUS\]([\s\S]*?)\[\/STIMULUS\]\s*\[PERTANYAAN\]([\s\S]*?)\[\/PERTANYAAN\]/i);
+            if (stimulusMatch) {
+                const stimulus = stimulusMatch[1].trim();
+                const question = stimulusMatch[2].trim();
+                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
+                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
+                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
+                </div>
+                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
+            }
+            
+            // Check if text contains old stimulus format
+            const oldStimulusMatch = questionText.match(/^\[STIMULUS\]([\s\S]*?)\[PERTANYAAN\]([\s\S]*)$/i);
+            if (oldStimulusMatch) {
+                const stimulus = oldStimulusMatch[1].trim();
+                const question = oldStimulusMatch[2].trim();
+                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
+                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
+                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
+                </div>
+                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
+            }
+            
+            // Check for alternative stimulus format (double newline separation)
+            const altStimulusMatch = questionText.match(/^(.*?)\s*\n\s*\n\s*(.+)$/s);
+            if (altStimulusMatch && altStimulusMatch[1].length > 50 && altStimulusMatch[2].length > 10) {
+                // If first part is long (>50 chars) and second part looks like a question, treat as stimulus + question
+                const stimulus = altStimulusMatch[1].trim();
+                const question = altStimulusMatch[2].trim();
+                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
+                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
+                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
+                </div>
+                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
+            }
+            
+            return parseMarkdown(questionText);
         }
 
         function toggleTeacherQuestionSelection(event) {
@@ -5532,7 +5594,7 @@ function showLoginForm(type) {
             const q = examData.questions[idx];
             document.getElementById('curr-q-num').innerText = idx + 1;
             document.getElementById('total-q-num').innerText = examData.questions.length;
-            document.getElementById('exam-q-text').innerHTML = parseMarkdown(q.text);
+            document.getElementById('exam-q-text').innerHTML = formatQuestionText(q.text);
             // refresh progress display (including type)
             updateProgress();
 
