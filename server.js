@@ -1594,16 +1594,16 @@ function extractOptionsFromText(text) {
     if (!text || typeof text !== 'string') return options;
 
     const patterns = [
-        // Pattern 1: (A) (B) (C) (D) format (most specific)
-        /\(([A-D])\)\s*([\s\S]*?)(?=\s*\([A-D]\)|$)/gi,
+        // Pattern 1: (A) (B) (C) (D) (E) format (most specific)
+        /\(([A-E])\)\s*([\s\S]*?)(?=\s*\([A-E]\)|$)/gi,
         // Pattern 2: (1) (2) (3) (4) format
         /\(([1-5])\)\s*([\s\S]*?)(?=\s*\([1-5]\)|$)/gi,
         // Pattern 3: A) B) C) D) or A. B. C. D. format
         /([A-Ea-e])[\.\)]\s*([\s\S]*?)(?=\s*[A-Ea-e][\.\)]\s*|$)/g,
         // Pattern 4: 1. 2. 3. 4. format
         /([1-5])[\.\)]\s*([\s\S]*?)(?=\s*[1-5][\.\)]\s*|$)/g,
-        // Pattern 5: *A. *B. *C. *D. (bullet format)
-        /[\*•]\s*([A-E])[\.\)]\s*([\s\S]*?)(?=\s*[\*•]\s*[A-E][\.\)]|$)/gi,
+        // Pattern 5: Bulleted options (*, -, •, +) with OR without A-E labels
+        /[\*•\-\+]\s*(?:[A-Ea-e][\.\)]\s*)?([\s\S]*?)(?=\s*[\*•\-\+]\s*(?:[A-Ea-e][\.\)]\s*)?|$)/gi,
         // Pattern 6: Just plain text separated by newline/semicolon
         /([^;\n]+)(?:[;\n]|$)/g
     ];
@@ -1624,6 +1624,7 @@ function extractOptionsFromText(text) {
 
             // Clean the option text
             optText = optText
+                .replace(/^[\*•\-\+]\s+/, '') // Remove leading bullets if captured
                 .replace(/<[^>]*>/g, '')  // Remove HTML tags
                 .replace(/&nbsp;/g, ' ')  // HTML entities
                 .replace(/&amp;/g, '&')
