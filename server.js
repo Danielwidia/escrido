@@ -1629,63 +1629,154 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
 
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
 
-    // Remove HTML tags to get clean text
-    const cleanText = htmlText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-    console.log(`[AI Bank Soal] Cleaned text length: ${cleanText.length}`);
-
-    // Look for question patterns in clean text
-    const patterns = [
-        // Pattern 1: Numbered questions with options
-        /(\d+)\.\s*([^.!?]+[.!?])\s*(?:A\.\s*([^.!?]+[.!?])\s*B\.\s*([^.!?]+[.!?])\s*C\.\s*([^.!?]+[.!?])\s*D\.\s*([^.!?]+[.!?]))/gi,
-        // Pattern 2: Questions followed by options
-        /(\d+)\)\s*([^.!?]+[.!?])\s*(?:a\)\s*([^.!?]+[.!?])\s*b\)\s*([^.!?]+[.!?])\s*c\)\s*([^.!?]+[.!?])\s*d\)\s*([^.!?]+[.!?]))/gi,
-        // Pattern 3: Simple numbered questions
-        /(\d+)\.\s*([^.!?]+[.!?])/gi
-    ];
-
-    for (const pattern of patterns) {
+    // Strategy 1: Try to parse from HTML structure (ol/li with nested options)
+    try {
+        // Look for numbered list items
+        const liPattern = /<li[^>]*>([\s\S]*?)(?=<li|<\/ol|$)/gi;
         let match;
-        let questionCount = 0;
-
-        while ((match = pattern.exec(cleanText)) !== null && questionCount < 10) { // Limit to 10 questions max
-            questionCount++;
-            const questionNum = match[1];
-            const questionText = match[2].trim();
-
-            console.log(`[AI Bank Soal] Found question ${questionNum}: ${questionText.substring(0, 50)}...`);
-
-            // Extract options if available
+        
+        while ((match = liPattern.exec(htmlText)) !== null && questions.length < 50) {
+            const liContent = match[1];
+            
+            // Extract main question text (usually in a paragraph tag or as direct text before options)
+            const pPattern = /<p[^>]*>([\s\S]*?)<\/p>/i;
+            const pMatch = pPattern.exec(liContent);
+            
+            if (!pMatch) continue;
+            
+            let questionText = pMatch[1]
+                .replace(/<[^>]*>/g, '')  // Remove tags
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .trim();
+            
+            if (!questionText || questionText.length < 5) continue;
+            
+            // Extract options from the same li (usually ol/li or labels)
             const options = [];
-            if (match[3] && match[4] && match[5] && match[6]) {
-                options.push(match[3].trim(), match[4].trim(), match[5].trim(), match[6].trim());
-            } else {
-                options = extractOptionsFromText(match[0]);
+            
+            // Try to find nested option list
+            const optionListPattern = /<[ou]l[^>]*>[\s\S]*?<li[^>]*>([\s\S]*?)<\/li>[\s\S]*?<\/[ou]l>/gi;
+            const subListMatch = liContent.match(optionListPattern);
+            
+            if (subListMatch) {
+                // Extract from nested list
+                const optionPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+                let optMatch;
+                while ((optMatch = optionPattern.exec(liContent)) !== null && options.length < 4) {
+                    const optText = optMatch[1]
+                        .replace(/<[^>]*>/g, '')
+                        .replace(/&.*?;/g, '')
+                        .trim();
+                    if (optText) options.push(optText);
+                }
             }
-
+            
+            // Try to find inline options (A. B. C. D. pattern)
             if (options.length < 4) {
-                console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Question ${questionNum} has only ${options.length} options, skipping`);
-                continue;
+                const inlinePattern = /[A-D]\s*[\.\)]\s*([^A-D.\)\n]+)(?=[A-D\s\.\)]*[A-D\s\.\)]|$)/gi;
+                const inlineMatches = liContent.match(inlinePattern);
+                if (inlineMatches) {
+                    for (const opt of inlineMatches) {
+                        const cleaned = opt.replace(/^[A-D]\s*[\.\)]/, '').trim();
+                        if (cleaned && options.length < 4) {
+                            options.push(cleaned);
+                        }
+                    }
+                }
             }
-
-            const question = {
-                text: questionText,
-                options: options.slice(0, 4),
-                correct: 0,
-                type: 'single',
-                mapel: mapel,
-                rombel: fase,
-                level: 'sedang'
-            };
-
-            questions.push(question);
-            console.log(`[AI Bank Soal] Successfully created question ${questionNum} with ${options.length} options`);
+            
+            if (options.length >= 4) {
+                const question = {
+                    text: questionText,
+                    options: options.slice(0, 4),
+                    correct: 0,
+                    type: 'single',
+                    mapel: mapel,
+                    rombel: fase,
+                    level: 'sedang'
+                };
+                questions.push(question);
+                console.log(`[AI Bank Soal] Parsed question ${questions.length}: ${questionText.substring(0, 50)}...`);
+            }
         }
+    } catch (e) {
+        console.warn(`[AI Bank Soal] HTML structure parsing failed: ${e.message}`);
+    }
+    
+    // Strategy 2: If Strategy 1 got few results, try aggressive text-based extraction
+    if (questions.length < 3) {
+        console.log(`[AI Bank Soal] Strategy 1 got ${questions.length} questions, trying Strategy 2 (text-based)...`);
+        
+        // Remove HTML tags to get clean text
+        const cleanText = htmlText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        console.log(`[AI Bank Soal] Cleaned text length: ${cleanText.length}`);
 
-        if (questions.length > 0) break; // Stop at first successful pattern
+        // Look for question patterns in clean text
+        const patterns = [
+            // Pattern 1: Numbered questions with options: "1. Question? A. Option B. Option C. Option D. Option"
+            /(\d+)\.\s*([^?]*\?)\s*(?:A\.|a\.)\s*([^B]*?)(?:B\.|b\.)\s*([^C]*?)(?:C\.|c\.)\s*([^D]*?)(?:D\.|d\.)\s*([^0-9]*?)(?=\d+\.|$)/gi,
+            // Pattern 2: Simpler pattern with just numbered questions
+            /(\d+)\.\s*([^.?]+[.?])/gi
+        ];
+
+        for (const pattern of patterns) {
+            let match;
+            
+            while ((match = pattern.exec(cleanText)) !== null && questions.length < 50) {
+                const questionNum = match[1];
+                let questionText = match[2].trim();
+                
+                if (!questionText.endsWith('?')) {
+                    questionText += '?';
+                }
+
+                console.log(`[AI Bank Soal] Found question ${questionNum}: ${questionText.substring(0, 50)}...`);
+
+                // Extract options
+                let options = [];
+                if (match[3] && match[4] && match[5] && match[6]) {
+                    options = [
+                        match[3].trim(),
+                        match[4].trim(),
+                        match[5].trim(),
+                        match[6].trim()
+                    ];
+                } else {
+                    // Try to extract from surrounding text
+                    options = extractOptionsFromText(cleanText.substring(match.index, match.index + match[0].length + 200));
+                }
+
+                if (options.length >= 4) {
+                    // Skip if we already have this question
+                    const isDuplicate = questions.some(q => q.text === questionText);
+                    if (!isDuplicate) {
+                        const question = {
+                            text: questionText,
+                            options: options.slice(0, 4),
+                            correct: 0,
+                            type: 'single',
+                            mapel: mapel,
+                            rombel: fase,
+                            level: 'sedang'
+                        };
+                        questions.push(question);
+                        console.log(`[AI Bank Soal] Successfully created question ${questions.length} with ${options.length} options`);
+                    }
+                }
+            }
+            
+            if (questions.length > 0) break; // Stop at first successful pattern
+        }
     }
 
     if (questions.length === 0) {
-        console.log(`[AI Bank Soal] No questions found by any pattern`);
+        console.log(`[AI Bank Soal] No questions found by any strategy`);
+    } else if (questions.length < 5) {
+        console.warn(`[AI Bank Soal] ⚠️ WARNING: Only ${questions.length} questions found (expected more)`);
     }
 
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Total questions created: ${questions.length}`);
@@ -4082,7 +4173,32 @@ ATURAN SANGAT PENTING:
             } catch (extractErr) {
                 bankSaveError = extractErr.message || String(extractErr);
                 console.error(`[AI Bank Soal] ❌ Second-pass extraction failed: ${bankSaveError}`);
-                console.error(`[AI Bank Soal] HTML preview (first 500): ${text.substring(0, 500)}`);
+                console.error(`[AI Bank Soal] Attempting fallback HTML parsing...`);
+                
+                // Fallback: Try parsing from HTML as last resort
+                try {
+                    const fallbackQuestions = forceParseQuestionsFromHtml(text, mapel, fase);
+                    if (fallbackQuestions && fallbackQuestions.length > 0) {
+                        console.log(`[AI Bank Soal] ✅ Fallback HTML parsing succeeded with ${fallbackQuestions.length} questions`);
+                        
+                        // Normalize and save to database
+                        const db = (await readDB()) || { questions: [] };
+                        if (!db.questions) db.questions = [];
+                        const normalizedQuestions = fallbackQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
+                        db.questions = [...db.questions, ...normalizedQuestions];
+                        await writeDB(db);
+                        console.log(`[AI Bank Soal] ✅ Successfully saved ${normalizedQuestions.length} questions from HTML parsing to database.`);
+                        
+                        parsedQuestions = normalizedQuestions;
+                        bankSaveError = null; // Clear error since fallback succeeded
+                    } else {
+                        console.error(`[AI Bank Soal] Fallback HTML parsing returned 0 questions`);
+                        console.error(`[AI Bank Soal] HTML preview (first 500): ${text.substring(0, 500)}`);
+                    }
+                } catch (fallbackErr) {
+                    console.error(`[AI Bank Soal] Fallback HTML parsing also failed:`, fallbackErr.message);
+                    console.error(`[AI Bank Soal] HTML preview (first 500): ${text.substring(0, 500)}`);
+                }
             }
         }
 
