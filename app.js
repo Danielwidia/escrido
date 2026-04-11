@@ -882,10 +882,6 @@ function showLoginForm(type) {
             const students = Array.isArray(db?.students) ? db.students : [];
             const results = Array.isArray(db?.results) ? db.results : [];
 
-            const globalApiKeys = Array.isArray(db?.globalSettings?.apiKeys) ? db.globalSettings.apiKeys : [];
-            const activeApiKeys = globalApiKeys.filter(k => k.status !== 'exhausted').length;
-            const exhaustedApiKeys = globalApiKeys.filter(k => k.status === 'exhausted').length;
-
             const ids = ['stat-subjects', 'stat-questions', 'stat-rombel', 'stat-students', 'stat-results', 'stat-api-active', 'stat-api-exhausted'];
             const vals = [
                 subjects.length,
@@ -893,8 +889,8 @@ function showLoginForm(type) {
                 rombels.length,
                 students.filter(x => x.role !== 'admin').length,
                 results.filter(r => !r.deleted).length,
-                activeApiKeys,
-                exhaustedApiKeys
+                window.globalApiKeysActive || 0,
+                window.globalApiKeysExhausted || 0
             ];
             ids.forEach((id, i) => { if (document.getElementById(id)) document.getElementById(id).innerText = vals[i]; });
         }
@@ -1807,6 +1803,10 @@ function showLoginForm(type) {
 
                 if (result.ok && Array.isArray(result.globalKeys)) {
                     const keys = result.globalKeys;
+                    window.globalApiKeysActive = result.activeCount || 0;
+                    window.globalApiKeysExhausted = result.exhaustedCount || 0;
+                    updateStats(); // Update stats with new API keys data
+                    
                     container.innerHTML = keys.length === 0 ? 
                         '<p class="text-xs text-slate-500">Belum ada API Key global</p>' :
                         keys.map((key, index) => `
@@ -1830,8 +1830,8 @@ function showLoginForm(type) {
             }
         }
 
-        window.removeGlobalAPIKey = async function(index) {
-            if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini dari Supabase?')) return;
+        window.removeGlobalApiKey = async function(index) {
+            if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini?')) return;
 
             try {
                 showLoadingOverlay('Menghapus Global Key...');
@@ -1846,7 +1846,8 @@ function showLoginForm(type) {
 
                 if (result.ok) {
                     showToast('Global API Key berhasil dihapus', 'success');
-                    renderGlobalAPIKeys();
+                    renderApiKeysList(); // Refresh list for admin overview
+                    updateStats(); // Update stats
                 } else {
                     showToast(result.error || 'Gagal menghapus key', 'error');
                 }
@@ -3077,7 +3078,11 @@ function showLoginForm(type) {
                 populateRaportFilters();
                 renderRaport();
             }
-            if (sec === 'overview') { updateStats(); fetchIPs(); renderApiKeysList(); }
+            if (sec === 'overview') { 
+                updateStats(); 
+                fetchIPs(); 
+                renderApiKeysList().catch(err => console.error('Error loading API keys:', err));
+            }
             if (sec === 'settings') {
                 const admin = db.students.find(x => x.role === 'admin');
                 document.getElementById('set-admin-id').value = admin.id;
