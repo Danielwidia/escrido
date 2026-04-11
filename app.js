@@ -1621,6 +1621,17 @@ function showLoginForm(type) {
                 const keys = result.globalKeys;
                 const isAdmin = currentSiswa && currentSiswa.role === 'admin';
 
+                // Helper function to detect provider from API key
+                function detectProviderFromKey(key) {
+                    if (!key) return 'Unknown';
+                    if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                    if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                    if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                    if (key.startsWith('gsk_')) return 'Groq';
+                    if (key.includes('deepseek')) return 'DeepSeek';
+                    return 'Unknown';
+                }
+
                 if (keys.length === 0) {
                     updateGlobalApiKeysStats([]);
                     container.innerHTML = `
@@ -1634,12 +1645,17 @@ function showLoginForm(type) {
                     container.innerHTML = keys.map((entry, idx) => {
                         const fullKey = entry.key || '';
                         const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
-                        const providerIcon = entry.provider.includes('Gemini') ? 'fa-google' : 'fa-robot';
+                        
+                        // Use detected provider from key format, fallback to stored provider
+                        const detectedProvider = detectProviderFromKey(fullKey);
+                        const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : entry.provider;
+                        
+                        const providerIcon = displayProvider.includes('Gemini') ? 'fa-google' : 'fa-robot';
                         let providerColor, statusLabel, statusBadgeClass;
                         
-                        if (entry.provider.includes('Gemini')) {
+                        if (displayProvider.includes('Gemini')) {
                             providerColor = 'blue';
-                        } else if (entry.provider.includes('OpenAI')) {
+                        } else if (displayProvider.includes('OpenAI')) {
                             providerColor = 'green';
                         } else {
                             providerColor = 'purple';
@@ -1674,7 +1690,7 @@ function showLoginForm(type) {
                                         <i class="fas ${providerIcon} text-sm"></i>
                                     </div>
                                     <div class="flex-1">
-                                        <p class="text-xs font-bold text-slate-700">${entry.provider}</p>
+                                        <p class="text-xs font-bold text-slate-700">${displayProvider}</p>
                                         <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
                                         <span class="${statusBadgeClass}">${statusLabel}</span>
                                         ${exhaustedDetail}
@@ -1815,20 +1831,40 @@ function showLoginForm(type) {
                     window.globalApiKeysExhausted = result.exhaustedCount || 0;
                     updateStats(); // Update stats with new API keys data
                     
+                    // Helper function to detect provider from API key
+                    function detectProviderFromKey(key) {
+                        if (!key) return 'Unknown';
+                        if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                        if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                        if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                        if (key.startsWith('gsk_')) return 'Groq';
+                        if (key.includes('deepseek')) return 'DeepSeek';
+                        return 'Unknown';
+                    }
+                    
                     container.innerHTML = keys.length === 0 ? 
                         '<p class="text-xs text-slate-500">Belum ada API Key global</p>' :
-                        keys.map((key, index) => `
-                            <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
-                                <div class="flex-1">
-                                    <span class="text-xs font-mono text-slate-700">${key.key ? key.key.substring(0, 20) + '...' : 'Invalid key'}</span>
-                                    <span class="text-xs text-slate-500 ml-2">${key.provider || 'Unknown'}</span>
-                                    ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
+                        keys.map((key, index) => {
+                            const fullKey = key.key || '';
+                            const displayKey = fullKey.length > 20 ? fullKey.substring(0, 20) + '...' : fullKey;
+                            
+                            // Use detected provider from key format, fallback to stored provider
+                            const detectedProvider = detectProviderFromKey(fullKey);
+                            const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : (key.provider || 'Unknown');
+                            
+                            return `
+                                <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                                    <div class="flex-1">
+                                        <span class="text-xs font-mono text-slate-700">${displayKey}</span>
+                                        <span class="text-xs text-slate-500 ml-2">${displayProvider}</span>
+                                        ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
+                                    </div>
+                                    <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
-                                <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        `).join('');
+                            `;
+                        }).join('');
                 } else {
                     container.innerHTML = `<p class="text-xs text-red-500">Error: ${result.error || 'Response tidak valid'}</p>`;
                 }

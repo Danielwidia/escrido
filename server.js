@@ -2544,15 +2544,44 @@ async function getGlobalAPIKeysFromSupabase() {
                 return null;
             }
             
-            return (data || []).map(row => ({
-                key: row.key,
-                provider: row.provider,
-                status: row.status,
-                addedAt: row.added_at,
-                updatedAt: row.updated_at,
-                note: row.note,
-                vercelEnvVar: row.vercel_env_var
-            }));
+            // Helper function to detect provider from API key
+            function detectProviderFromKey(key) {
+                if (!key) return 'Unknown';
+                if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                if (key.startsWith('gsk_')) return 'Groq';
+                if (key.includes('deepseek')) return 'DeepSeek';
+                return 'Unknown';
+            }
+            
+            const processedData = (data || []).map(async (row) => {
+                const detectedProvider = detectProviderFromKey(row.key);
+                
+                // If the stored provider doesn't match the detected provider, update it
+                if (detectedProvider !== 'Unknown' && row.provider !== detectedProvider) {
+                    try {
+                        await updateGlobalAPIKeyProviderInSupabase(row.id, detectedProvider);
+                        console.log(`[Supabase] Corrected provider for key ${row.key.substring(0, 10)}... from '${row.provider}' to '${detectedProvider}'`);
+                        row.provider = detectedProvider; // Update the row for immediate use
+                    } catch (updateErr) {
+                        console.warn(`[Supabase] Failed to update provider for key ${row.key.substring(0, 10)}...:`, updateErr.message);
+                    }
+                }
+                
+                return {
+                    key: row.key,
+                    provider: row.provider,
+                    status: row.status,
+                    addedAt: row.added_at,
+                    updatedAt: row.updated_at,
+                    note: row.note,
+                    vercelEnvVar: row.vercel_env_var
+                };
+            });
+            
+            // Wait for all async operations to complete
+            return await Promise.all(processedData);
         } catch (err) {
             console.error('[Supabase] Exception reading global API keys:', err.message);
             return null;
@@ -2665,6 +2694,34 @@ async function updateGlobalAPIKeyStatusInSupabase(keyId, status, note = '') {
     }
 }
 
+/**
+ * Helper to update Global API Key provider in Supabase (for correction)
+ */
+async function updateGlobalAPIKeyProviderInSupabase(keyId, provider) {
+    if (!USE_SUPABASE || !supabase) {
+        throw new Error('Supabase not configured');
+    }
+    
+    try {
+        const { error } = await supabase
+            .from('global_api_keys')
+            .update({
+                provider: provider,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', keyId);
+        
+        if (error) {
+            throw new Error('Provider update failed: ' + error.message);
+        }
+        
+        console.log('[Supabase] Global API key provider updated, ID:', keyId, 'provider:', provider);
+    } catch (err) {
+        console.error('[Supabase] Error updating global API key provider:', err.message);
+        throw err;
+    }
+}
+
 app.get('/api/admin/global-api-keys', async (req, res) => {
     try {
         let globalKeys = [];
@@ -2697,15 +2754,39 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
             }
 
             if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
-                globalKeys = db.globalSettings.apiKeys.map((entry, idx) => ({
-                    ...entry,
-                    addedAt: entry.addedAt || 'Database JSON',
-                    isGlobal: true,
-                    isFromDB: true,
-                    quotaInfo: entry.status === 'exhausted'
-                        ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
-                        : `${entry.provider}: Tersimpan di Database JSON`
-                }));
+                // Helper function to detect provider from API key
+                function detectProviderFromKey(key) {
+                    if (!key) return 'Unknown';
+                    if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                    if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                    if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                    if (key.startsWith('gsk_')) return 'Groq';
+                    if (key.includes('deepseek')) return 'DeepSeek';
+                    return 'Unknown';
+                }
+                
+                globalKeys = db.globalSettings.apiKeys.map((entry, idx) => {
+                    const detectedProvider = detectProviderFromKey(entry.key);
+                    
+                    // If the stored provider doesn't match the detected provider, update it in database
+                    if (detectedProvider !== 'Unknown' && entry.provider !== detectedProvider) {
+                        entry.provider = detectedProvider;
+                        console.log(`[Database] Corrected provider for key ${entry.key.substring(0, 10)}... from '${entry.provider}' to '${detectedProvider}'`);
+                    }
+                    
+                    return {
+                        ...entry,
+                        addedAt: entry.addedAt || 'Database JSON',
+                        isGlobal: true,
+                        isFromDB: true,
+                        quotaInfo: entry.status === 'exhausted'
+                            ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                            : `${entry.provider}: Tersimpan di Database JSON`
+                    };
+                });
+                
+                // Save the corrected database back
+                await writeDB(db);
             }
         }
 
