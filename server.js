@@ -381,6 +381,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         } else if (normalized.options.length > 4) {
             // Potong jika lebih dari 4 opsi
             normalized.options = normalized.options.slice(0, 4);
+            console.warn('[normalizeQuestion] Trimmed multiple options to 4 items and removed extras beyond D');
         }
 
         let corr = [];
@@ -415,6 +416,9 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         if (!Array.isArray(normalized.options)) normalized.options = [];
         if (normalized.options.length < 4) {
             while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
+        } else if (normalized.options.length > 4) {
+            normalized.options = normalized.options.slice(0, 4);
+            console.warn('[normalizeQuestion] Trimmed single options to 4 items and removed extras beyond D');
         }
 
         if (Array.isArray(normalized.correct)) {
@@ -1725,6 +1729,96 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
     
     const textSet = new Set();  // Track unique questions
+    
+    // STRATEGY 0: Check for AI structured format with category headers
+    if (htmlText.includes(' Soal)') && htmlText.includes('[') && htmlText.includes('{')) {
+        console.log(`[AI Bank Soal] Detected AI structured format, attempting direct JSON extraction...`);
+        
+        try {
+            // Extract all JSON arrays from the text
+            const jsonArrays = [];
+            const lines = htmlText.split('\n');
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                
+                // Skip category headers
+                if (trimmed.includes(' Soal)') && !trimmed.includes('[') && !trimmed.includes('{')) {
+                    continue;
+                }
+                
+                // Look for JSON array start
+                if (trimmed.startsWith('[') && jsonArrays.length === 0) {
+                    let currentArray = trimmed;
+                    let braceCount = 0;
+                    let inString = false;
+                    let escapeNext = false;
+                    
+                    // Parse character by character to find complete JSON array
+                    for (let i = 0; i < currentArray.length; i++) {
+                        const char = currentArray[i];
+                        
+                        if (escapeNext) {
+                            escapeNext = false;
+                            continue;
+                        }
+                        
+                        if (char === '\\') {
+                            escapeNext = true;
+                            continue;
+                        }
+                        
+                        if (char === '"' && !escapeNext) {
+                            inString = !inString;
+                            continue;
+                        }
+                        
+                        if (!inString) {
+                            if (char === '[') braceCount++;
+                            else if (char === ']') braceCount--;
+                            
+                            if (braceCount === 0 && char === ']') {
+                                // Found complete array
+                                try {
+                                    const parsed = JSON.parse(currentArray);
+                                    if (Array.isArray(parsed)) {
+                                        jsonArrays.push(...parsed);
+                                        console.log(`[AI Bank Soal] Extracted ${parsed.length} questions from AI format`);
+                                    }
+                                } catch (e) {
+                                    console.warn(`[AI Bank Soal] Failed to parse JSON array: ${e.message}`);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Process extracted questions
+            if (jsonArrays.length > 0) {
+                console.log(`[AI Bank Soal] Strategy 0: Extracted ${jsonArrays.length} questions from AI structured format`);
+                
+                for (const q of jsonArrays) {
+                    if (q.text && q.text.trim()) {
+                        const normalized = normalizeQuestion(q, mapel, fase);
+                        if (normalized.text && normalized.text.trim()) {
+                            const textKey = normalized.text.toLowerCase().trim();
+                            if (!textSet.has(textKey)) {
+                                textSet.add(textKey);
+                                questions.push(normalized);
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`[AI Bank Soal] Strategy 0 result: ${questions.length} valid questions`);
+                return questions; // Return early if we successfully extracted from AI format
+            }
+        } catch (error) {
+            console.warn(`[AI Bank Soal] Strategy 0 failed: ${error.message}`);
+        }
+    }
     
     // Helper function to detect question type
     function detectQuestionType(questionText, options) {
@@ -3833,6 +3927,10 @@ KRITERIA KUALITAS:
 }
 CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. Hanya buat SATU soal yang memiliki 3 pernyataan berhubungan dalam "subQuestions" field. Field "options" diisi untuk kompatibilitas frontend.`;
 
+    prompt += `
+PENTING: Untuk tipe single dan multiple, gunakan HANYA 4 opsi A, B, C, D. Jangan sertakan opsi E.
+Jika AI menghasilkan opsi E, keluarkan opsi E dan gunakan hanya opsi A-D.
+
     prompt += `\n\nFormat Output: WAJIB JSON array valid yang berisi PERSIS ${actualJumlah} soal, tanpa penjelasan atau teks lain di luar JSON.
 VALIDASI ARRAY: Array harus memiliki TEPAT ${actualJumlah} elemen, tidak boleh kurang. Periksa kembali sebelum submit.
 
@@ -4392,10 +4490,11 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                     // Filter invalid
                     const validQuestions = deduplicatedQuestions.filter((q, idx) => {
                         const textValid = q.text && q.text.trim().length >= 3;
-                        const optionsValid = q.type === 'text' || (Array.isArray(q.options) && q.options.length >= 4);
+                        const optionsValid = q.type === 'text' || q.type === 'tf' || (Array.isArray(q.options) && q.options.length >= 4);
+                        const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length >= 1);
                         
-                        if (!textValid || !optionsValid) {
-                            console.warn(`[AI Bank Soal] Filtering out [${idx + 1}]: text=${textValid}, options=${optionsValid}`);
+                        if (!textValid || !optionsValid || !tfValid) {
+                            console.warn(`[AI Bank Soal] Filtering out [${idx + 1}]: text=${textValid}, options=${optionsValid}, tf=${tfValid}, type=${q.type}`);
                             return false;
                         }
                         return true;
@@ -4491,8 +4590,9 @@ OUTPUT:`;
                             // Validate
                             const validQuestions = deduplicatedQuestions.filter(q => {
                                 const textValid = q.text && q.text.trim().length >= 3;
-                                const optionsValid = q.type === 'text' || (Array.isArray(q.options) && q.options.length >= 4);
-                                return textValid && optionsValid;
+                                const optionsValid = q.type === 'text' || q.type === 'tf' || (Array.isArray(q.options) && q.options.length >= 4);
+                                const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length >= 1);
+                                return textValid && optionsValid && tfValid;
                             });
                             
                             db.questions = [...db.questions, ...validQuestions];
