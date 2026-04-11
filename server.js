@@ -1899,17 +1899,9 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         return 'single';
     }
     
-    // Pre-scan for category headers to set types
-    const lines = htmlText.split('\n');
-    for (const line of lines) {
-        const trimmed = line.trim();
-        // Look for category headers like "Pilihan Ganda (5 Soal)" or "A. Pilihan Ganda (Pilihlah satu jawaban yang paling tepat!)"
-        if (trimmed.match(/^(A\.|B\.|C\.|D\.|E\.|F\.|G\.|H\.|I\.|J\.|K\.|L\.|M\.|N\.|O\.|P\.|Q\.|R\.|S\.|T\.|U\.|V\.|W\.|X\.|Y\.|Z\.|\d+\.|\-\s*)?(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching)/i) ||
-            trimmed.match(/(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching).*Soal\)/i)) {
-            currentType = detectTypeFromHeader(trimmed);
-            console.log(`[AI Bank Soal] Detected category header: "${trimmed.substring(0, 50)}..." -> type: ${currentType}`);
-        }
-    }
+    // Removed global pre-scan for category headers to prevent currentType corruption.
+    // Category detection will be handled localized within parsing strategies.
+
     
     // STRATEGY 1: Parse from HTML structure (ol/li with nested options)
     console.log(`[AI Bank Soal] Strategy 1: Parsing HTML structure...`);
@@ -1984,24 +1976,31 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 }
             }
             
-            // Accept questions with at least 2 options (for TF) or 4 options (for single/multiple)
-            // Use currentType from category header, but allow override for TF detection
-            let questionType = currentType; // Use type from category header
-            let minOptions = 4; // default
+            // Determine question type dynamically
+            let questionType = currentType === 'tf' ? 'tf' : 'single'; // Respect localized header if set, otherwise default
+            let minOptions = 4;
             
-            // Special handling for TF questions that might be detected from content
-            if (questionType !== 'tf' && options.length >= 2) {
-                const detectedType = detectQuestionType(questionText, options);
-                if (detectedType === 'tf') {
-                    questionType = 'tf';
-                    minOptions = 2;
-                } else if (detectedType === 'text') {
-                    questionType = 'text';
-                    minOptions = 0;
-                }
-            } else if (questionType === 'tf') {
+            const detectedType = detectQuestionType(questionText, options);
+            
+            // Priority 1: If detected as single/multiple and has 4 options, use that
+            if (options.length >= 4 && (detectedType === 'single' || detectedType === 'multiple')) {
+                questionType = detectedType;
+                minOptions = 4;
+            } else if (detectedType === 'tf' || (questionType === 'tf' && options.length >= 2)) {
+                questionType = 'tf';
                 minOptions = 2;
-            } else if (questionType === 'text') {
+            } else if (detectedType === 'text') {
+                questionType = 'text';
+                minOptions = 0;
+            }
+            // Auto-fallback: if it's 'tf' but doesn't have 2 options, it's not tf
+            if (questionType === 'tf' && options.length < 2) {
+                questionType = 'text';
+                minOptions = 0;
+            }
+            // Auto-fallback: if it's 'single' but has < 4 options, it might be text
+            if (questionType === 'single' && options.length < 4) {
+                questionType = 'text';
                 minOptions = 0;
             }
             
@@ -2063,16 +2062,16 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const options = extractOptionsFromText(context);
                 
                 if (options.length >= 2) { // Allow TF questions with 2 options
-                    let questionType = currentType; // Use type from category header
+                    // Determine question type dynamically for Strategy 2
+                    let questionType = 'single';
+                    const detectedType = detectQuestionType(questionText, options);
                     
-                    // Special handling for TF detection
-                    if (questionType !== 'tf') {
-                        const detectedType = detectQuestionType(questionText, options);
-                        if (detectedType === 'tf') {
-                            questionType = 'tf';
-                        } else if (detectedType === 'text') {
-                            questionType = 'text';
-                        }
+                    if (options.length >= 4) {
+                        questionType = (detectedType === 'multiple') ? 'multiple' : 'single';
+                    } else if (detectedType === 'tf' && options.length >= 2) {
+                        questionType = 'tf';
+                    } else {
+                        questionType = detectedType;
                     }
                     
                     textSet.add(questionText);
