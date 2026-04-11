@@ -3930,6 +3930,7 @@ CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. 
     prompt += `
 PENTING: Untuk tipe single dan multiple, gunakan HANYA 4 opsi A, B, C, D. Jangan sertakan opsi E.
 Jika AI menghasilkan opsi E, keluarkan opsi E dan gunakan hanya opsi A-D.
+`;
 
     prompt += `\n\nFormat Output: WAJIB JSON array valid yang berisi PERSIS ${actualJumlah} soal, tanpa penjelasan atau teks lain di luar JSON.
 VALIDASI ARRAY: Array harus memiliki TEPAT ${actualJumlah} elemen, tidak boleh kurang. Periksa kembali sebelum submit.
