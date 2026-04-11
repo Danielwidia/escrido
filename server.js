@@ -3699,63 +3699,8 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
             promptText += `\nPenting: Karena fitur 'Pisahkan Halaman' diaktifkan, Anda WAJIB menyisipkan tag HTML ini: <div style="page-break-before: always;"></div> tepat sebelum judul "KUNCI JAWABAN" dimulai.`;
         }
 
-        if (extraData?.simpanBank) {
-            promptText += `\n\n[INSTRUKSI KRITIS - WAJIB DIIKUTI]
-UNTUK MENYIMPAN SOAL KE DATABASE, ANDA HARUS MENYERTAKAN TAG SCRIPT JSON DI AKHIR DOKUMEN.
-
-FORMAT YANG HARUS DIPATUHI PERSIS:
-<script id="ai-json-data" type="application/json">
-[
-  {
-    "text": "Pertanyaan 1?",
-    "options": ["A", "B", "C", "D"],
-    "correct": 0,
-    "type": "single",
-    "mapel": "${mapel}",
-    "rombel": "${fase}"
-  }
-]
-</script>
-
-ATURAN WAJIB:
-1. TAG SCRIPT HARUS BERADA DI BARIS PALING AKHIR DOKUMEN
-2. ID HARUS BERADA PERSIS "ai-json-data"
-3. TYPE HARUS BERADA PERSIS "application/json"
-4. ISI HARUS ARRAY JSON VALID
-5. SETIAP SOAL HARUS PUNYA: text, options, correct, type, mapel, rombel
-
-JIKA ANDA TIDAK MENYERTAKAN TAG INI, SOAL TIDAK AKAN TERSIMPAN KE DATABASE!
-
-CONTOH LENGKAP UNTUK 3 SOAL:
-<script id="ai-json-data" type="application/json">
-[
-  {
-    "text": "Apa warna langit pada siang hari?",
-    "options": ["Merah", "Biru", "Hijau", "Kuning"],
-    "correct": 1,
-    "type": "single",
-    "mapel": "${mapel}",
-    "rombel": "${fase}"
-  },
-  {
-    "text": "Manakah yang termasuk bilangan prima?",
-    "options": ["1", "2", "4", "6"],
-    "correct": 1,
-    "type": "single",
-    "mapel": "${mapel}",
-    "rombel": "${fase}"
-  },
-  {
-    "text": "Berapakah hasil 5 + 3?",
-    "options": ["6", "7", "8", "9"],
-    "correct": 2,
-    "type": "single",
-    "mapel": "${mapel}",
-    "rombel": "${fase}"
-  }
-]
-</script>`;
-        }
+        // NOTE: simpanBank JSON extraction is now handled via a second AI call AFTER
+        // the HTML document is generated. No extra instructions needed in the main prompt.
     } else if (type === 'ppt-pintar') {
         docType = `Presentasi PowerPoint Pintar`;
         promptText = `Buatkan rancangan presentasi PowerPoint yang sangat rapi, modern, dan menarik untuk mata pelajaran ${mapel} dengan topik "${extraData?.topikPPT || topik}". Target audiens: ${extraData?.audiensPPT || 'siswa'}. Gaya desain: ${extraData?.gayaPPT || 'modern'}. Jumlah slide: ${extraData?.jumlahSlide || '10'} slide.
@@ -3963,73 +3908,69 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
         console.log(`===============================\n\n`);
 
         if (shouldSaveToBank) {
-            console.log(`[AI Bank Soal] === FORCE SAVE MODE ENABLED ===`);
-            console.log(`[AI Bank Soal] Will attempt to save questions regardless of AI compliance`);
+            console.log(`[AI Bank Soal] === TWO-PASS EXTRACTION MODE ===`);
+            console.log(`[AI Bank Soal] Making dedicated second AI call to extract questions as JSON...`);
 
-            // FORCE APPROACH: Always try to extract/create JSON from HTML response
-            let jsonSource = null;
+            // Build extraction prompt from the generated HTML document
+            const extractionPrompt = `Berikut adalah dokumen soal ujian dalam format HTML:
 
-            // First: Try to find existing JSON/script tag
-            jsonSource = extractAiJsonData(text);
-            if (jsonSource) {
-                console.log(`[AI Bank Soal] Found existing JSON/script tag, using it`);
-            } else {
-                console.log(`[AI Bank Soal] No JSON/script tag found, attempting to parse from HTML...`);
+${text}
 
-                // Force parse from HTML content
-                try {
-                    const parsedFromHtml = forceParseQuestionsFromHtml(text, mapel, fase);
-                    if (parsedFromHtml && parsedFromHtml.length > 0) {
-                        jsonSource = JSON.stringify(parsedFromHtml);
-                        console.log(`[AI Bank Soal] Successfully force-parsed ${parsedFromHtml.length} questions from HTML`);
-                        // Add the JSON to response for consistency
-                        text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
-                    } else {
-                        bankSaveError = 'Tidak dapat mengekstrak soal dari respons AI. Respons tidak mengandung format soal yang dapat diparse.';
-                        console.log(`[AI Bank Soal] Force parsing failed: ${bankSaveError}`);
-                    }
-                } catch (e) {
-                    bankSaveError = `Error parsing HTML: ${e.message}`;
-                    console.log(`[AI Bank Soal] Force parsing error: ${bankSaveError}`);
-                }
-            }
+Tugasmu: Ekstrak SEMUA soal dari dokumen HTML di atas dan ubah menjadi JSON array yang valid.
+Output HANYA JSON array, tanpa teks penjelasan, tanpa markdown, tanpa tag HTML.
 
-            if (jsonSource && !bankSaveError) {
-                console.log(`[AI Bank Soal] JSON source preview: ${jsonSource.substring(0, 200)}...`);
-                try {
-                    const cleanedJson = cleanAIResponse(jsonSource)
-                        .replace(/,(\s*[}\]])/g, '$1')
-                        .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+Format setiap soal:
+- type "single" (pilihan ganda): {"text":"...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
+- type "text" (uraian): {"text":"...","correct":"kunci jawaban singkat","type":"text","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
+- type "tf" (benar/salah): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"},{"statement":"...","answer":"Salah"},{"statement":"...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${fase}"}
+- type "multiple" (PG kompleks): {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
 
-                    console.log(`[AI Bank Soal] Cleaned JSON preview: ${cleanedJson.substring(0, 200)}...`);
-                    parsedQuestions = JSON.parse(cleanedJson);
+ATURAN:
+1. Untuk "correct" pada single: indeks integer jawaban benar (0=A, 1=B, 2=C, 3=D)
+2. Setiap soal WAJIB punya field "text" berisi teks pertanyaan
+3. Output HANYA array JSON, mulai dari [ dan diakhiri ]
+4. Sertakan SEMUA soal yang ada dalam dokumen`;
+
+            try {
+                const extractResult = await callAI(extractionPrompt, req);
+                let extractText = (extractResult.text || '').trim();
+
+                // Clean markdown wrappers
+                extractText = extractText
+                    .replace(/^```(?:json)?\s*/i, '')
+                    .replace(/\s*```\s*$/i, '')
+                    .trim();
+
+                console.log(`[AI Bank Soal] Extraction response length: ${extractText.length}`);
+                console.log(`[AI Bank Soal] Extraction preview: ${extractText.substring(0, 300)}...`);
+
+                // Find JSON array in response
+                const arrayStart = extractText.indexOf('[');
+                const arrayEnd = extractText.lastIndexOf(']');
+                if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+                    const jsonStr = extractText.substring(arrayStart, arrayEnd + 1);
+                    parsedQuestions = JSON.parse(jsonStr);
+
                     if (!Array.isArray(parsedQuestions)) {
-                        throw new Error('JSON bukan array pertanyaan.');
+                        throw new Error('Hasil ekstraksi bukan JSON array.');
                     }
 
-                    console.log(`[AI Bank Soal] Parsed ${parsedQuestions.length} questions successfully`);
+                    console.log(`[AI Bank Soal] Successfully extracted ${parsedQuestions.length} questions via second AI call`);
 
-                    // Tambahkan ke database
+                    // Normalize and save to database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
-                    // Inject basic standard properties with unique ID and timestamps using centralized function
                     parsedQuestions = parsedQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
                     db.questions = [...db.questions, ...parsedQuestions];
                     await writeDB(db);
-                    console.log(`[AI Bank Soal] Successfully saved ${parsedQuestions.length} questions to database.`);
-
-                    // Remove the JSON script block from HTML render if it exists
-                    text = text.replace(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>[\s\S]*?<\/script>/i, '');
-                } catch (parseError) {
-                    bankSaveError = parseError.message || String(parseError);
-                    console.error('[AI Bank Soal] Failed to parse generated JSON:', bankSaveError);
-                    console.error('[AI Bank Soal] Raw JSON source:', jsonSource.substring(0, 500));
+                    console.log(`[AI Bank Soal] ✅ Successfully saved ${parsedQuestions.length} questions to database.`);
+                } else {
+                    throw new Error('Tidak ditemukan JSON array dalam respons ekstraksi.');
                 }
-            } else {
-                bankSaveError = 'Tidak menemukan tag <script id="ai-json-data"> dalam respons AI.';
-                console.warn('[AI Bank Soal] simpanBank=true but AI response did not include valid ai-json-data JSON payload.');
-                console.warn('[AI Bank Soal] AI response preview (last 1000 chars):', text.substring(Math.max(0, text.length - 1000)));
-                console.warn('[AI Bank Soal] AI response preview (first 500 chars):', text.substring(0, 500));
+            } catch (extractErr) {
+                bankSaveError = extractErr.message || String(extractErr);
+                console.error(`[AI Bank Soal] ❌ Second-pass extraction failed: ${bankSaveError}`);
+                console.error(`[AI Bank Soal] HTML preview (first 500): ${text.substring(0, 500)}`);
             }
         }
 
