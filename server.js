@@ -3686,7 +3686,8 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
 
         // Cek apakah ada script JSON Bank Soal
         let parsedQuestions = null;
-        if (extraData?.simpanBank) {
+        const shouldSaveToBank = extraData && (extraData.simpanBank === true || String(extraData.simpanBank).toLowerCase() === 'true');
+        if (shouldSaveToBank) {
             const match = text.match(/<script id="ai-json-data"[^>]*>([\s\S]*?)<\/script>/i);
             if (match && match[1]) {
                 try {
@@ -3705,11 +3706,13 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                 } catch (parseError) {
                     console.error('[AI Bank Soal] Failed to parse generated JSON:', parseError);
                 }
+            } else {
+                console.warn('[AI Bank Soal] simpanBank=true but AI response did not include valid <script id="ai-json-data"> JSON payload.');
             }
         }
 
         console.log(`[/api/generate-admin-doc] Success for ${docType}`);
-        return res.json({ ok: true, html: text, savedToBankSoal: !!parsedQuestions });
+        return res.json({ ok: true, html: text, savedToBankSoal: !!parsedQuestions, requestedSaveToBankSoal: shouldSaveToBank });
     } catch (e) {
         console.error('[/api/generate-admin-doc] Fatal error:', e.message);
         const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);

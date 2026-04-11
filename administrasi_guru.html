@@ -1155,8 +1155,10 @@
                 document.getElementById('state-result').classList.remove('hidden');
                 document.getElementById('editor-content').innerHTML = kopHTML + data.html;
                 
-                if (data.savedToBankSoal || (activeTab === 'soal-jawaban' && extraData.simpanBank)) {
+                if (data.savedToBankSoal) {
                     showToast('Dokumen Berhasil! Soal otomatis tersimpan ke Bank Soal.');
+                } else if (data.requestedSaveToBankSoal || (activeTab === 'soal-jawaban' && extraData.simpanBank)) {
+                    showToast('Dokumen berhasil dibuat, tetapi soal tidak tersimpan ke Bank Soal. Silakan cek output AI dan coba lagi.', true);
                 } else {
                     showToast('Dokumen Administrasi Berhasil Disusun!');
                 }
