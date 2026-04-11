@@ -1541,18 +1541,64 @@ function extractOptionsFromText(text) {
     const options = [];
     if (!text || typeof text !== 'string') return options;
 
-    const optionPattern = /([A-Da-d])[\.|\)]\s*([\s\S]*?)(?=\s*[A-Da-d][\.|\)]\s*|$)/g;
-    let match;
-    while ((match = optionPattern.exec(text)) !== null) {
-        const label = match[1].toUpperCase();
-        const optionText = match[2].trim();
-        if (optionText) {
-            options.push(optionText);
+    // Try multiple patterns for extracting options
+    const patterns = [
+        // Pattern 1: A. B. C. D. or a. b. c. d.
+        /([A-Da-d])[\.\)]\s*([\s\S]*?)(?=\s*[A-Da-d][\.\)]\s*|$)/g,
+        // Pattern 2: A) B) C) D) format
+        /([A-D])\)\s*([\s\S]*?)(?=\s*[A-D]\)|$)/gi,
+        // Pattern 3: (A) (B) (C) (D) format
+        /\(([A-D])\)\s*([\s\S]*?)(?=\s*\([A-D]\)|$)/gi,
+        // Pattern 4: *A. *B. *C. *D. (bullet format)
+        /[\*•]\s*([A-D])[\.\)]\s*([\s\S]*?)(?=\s*[\*•]\s*[A-D][\.\)]|$)/gi,
+        // Pattern 5: Just plain text separated by newline/semicolon
+        /([^;\n]+)(?:[;\n]|$)/g
+    ];
+
+    for (const pattern of patterns) {
+        let match;
+        let patternOptions = [];
+        while ((match = pattern.exec(text)) !== null && patternOptions.length < 4) {
+            let optText = '';
+            
+            // Extract the text portion (could be in group 2 or 1 depending on pattern)
+            if (match[2]) {
+                optText = match[2].trim();
+            } else if (match[1] && !/^[A-D]$/i.test(match[1])) {
+                // If group 1 is not a letter, it's the option text itself
+                optText = match[1].trim();
+            }
+            
+            // Clean the option text
+            optText = optText
+                .replace(/<[^>]*>/g, '')  // Remove HTML tags
+                .replace(/&nbsp;/g, ' ')  // HTML entities
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#?\w+;/g, '')  // Other HTML entities
+                .replace(/\n+/g, ' ')     // Replace newlines with space
+                .trim();
+            
+            // Only add if it's meaningful text (> 2 chars and not just numbers/symbols)
+            if (optText && optText.length > 2 && !/^[\s\d\W]*$/.test(optText)) {
+                // Check if it's already in options (to avoid duplicates)
+                if (!patternOptions.includes(optText)) {
+                    patternOptions.push(optText);
+                }
+            }
         }
-        if (options.length >= 4) break;
+        
+        if (patternOptions.length >= 4) {
+            return patternOptions.slice(0, 4);  // Found and return
+        } else if (patternOptions.length > 0) {
+            // Save partial matches and continue trying other patterns
+            options.push(...patternOptions);
+        }
     }
 
-    return options;
+    return options.slice(0, 4);  // Return best effort
 }
 
 /**
@@ -1732,34 +1778,6 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 console.log(`[AI Bank Soal] Successfully created question ${questions.length} with ${options.length} options`);
             } else {
                 console.log(`[AI Bank Soal] Question has only ${options.length} options, skipping: "${questionText.substring(0, 30)}..."`);
-            }
-        }
-    } catch (e) {
-        console.warn(`[AI Bank Soal] HTML structure parsing failed: ${e.message}`);
-    }
-                const inlineMatches = liContent.match(inlinePattern);
-                if (inlineMatches) {
-                    for (const opt of inlineMatches) {
-                        const cleaned = opt.replace(/^[A-D]\s*[\.\)]/, '').trim();
-                        if (cleaned && options.length < 4) {
-                            options.push(cleaned);
-                        }
-                    }
-                }
-            }
-            
-            if (options.length >= 4) {
-                const question = {
-                    text: questionText,
-                    options: options.slice(0, 4),
-                    correct: 0,
-                    type: 'single',
-                    mapel: mapel,
-                    rombel: fase,
-                    level: 'sedang'
-                };
-                questions.push(question);
-                console.log(`[AI Bank Soal] Parsed question ${questions.length}: ${questionText.substring(0, 50)}...`);
             }
         }
     } catch (e) {
@@ -4062,26 +4080,35 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
             console.log(`[AI Bank Soal] Making dedicated second AI call to extract questions as JSON...`);
 
             // Build extraction prompt from the generated HTML document
+            // First, count questions in the HTML for validation
+            const htmlQuestionMatches = text.match(/<li[^>]*>/gi) || [];
+            const estimatedQuestionCount = Math.max(htmlQuestionMatches.length, 
+                (text.match(/^\d+\./gm) || []).length);
+            
             const extractionPrompt = `Berikut adalah dokumen soal ujian dalam format HTML:
 
 ${text}
 
-Tugasmu: Ekstrak SEMUA soal dari dokumen HTML di atas dan ubah menjadi JSON array yang valid.
-Output HANYA JSON array, tanpa teks penjelasan, tanpa markdown, tanpa tag HTML.
+LANGKAH 1: Hitung jumlah soal total dalam dokumen. Jumlahnya: ${estimatedQuestionCount} soal (atau lebih).
+LANGKAH 2: Ekstrak SEMUA soal tersebut tanpa terkecuali dan ubah menjadi JSON array yang valid.
+Output HANYA JSON array valid, tanpa penjelasan, markdown, atau tag HTML.
 
 Format setiap soal HARUS lengkap:
-- type "single" (pilihan ganda): {"text":"...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
-- type "text" (uraian): {"text":"...","correct":"kunci jawaban singkat","type":"text","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
-- type "tf" (benar/salah): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"},{"statement":"...","answer":"Salah"}],"correct":["Benar","Salah"],"mapel":"${mapel}","rombel":"${fase}"}
-- type "multiple" (PG kompleks): {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
+- single (PG): {"text":"...","options":["A","B","C","D"],"correct":0,"type":"single"}
+- text (uraian): {"text":"...","correct":"jawaban singkat","type":"text"}
+- tf (B/S): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"}]}
+- multiple: {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple"}
 
-ATURAN SANGAT PENTING:
-1. Untuk "correct" pada single: indeks integer jawaban benar (0=A, 1=B, 2=C, 3=D)
-2. Setiap soal WAJIB punya field "text", "type", dan field lain sesuai typenya
-3. Output HANYA array JSON, mulai dari [ dan diakhiri ]
-4. Pastikan setiap object soal lengkap dan valid JSON
-5. KRITIS: Jika teks mengandung tanda kutip ganda ("), WAJIB diganti dengan tanda kutip tunggal (') atau di-escape (\\"). Jangan sampai merusak struktur JSON!
-6. JANGAN potong output - sertakan semua soal lengkap`;
+ATURAN MUTLAK:
+1. SEMUA soal dari dokumen HARUS ada dalam output, tidak boleh terlewat atau terpotong
+2. Array WAJIB punya ${estimatedQuestionCount}+ soal dengan semua field lengkap
+3. Setiap soal: "text" (wajib), "correct" (wajib), "type" (wajib), "options" (untuk single/multiple)
+4. Untuk single: correct = integer (0=A, 1=B, 2=C, 3=D)
+5. Kuip ganda dalam text: ganti single quote (') atau escape (\\")
+6. VALIDASI: Sebelum submit, pastikan array memiliki ${estimatedQuestionCount}+ soal valid
+7. Jika perlu memotong, prioritaskan soal awal supaya tidak ada gap
+
+OUTPUT MULAI DENGAN [ DAN DIAKHIRI ]:`;
 
             try {
                 const extractResult = await callAI(extractionPrompt, req);
@@ -4218,34 +4245,50 @@ ATURAN SANGAT PENTING:
                     }
 
                     console.log(`[AI Bank Soal] Successfully extracted ${parsedQuestions.length} questions via second AI call`);
+                    console.log(`[AI Bank Soal] === DETAILED EXTRACTION REPORT ===`);
+                    console.log(`[AI Bank Soal] Total extracted: ${parsedQuestions.length}`);
+                    parsedQuestions.forEach((q, idx) => {
+                        console.log(`  [${idx + 1}] Type: ${q.type}, Text: "${q.text?.substring(0, 40)}...", Options: ${q.options?.length || 'N/A'}`);
+                    });
 
                     // Normalize and save to database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
                     console.log(`[AI Bank Soal] Before normalization: ${parsedQuestions.length} questions`);
-                    parsedQuestions = parsedQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
+                    
+                    parsedQuestions = parsedQuestions.map((q, idx) => {
+                        const normalized = normalizeQuestion(q, mapel, fase, req.teacherId);
+                        console.log(`[AI Bank Soal] Normalized [${idx + 1}]: Type changed to "${normalized.type}", Options: ${normalized.options?.length || 'N/A'}`);
+                        return normalized;
+                    });
                     console.log(`[AI Bank Soal] After normalization: ${parsedQuestions.length} questions`);
                     
-                    // Filter out invalid questions
-                    const validQuestions = parsedQuestions.filter(q => {
-                        if (!q.text || q.text.trim().length < 5) {
-                            console.warn(`[AI Bank Soal] Filtering out question with invalid text: "${q.text?.substring(0, 50)}..."`);
+                    // Filter out invalid questions - RELAXED validation
+                    const validQuestions = parsedQuestions.filter((q, idx) => {
+                        const textValid = q.text && q.text.trim().length >= 3;
+                        const optionsValid = q.type === 'text' || (Array.isArray(q.options) && q.options.length >= 4);
+                        const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length > 0);
+                        
+                        if (!textValid) {
+                            console.warn(`[AI Bank Soal] ❌ Filtering out [${idx + 1}]: Invalid text (${q.text?.length || 0} chars)`);
                             return false;
                         }
-                        if (q.type === 'single' || q.type === 'multiple') {
-                            if (!Array.isArray(q.options) || q.options.length < 4) {
-                                console.warn(`[AI Bank Soal] Filtering out question with insufficient options: ${q.options?.length || 0} options`);
-                                return false;
-                            }
-                        }
-                        if (q.type === 'tf' && (!Array.isArray(q.subQuestions) || q.subQuestions.length < 3)) {
-                            console.warn(`[AI Bank Soal] Filtering out TF question with insufficient subQuestions: ${q.subQuestions?.length || 0} subQuestions`);
+                        if (!optionsValid) {
+                            console.warn(`[AI Bank Soal] ❌ Filtering out [${idx + 1}]: Type=${q.type}, Options=${q.options?.length || 0} (need 4+)`);
                             return false;
                         }
+                        if (!tfValid) {
+                            console.warn(`[AI Bank Soal] ❌ Filtering out [${idx + 1}]: TF type but ${q.subQuestions?.length || 0} subQuestions`);
+                            return false;
+                        }
+                        console.log(`[AI Bank Soal] ✅ Keeping [${idx + 1}]: "${q.text.substring(0, 40)}..."`);
                         return true;
                     });
                     
-                    console.log(`[AI Bank Soal] After validation: ${validQuestions.length} valid questions (filtered ${parsedQuestions.length - validQuestions.length})`);
+                    console.log(`[AI Bank Soal] === VALIDATION SUMMARY ===`);
+                    console.log(`[AI Bank Soal] Total extracted: ${parsedQuestions.length}`);
+                    console.log(`[AI Bank Soal] Valid questions: ${validQuestions.length}`);
+                    console.log(`[AI Bank Soal] Filtered out: ${parsedQuestions.length - validQuestions.length}`);
                     
                     db.questions = [...db.questions, ...validQuestions];
                     await writeDB(db);
