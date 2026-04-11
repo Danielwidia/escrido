@@ -323,9 +323,9 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
                 // Pastikan tepat 3 pernyataan
                 normalized.subQuestions = normalized.subQuestions.slice(0, 3);
                 while (normalized.subQuestions.length < 3) {
-                    normalized.subQuestions.push({ 
-                        statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
-                        answer: 'Benar' 
+                    normalized.subQuestions.push({
+                        statement: `Pernyataan ${normalized.subQuestions.length + 1}`,
+                        answer: 'Benar'
                     });
                 }
                 // Pastikan correct array sesuai dengan subQuestions
@@ -348,9 +348,9 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         if (Array.isArray(normalized.subQuestions) && normalized.subQuestions.length !== 3) {
             normalized.subQuestions = normalized.subQuestions.slice(0, 3);
             while (normalized.subQuestions.length < 3) {
-                normalized.subQuestions.push({ 
-                    statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
-                    answer: 'Benar' 
+                normalized.subQuestions.push({
+                    statement: `Pernyataan ${normalized.subQuestions.length + 1}`,
+                    answer: 'Benar'
                 });
             }
         }
@@ -374,7 +374,7 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         }
     } else if (normalized.type === 'multiple') {
         if (!Array.isArray(normalized.options)) normalized.options = [];
-        
+
         // TEPAT 4 opsi (tidak boleh kurang, tidak boleh lebih)
         if (normalized.options.length < 4) {
             while (normalized.options.length < 4) normalized.options.push(`Opsi ${String.fromCharCode(65 + normalized.options.length)}`);
@@ -400,12 +400,12 @@ function normalizeQuestion(q, defaultMapel = '', defaultRombel = '', teacherId =
         }).filter(c => c !== null && c >= 0 && c < normalized.options.length);
 
         normalized.correct = [...new Set(normalized.correct)];
-        
+
         // MAKSIMAL 3 jawaban benar untuk multiple choice
         if (normalized.correct.length > 3) {
             normalized.correct = normalized.correct.slice(0, 3);
         }
-        
+
         if (normalized.correct.length === 0) normalized.correct = [0];
         if (normalized.correct.length === 1) {
             // Jika hanya 1 jawaban benar, ubah ke tipe single
@@ -1593,17 +1593,18 @@ function extractOptionsFromText(text) {
     const options = [];
     if (!text || typeof text !== 'string') return options;
 
-    // Try multiple patterns for extracting options
     const patterns = [
-        // Pattern 1: A. B. C. D. or a. b. c. d.
-        /([A-Da-d])[\.\)]\s*([\s\S]*?)(?=\s*[A-Da-d][\.\)]\s*|$)/g,
-        // Pattern 2: A) B) C) D) format
-        /([A-D])\)\s*([\s\S]*?)(?=\s*[A-D]\)|$)/gi,
-        // Pattern 3: (A) (B) (C) (D) format
+        // Pattern 1: (A) (B) (C) (D) format (most specific)
         /\(([A-D])\)\s*([\s\S]*?)(?=\s*\([A-D]\)|$)/gi,
-        // Pattern 4: *A. *B. *C. *D. (bullet format)
-        /[\*•]\s*([A-D])[\.\)]\s*([\s\S]*?)(?=\s*[\*•]\s*[A-D][\.\)]|$)/gi,
-        // Pattern 5: Just plain text separated by newline/semicolon
+        // Pattern 2: (1) (2) (3) (4) format
+        /\(([1-5])\)\s*([\s\S]*?)(?=\s*\([1-5]\)|$)/gi,
+        // Pattern 3: A) B) C) D) or A. B. C. D. format
+        /([A-Ea-e])[\.\)]\s*([\s\S]*?)(?=\s*[A-Ea-e][\.\)]\s*|$)/g,
+        // Pattern 4: 1. 2. 3. 4. format
+        /([1-5])[\.\)]\s*([\s\S]*?)(?=\s*[1-5][\.\)]\s*|$)/g,
+        // Pattern 5: *A. *B. *C. *D. (bullet format)
+        /[\*•]\s*([A-E])[\.\)]\s*([\s\S]*?)(?=\s*[\*•]\s*[A-E][\.\)]|$)/gi,
+        // Pattern 6: Just plain text separated by newline/semicolon
         /([^;\n]+)(?:[;\n]|$)/g
     ];
 
@@ -1612,15 +1613,15 @@ function extractOptionsFromText(text) {
         let patternOptions = [];
         while ((match = pattern.exec(text)) !== null && patternOptions.length < 4) {
             let optText = '';
-            
+
             // Extract the text portion (could be in group 2 or 1 depending on pattern)
             if (match[2]) {
                 optText = match[2].trim();
-            } else if (match[1] && !/^[A-D]$/i.test(match[1])) {
-                // If group 1 is not a letter, it's the option text itself
+            } else if (match[1] && !/^[A-E1-5]$/i.test(match[1])) {
+                // If group 1 is not a letter or number marker, it's the option text itself
                 optText = match[1].trim();
             }
-            
+
             // Clean the option text
             optText = optText
                 .replace(/<[^>]*>/g, '')  // Remove HTML tags
@@ -1632,7 +1633,7 @@ function extractOptionsFromText(text) {
                 .replace(/&#?\w+;/g, '')  // Other HTML entities
                 .replace(/\n+/g, ' ')     // Replace newlines with space
                 .trim();
-            
+
             // Only add if it's meaningful text (and not just empty)
             if (optText && optText.length >= 1) {
                 // Check if it's already in options (to avoid duplicates)
@@ -1641,7 +1642,7 @@ function extractOptionsFromText(text) {
                 }
             }
         }
-        
+
         if (patternOptions.length >= 4) {
             return patternOptions.slice(0, 4);  // Found and return
         } else if (patternOptions.length > 0) {
@@ -1727,10 +1728,10 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     if (!htmlText || typeof htmlText !== 'string') return questions;
 
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
-    
+
     const textSet = new Set();  // Track unique questions
     let currentType = 'single'; // Default type, will be updated based on category headers
-    
+
     // Helper function to detect type from category header
     function detectTypeFromHeader(headerText) {
         const text = headerText.toLowerCase();
@@ -1751,54 +1752,54 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         }
         return 'single'; // default
     }
-    
+
     // STRATEGY 0: Check for AI structured format with category headers
     if (htmlText.includes(' Soal)') && htmlText.includes('[') && htmlText.includes('{')) {
         console.log(`[AI Bank Soal] Detected AI structured format, attempting direct JSON extraction...`);
-        
+
         try {
             // Extract all JSON arrays from the text
             const jsonArrays = [];
             const lines = htmlText.split('\n');
-            
+
             for (const line of lines) {
                 const trimmed = line.trim();
-                
+
                 // Skip category headers
                 if (trimmed.includes(' Soal)') && !trimmed.includes('[') && !trimmed.includes('{')) {
                     continue;
                 }
-                
+
                 // Look for JSON array start
                 if (trimmed.startsWith('[') && jsonArrays.length === 0) {
                     let currentArray = trimmed;
                     let braceCount = 0;
                     let inString = false;
                     let escapeNext = false;
-                    
+
                     // Parse character by character to find complete JSON array
                     for (let i = 0; i < currentArray.length; i++) {
                         const char = currentArray[i];
-                        
+
                         if (escapeNext) {
                             escapeNext = false;
                             continue;
                         }
-                        
+
                         if (char === '\\') {
                             escapeNext = true;
                             continue;
                         }
-                        
+
                         if (char === '"' && !escapeNext) {
                             inString = !inString;
                             continue;
                         }
-                        
+
                         if (!inString) {
                             if (char === '[') braceCount++;
                             else if (char === ']') braceCount--;
-                            
+
                             if (braceCount === 0 && char === ']') {
                                 // Found complete array
                                 try {
@@ -1816,11 +1817,11 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     }
                 }
             }
-            
+
             // Process extracted questions
             if (jsonArrays.length > 0) {
                 console.log(`[AI Bank Soal] Strategy 0: Extracted ${jsonArrays.length} questions from AI structured format`);
-                
+
                 for (const q of jsonArrays) {
                     if (q.text && q.text.trim()) {
                         const normalized = normalizeQuestion(q, mapel, fase);
@@ -1833,7 +1834,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                         }
                     }
                 }
-                
+
                 console.log(`[AI Bank Soal] Strategy 0 result: ${questions.length} valid questions`);
                 return questions; // Return early if we successfully extracted from AI format
             }
@@ -1841,23 +1842,23 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             console.warn(`[AI Bank Soal] Strategy 0 failed: ${error.message}`);
         }
     }
-    
+
     // Helper function to detect question type
     function detectQuestionType(questionText, options) {
         const text = questionText.toLowerCase();
-        
+
         // Check for essay/text questions (contains keywords)
-        const essayKeywords = ['jelaskan', 'uraikan', 'deskripsikan', 'apa yang dimaksud', 'sebutkan', 
-                              'berikan contoh', 'tuliskan', 'apa yang terjadi', 'bagaimana cara', 
-                              'mengapa', 'kenapa', 'apa penyebab', 'apa akibat', 'apa fungsi',
-                              'apa perbedaan', 'apa persamaan', 'apa ciri', 'apa sifat',
-                              'tentukan', 'hitunglah', 'carilah', 'susunlah', 'buatlah'];
-        
+        const essayKeywords = ['jelaskan', 'uraikan', 'deskripsikan', 'apa yang dimaksud', 'sebutkan',
+            'berikan contoh', 'tuliskan', 'apa yang terjadi', 'bagaimana cara',
+            'mengapa', 'kenapa', 'apa penyebab', 'apa akibat', 'apa fungsi',
+            'apa perbedaan', 'apa persamaan', 'apa ciri', 'apa sifat',
+            'tentukan', 'hitunglah', 'carilah', 'susunlah', 'buatlah'];
+
         const hasEssayKeyword = essayKeywords.some(keyword => text.startsWith(keyword) || text.includes(' ' + keyword));
         const isLongQuestion = text.length > 500; // Increased threshold from 120 to 500
         const hasNoOptions = !options || options.length < 2;
         const hasQuestionWords = text.includes('?') || text.includes('apakah') || text.includes('bagaimana');
-        
+
         // If it has enough options, prioritize single/multiple choice over text
         if (options && options.length >= 4) {
             // Even if long or has question words, if NOT having explicit essay keyword at start, it's PG
@@ -1868,58 +1869,58 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             console.log(`[AI Bank Soal] Detected TEXT question: "${questionText.substring(0, 50)}..." (keyword:${hasEssayKeyword}, long:${isLongQuestion}, noOpts:${hasNoOptions})`);
             return 'text';
         }
-        
+
         // Check for true/false questions
-        const tfKeywords = ['benar atau salah', 'benar/salah', 'true or false', 'true/false', 
-                           'ya atau tidak', 'ya/tidak', 'betul atau salah', 'betul/salah'];
+        const tfKeywords = ['benar atau salah', 'benar/salah', 'true or false', 'true/false',
+            'ya atau tidak', 'ya/tidak', 'betul atau salah', 'betul/salah'];
         const hasTfKeyword = tfKeywords.some(keyword => text.includes(keyword));
-        
-        const hasTfOptions = options && options.length === 2 && 
-                           ((options[0].toLowerCase().includes('benar') && options[1].toLowerCase().includes('salah')) ||
-                            (options[0].toLowerCase().includes('ya') && options[1].toLowerCase().includes('tidak')) ||
-                            (options[0].toLowerCase().includes('true') && options[1].toLowerCase().includes('false')) ||
-                            (options[0].toLowerCase().includes('betul') && options[1].toLowerCase().includes('salah')));
-        
+
+        const hasTfOptions = options && options.length === 2 &&
+            ((options[0].toLowerCase().includes('benar') && options[1].toLowerCase().includes('salah')) ||
+                (options[0].toLowerCase().includes('ya') && options[1].toLowerCase().includes('tidak')) ||
+                (options[0].toLowerCase().includes('true') && options[1].toLowerCase().includes('false')) ||
+                (options[0].toLowerCase().includes('betul') && options[1].toLowerCase().includes('salah')));
+
         if (hasTfKeyword || hasTfOptions) {
             console.log(`[AI Bank Soal] Detected TF question: "${questionText.substring(0, 50)}..." (keyword:${hasTfKeyword}, tfOpts:${hasTfOptions})`);
             return 'tf';
         }
-        
+
         // Check for multiple choice (more than one correct answer indicated)
         const multipleKeywords = ['pilih yang benar', 'lebih dari satu', 'banyak jawaban', 'semua yang benar',
-                                 'pilih beberapa', 'jawaban lebih dari satu', 'banyak pilihan benar',
-                                 'pilih yang tepat', 'jawaban benar lebih dari satu'];
+            'pilih beberapa', 'jawaban lebih dari satu', 'banyak pilihan benar',
+            'pilih yang tepat', 'jawaban benar lebih dari satu'];
         if (multipleKeywords.some(keyword => text.includes(keyword))) {
             console.log(`[AI Bank Soal] Detected MULTIPLE question: "${questionText.substring(0, 50)}..."`);
             return 'multiple';
         }
-        
+
         // Default to single choice
         console.log(`[AI Bank Soal] Detected SINGLE question: "${questionText.substring(0, 50)}..."`);
         return 'single';
     }
-    
+
     // Removed global pre-scan for category headers to prevent currentType corruption.
     // Category detection will be handled localized within parsing strategies.
 
-    
+
     // STRATEGY 1: Parse from HTML structure (ol/li with nested options)
     console.log(`[AI Bank Soal] Strategy 1: Parsing HTML structure...`);
     try {
         const liPattern = /<li[^>]*>([\s\S]*?)(?=<li[^>]*>|<\/ol[^>]*>|$)/gi;
         let match;
         let strategy1Count = 0;
-        
+
         while ((match = liPattern.exec(htmlText)) !== null && questions.length < 100) {
             const liContent = match[1];
-            
+
             let questionText = '';
             const patterns = [
                 /<p[^>]*>([\s\S]*?)<\/p>/i,
                 /^([^A-D][^.!?]*[.!?])/m,
                 /^([\s\S]*?)(?=[A-D]\s*[\.\)]|$)/m
             ];
-            
+
             for (const pattern of patterns) {
                 const textMatch = liContent.match(pattern);
                 if (textMatch && textMatch[1]) {
@@ -1932,21 +1933,21 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                         .replace(/&quot;/g, '"')
                         .replace(/\s+/g, ' ')
                         .trim();
-                    
+
                     if (questionText.length >= 10) break;
                 }
             }
-            
+
             if (!questionText || questionText.length < 10 || textSet.has(questionText)) continue;
-            
+
             const options = [];
             const optionPatterns = [
-                /([A-D])\s*[\.\)]\s*([^A-D\n]+?)(?=[A-D]\s*[\.\)]|$)/gi,
+                /([A-E1-5])\s*[\.\)]\s*([^A-E1-5\n]+?)(?=[A-E1-5]\s*[\.\)]|$)/gi,
                 /<li[^>]*>([\s\S]*?)<\/li>/gi,
-                /<strong[^>]*>\s*([A-D])\s*[\.\)]\s*([^<]+?)<\/strong>/gi,
-                /\b([A-D])\.\s*([^\n]+?)(?=\b[A-D]\.|$)/gi
+                /<strong[^>]*>\s*([A-E1-5])\s*[\.\)]\s*([^<]+?)<\/strong>/gi,
+                /\b([A-E1-5])\.\s*([^\n]+?)(?=\b[A-E1-5]\.|$)/gi
             ];
-            
+
             for (const optPattern of optionPatterns) {
                 let optMatch;
                 while ((optMatch = optPattern.exec(liContent)) !== null && options.length < 4) {
@@ -1956,14 +1957,14 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     } else if (optMatch[1]) {
                         optText = optMatch[1].replace(/<[^>]*>/g, '').replace(/&.*?;/g, '').trim();
                     }
-                    
+
                     if (optText && optText.length > 1 && !options.includes(optText)) {
                         options.push(optText);
                     }
                 }
                 if (options.length >= 4) break;
             }
-            
+
             if (options.length < 4) {
                 const afterQuestion = liContent.replace(questionText, '').trim();
                 const fallbackOptions = extractOptionsFromText(afterQuestion);
@@ -1975,13 +1976,13 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     });
                 }
             }
-            
+
             // Determine question type dynamically
             let questionType = currentType === 'tf' ? 'tf' : 'single'; // Respect localized header if set, otherwise default
             let minOptions = 4;
-            
+
             const detectedType = detectQuestionType(questionText, options);
-            
+
             // Priority 1: If detected as single/multiple and has 4 options, use that
             if (options.length >= 4 && (detectedType === 'single' || detectedType === 'multiple')) {
                 questionType = detectedType;
@@ -2003,10 +2004,10 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 questionType = 'text';
                 minOptions = 0;
             }
-            
+
             if (options.length >= minOptions) {
                 textSet.add(questionText);
-                
+
                 const question = {
                     text: questionText,
                     correct: 0,
@@ -2015,7 +2016,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     rombel: fase,
                     level: 'sedang'
                 };
-                
+
                 // Add type-specific fields
                 if (questionType === 'text') {
                     // Essay questions don't need options
@@ -2030,7 +2031,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     // Single/multiple choice questions
                     question.options = options.slice(0, 4);
                 }
-                
+
                 questions.push(question);
                 strategy1Count++;
                 console.log(`[AI Bank Soal] Strategy 1: Added ${questionType} question: "${questionText.substring(0, 50)}..."`);
@@ -2040,32 +2041,33 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     } catch (e) {
         console.warn(`[AI Bank Soal] HTML structure parsing failed: ${e.message}`);
     }
-    
+
     // STRATEGY 2: Aggressive regex-based extraction from raw text
     if (questions.length < 10) {
         console.log(`[AI Bank Soal] Strategy 2: Regex extraction from raw text...`);
-        
+
         const cleanText = htmlText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         let strategy2Count = 0;
-        
+
         // Pattern: "1. Question text A. Option B. Option C. Option D. Option"
-        const numberedPattern = /(\d+)\.\s+([^A-D\n]+?)(?=A[\s.]+[^B]+?B[\s.]+[^C]+?C[\s.]+[^D]+?D[\s.]+)/gi;
+        // Pattern: "1. Question text A. Option B. Option..." or "1. Question text 1. Option 2. Option..."
+        const numberedPattern = /(\d+)\.\s+([^A-E1\n]+?)(?=(?:A[\s.]+[^B]+?B[\s.]+[^C]+?C[\s.]+[^D]+?D[\s.]+|1[\s.]+[^2]+?2[\s.]+[^3]+?3[\s.]+[^4]+?4[\s.]+))/gi;
         let match;
-        
+
         while ((match = numberedPattern.exec(cleanText)) !== null && questions.length < 100) {
             let questionText = match[2].trim();
             if (!textSet.has(questionText) && questionText.length > 10) {
-                
+
                 // Extract options from the context around the match
                 const contextStart = match.index + match[0].length;
                 const context = cleanText.substring(contextStart, contextStart + 300);
                 const options = extractOptionsFromText(context);
-                
+
                 if (options.length >= 2) { // Allow TF questions with 2 options
                     // Determine question type dynamically for Strategy 2
                     let questionType = 'single';
                     const detectedType = detectQuestionType(questionText, options);
-                    
+
                     if (options.length >= 4) {
                         questionType = (detectedType === 'multiple') ? 'multiple' : 'single';
                     } else if (detectedType === 'tf' && options.length >= 2) {
@@ -2073,9 +2075,9 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     } else {
                         questionType = detectedType;
                     }
-                    
+
                     textSet.add(questionText);
-                    
+
                     const question = {
                         text: questionText,
                         correct: 0,
@@ -2084,7 +2086,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                         rombel: fase,
                         level: 'sedang'
                     };
-                    
+
                     // Add type-specific fields
                     if (questionType === 'text') {
                         question.correct = '';
@@ -2096,7 +2098,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     } else {
                         question.options = options.slice(0, 4);
                     }
-                    
+
                     questions.push(question);
                     strategy2Count++;
                     console.log(`[AI Bank Soal] Strategy 2: Added ${questionType} question: "${questionText.substring(0, 50)}..."`);
@@ -2105,18 +2107,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         }
         console.log(`[AI Bank Soal] Strategy 2 found ${strategy2Count} questions`);
     }
-    
+
     // STRATEGY 3: Line-by-line text analysis
     if (questions.length < 10) {
         console.log(`[AI Bank Soal] Strategy 3: Line-by-line analysis...`);
-        
+
         const cleanText = htmlText.replace(/<[^>]*>/g, ' ').replace(/&.*?;/g, '').trim();
         const lines = cleanText.split(/\n/).map(l => l.trim()).filter(l => l.length > 5);
         let strategy3Count = 0;
-        
+
         for (let i = 0; i < lines.length && questions.length < 100; i++) {
             const line = lines[i];
-            
+
             // Check for category header during line-by-line analysis
             if (line.match(/^(A\.|B\.|C\.|D\.|E\.|F\.|G\.|H\.|I\.|J\.|K\.|L\.|M\.|N\.|O\.|P\.|Q\.|R\.|S\.|T\.|U\.|V\.|W\.|X\.|Y\.|Z\.|\d+\.|\-\s*)?(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching)/i) ||
                 line.match(/(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching).*Soal\)/i)) {
@@ -2126,21 +2128,21 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             }
 
             // Check if line looks like a question (has question mark or is substantial)
-            if ((line.includes('?') || line.split(' ').length > 5) && 
-                line.length > 15 && 
+            if ((line.includes('?') || line.split(' ').length > 5) &&
+                line.length > 15 &&
                 !textSet.has(line) &&
-                !line.match(/^[A-D]\s*[\.\)]/)) {
-                
+                !line.match(/^[A-E1-5]\s*[\.\)]/)) {
+
                 // Look for options in next 5 lines
                 const nextContent = lines.slice(i + 1, i + 6).join(' ');
                 const options = extractOptionsFromText(nextContent);
-                
+
                 if (options.length >= 2) { // Allow TF questions with 2 options
                     let questionType = currentType; // Use type from current section
-                    
+
                     // Allow auto-detection to override if specific markers are found
                     const detectedType = detectQuestionType(line, options);
-                    
+
                     // If we are in 'text' (esai) section but found many options, it's actually PG
                     if (questionType === 'text' && options.length >= 4) {
                         questionType = 'single';
@@ -2149,9 +2151,9 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     } else if (questionType === 'single' && detectedType === 'text' && options.length < 2) {
                         questionType = 'text';
                     }
-                    
+
                     textSet.add(line);
-                    
+
                     const question = {
                         text: line,
                         correct: 0,
@@ -2160,7 +2162,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                         rombel: fase,
                         level: 'sedang'
                     };
-                    
+
                     // Add type-specific fields
                     if (questionType === 'text') {
                         question.correct = '';
@@ -2172,7 +2174,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     } else {
                         question.options = options.slice(0, 4);
                     }
-                    
+
                     questions.push(question);
                     strategy3Count++;
                     console.log(`[AI Bank Soal] Strategy 3: Added ${questionType} question: "${line.substring(0, 50)}..."`);
@@ -3225,12 +3227,12 @@ async function getGlobalAPIKeysFromSupabase() {
                 .from('global_api_keys')
                 .select('*')
                 .order('added_at', { ascending: false });
-            
+
             if (error && error.code !== 'PGRST116') {
                 console.error('[Supabase] Error reading global API keys:', error);
                 return null;
             }
-            
+
             // Helper function to detect provider from API key
             function detectProviderFromKey(key) {
                 if (!key) return 'Unknown';
@@ -3241,10 +3243,10 @@ async function getGlobalAPIKeysFromSupabase() {
                 if (key.includes('deepseek')) return 'DeepSeek';
                 return 'Unknown';
             }
-            
+
             const processedData = (data || []).map(async (row) => {
                 const detectedProvider = detectProviderFromKey(row.key);
-                
+
                 // If the stored provider doesn't match the detected provider, update it
                 if (detectedProvider !== 'Unknown' && row.provider !== detectedProvider) {
                     try {
@@ -3255,7 +3257,7 @@ async function getGlobalAPIKeysFromSupabase() {
                         console.warn(`[Supabase] Failed to update provider for key ${row.key.substring(0, 10)}...:`, updateErr.message);
                     }
                 }
-                
+
                 return {
                     key: row.key,
                     provider: row.provider,
@@ -3266,7 +3268,7 @@ async function getGlobalAPIKeysFromSupabase() {
                     vercelEnvVar: row.vercel_env_var
                 };
             });
-            
+
             // Wait for all async operations to complete
             return await Promise.all(processedData);
         } catch (err) {
@@ -3284,7 +3286,7 @@ async function addGlobalAPIKeyToSupabase(provider, key, note = '') {
     if (!USE_SUPABASE || !supabase) {
         throw new Error('Supabase not configured');
     }
-    
+
     try {
         // Check for duplicates
         const { data: existing, error: checkError } = await supabase
@@ -3292,15 +3294,15 @@ async function addGlobalAPIKeyToSupabase(provider, key, note = '') {
             .select('id')
             .eq('key', key)
             .maybeSingle();
-        
+
         if (checkError && checkError.code !== 'PGRST116') {
             throw new Error('Duplicate check failed: ' + checkError.message);
         }
-        
+
         if (existing) {
             throw new Error('API Key sudah ada di Supabase');
         }
-        
+
         // Insert new key
         const { data, error } = await supabase
             .from('global_api_keys')
@@ -3314,11 +3316,11 @@ async function addGlobalAPIKeyToSupabase(provider, key, note = '') {
             })
             .select()
             .single();
-        
+
         if (error) {
             throw new Error('Insert failed: ' + error.message);
         }
-        
+
         console.log('[Supabase] Global API key added:', provider);
         return data;
     } catch (err) {
@@ -3334,17 +3336,17 @@ async function removeGlobalAPIKeyFromSupabase(keyId) {
     if (!USE_SUPABASE || !supabase) {
         throw new Error('Supabase not configured');
     }
-    
+
     try {
         const { error } = await supabase
             .from('global_api_keys')
             .delete()
             .eq('id', keyId);
-        
+
         if (error) {
             throw new Error('Delete failed: ' + error.message);
         }
-        
+
         console.log('[Supabase] Global API key removed, ID:', keyId);
     } catch (err) {
         console.error('[Supabase] Error removing global API key:', err.message);
@@ -3359,7 +3361,7 @@ async function updateGlobalAPIKeyStatusInSupabase(keyId, status, note = '') {
     if (!USE_SUPABASE || !supabase) {
         throw new Error('Supabase not configured');
     }
-    
+
     try {
         const { error } = await supabase
             .from('global_api_keys')
@@ -3369,11 +3371,11 @@ async function updateGlobalAPIKeyStatusInSupabase(keyId, status, note = '') {
                 updated_at: new Date().toISOString()
             })
             .eq('id', keyId);
-        
+
         if (error) {
             throw new Error('Update failed: ' + error.message);
         }
-        
+
         console.log('[Supabase] Global API key status updated, ID:', keyId, 'status:', status);
     } catch (err) {
         console.error('[Supabase] Error updating global API key status:', err.message);
@@ -3388,7 +3390,7 @@ async function updateGlobalAPIKeyProviderInSupabase(keyId, provider) {
     if (!USE_SUPABASE || !supabase) {
         throw new Error('Supabase not configured');
     }
-    
+
     try {
         const { error } = await supabase
             .from('global_api_keys')
@@ -3397,11 +3399,11 @@ async function updateGlobalAPIKeyProviderInSupabase(keyId, provider) {
                 updated_at: new Date().toISOString()
             })
             .eq('id', keyId);
-        
+
         if (error) {
             throw new Error('Provider update failed: ' + error.message);
         }
-        
+
         console.log('[Supabase] Global API key provider updated, ID:', keyId, 'provider:', provider);
     } catch (err) {
         console.error('[Supabase] Error updating global API key provider:', err.message);
@@ -3412,7 +3414,7 @@ async function updateGlobalAPIKeyProviderInSupabase(keyId, provider) {
 app.get('/api/admin/global-api-keys', async (req, res) => {
     try {
         let globalKeys = [];
-        
+
         // 1. Try to get from Supabase first
         if (USE_SUPABASE) {
             try {
@@ -3432,7 +3434,7 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
                 console.error('[API] Error reading from Supabase, falling back to database.json:', err.message);
             }
         }
-        
+
         // 2. If Supabase empty/failed, fallback to database.json
         if (globalKeys.length === 0) {
             const db = await readDB();
@@ -3451,16 +3453,16 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
                     if (key.includes('deepseek')) return 'DeepSeek';
                     return 'Unknown';
                 }
-                
+
                 globalKeys = db.globalSettings.apiKeys.map((entry, idx) => {
                     const detectedProvider = detectProviderFromKey(entry.key);
-                    
+
                     // If the stored provider doesn't match the detected provider, update it in database
                     if (detectedProvider !== 'Unknown' && entry.provider !== detectedProvider) {
                         entry.provider = detectedProvider;
                         console.log(`[Database] Corrected provider for key ${entry.key.substring(0, 10)}... from '${entry.provider}' to '${detectedProvider}'`);
                     }
-                    
+
                     return {
                         ...entry,
                         addedAt: entry.addedAt || 'Database JSON',
@@ -3471,7 +3473,7 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
                             : `${entry.provider}: Tersimpan di Database JSON`
                     };
                 });
-                
+
                 // Save the corrected database back
                 await writeDB(db);
             }
@@ -3774,8 +3776,8 @@ app.post('/api/admin/add-global-key', async (req, res) => {
             return null;
         });
 
-        return res.json({ 
-            ok: true, 
+        return res.json({
+            ok: true,
             message: 'Global API Key berhasil ditambahkan',
             storage: storageMedium,
             vercelStatus: vercelEnvVar ? `Auto-pushed sebagai ${vercelEnvVar}` : 'Vercel tidak dikonfigurasi'
@@ -4190,61 +4192,61 @@ Benar/Salah (1 Soal)
         // Normalize question formats using centralized function
         let normalizedQuestions = parsed.map(q => normalizeQuestion(q, mapel, rombel, req.teacherId));
 
-    normalizedQuestions = normalizedQuestions.filter(q => {
-        // For matching questions, check for questions/answers; for others, check for text
-        if (q.type === 'matching') {
-            return !q.invalid && Array.isArray(q.questions) && q.questions.length > 0;
+        normalizedQuestions = normalizedQuestions.filter(q => {
+            // For matching questions, check for questions/answers; for others, check for text
+            if (q.type === 'matching') {
+                return !q.invalid && Array.isArray(q.questions) && q.questions.length > 0;
+            }
+            return !q.invalid && q.text && q.text.trim();
+        });
+
+        // VALIDASI KRITIS: Periksa apakah jumlah soal sesuai dengan permintaan
+        const generatedCount = normalizedQuestions.length;
+        if (generatedCount < actualJumlah) {
+            console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} valid questions, but ${actualJumlah} were requested. Some questions from AI response were filtered out.`);
+            console.warn(`[/api/generate-ai] This may indicate AI is not following format instructions properly. Consider improving prompt clarity or checking AI provider output.`);
+            // Log the parsed but filtered questions for debugging
+            const filteredOut = parsed.length - generatedCount;
+            if (filteredOut > 0) {
+                console.warn(`[/api/generate-ai] Filtered out ${filteredOut} invalid questions out of ${parsed.length} total`);
+            }
+        } else if (generatedCount > actualJumlah) {
+            console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} questions but only ${actualJumlah} were requested. Trimming excess questions.`);
+            normalizedQuestions = normalizedQuestions.slice(0, actualJumlah);
         }
-        return !q.invalid && q.text && q.text.trim();
-    });
 
-    // VALIDASI KRITIS: Periksa apakah jumlah soal sesuai dengan permintaan
-    const generatedCount = normalizedQuestions.length;
-    if (generatedCount < actualJumlah) {
-        console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} valid questions, but ${actualJumlah} were requested. Some questions from AI response were filtered out.`);
-        console.warn(`[/api/generate-ai] This may indicate AI is not following format instructions properly. Consider improving prompt clarity or checking AI provider output.`);
-        // Log the parsed but filtered questions for debugging
-        const filteredOut = parsed.length - generatedCount;
-        if (filteredOut > 0) {
-            console.warn(`[/api/generate-ai] Filtered out ${filteredOut} invalid questions out of ${parsed.length} total`);
+        if (imageEnabled) {
+            try {
+                normalizedQuestions = await attachGeneratedImagesToQuestions(normalizedQuestions, req);
+            } catch (e) {
+                console.warn('[/api/generate-ai] Warning: gagal menambahkan gambar AI ke soal:', e.message);
+            }
         }
-    } else if (generatedCount > actualJumlah) {
-        console.warn(`[/api/generate-ai] WARNING: Generated ${generatedCount} questions but only ${actualJumlah} were requested. Trimming excess questions.`);
-        normalizedQuestions = normalizedQuestions.slice(0, actualJumlah);
-    }
 
-    if (imageEnabled) {
-        try {
-            normalizedQuestions = await attachGeneratedImagesToQuestions(normalizedQuestions, req);
-        } catch (e) {
-            console.warn('[/api/generate-ai] Warning: gagal menambahkan gambar AI ke soal:', e.message);
+        console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
+        return res.json({ ok: true, questions: normalizedQuestions, exhaustedKeys });
+    } catch (e) {
+        console.error('[/api/generate-ai] Fatal error:', e.message);
+        const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
+        const needsApiKeys = /tidak ada api key|tidak memiliki api key|API Key Gemini/i.test(e.message);
+        const exhaustedKeys = Array.isArray(e.exhaustedKeys) ? e.exhaustedKeys : [];
+        const allKeysExhausted = /semua.*(provider|api|key|quota|kuota)/i.test(e.message) || needsApiKeys;
+
+        // Enrich error message with redirect hint if all keys exhausted
+        let errorMessage = e.message;
+        if (allKeysExhausted && !needsApiKeys) {
+            errorMessage = '🔴 Semua API Key Anda sudah habis atau tidak dikonfigurasi. Silakan tambahkan API Key baru di halaman API Keys untuk melanjutkan. Anda akan dibawa ke halaman tersebut secara otomatis.';
         }
+
+        return res.status(500).json({
+            error: errorMessage,
+            quotaExhausted,
+            needsApiKeys,
+            allKeysExhausted,
+            exhaustedKeys,
+            redirectToApiKeys: allKeysExhausted && req && req.teacherId
+        });
     }
-
-    console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
-    return res.json({ ok: true, questions: normalizedQuestions, exhaustedKeys });
-} catch (e) {
-    console.error('[/api/generate-ai] Fatal error:', e.message);
-    const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);
-    const needsApiKeys = /tidak ada api key|tidak memiliki api key|API Key Gemini/i.test(e.message);
-    const exhaustedKeys = Array.isArray(e.exhaustedKeys) ? e.exhaustedKeys : [];
-    const allKeysExhausted = /semua.*(provider|api|key|quota|kuota)/i.test(e.message) || needsApiKeys;
-
-    // Enrich error message with redirect hint if all keys exhausted
-    let errorMessage = e.message;
-    if (allKeysExhausted && !needsApiKeys) {
-        errorMessage = '🔴 Semua API Key Anda sudah habis atau tidak dikonfigurasi. Silakan tambahkan API Key baru di halaman API Keys untuk melanjutkan. Anda akan dibawa ke halaman tersebut secara otomatis.';
-    }
-
-    return res.status(500).json({
-        error: errorMessage,
-        quotaExhausted,
-        needsApiKeys,
-        allKeysExhausted,
-        exhaustedKeys,
-        redirectToApiKeys: allKeysExhausted && req && req.teacherId
-    });
-}
 });
 
 // ─── API: Generate Admin Doc ──────────────────────────────────────────────────
@@ -4527,7 +4529,7 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
         console.log(`[/api/generate-admin-doc] - extraData.simpanBank === true: ${extraData?.simpanBank === true}`);
         console.log(`[/api/generate-admin-doc] - String(extraData.simpanBank).toLowerCase(): ${String(extraData?.simpanBank).toLowerCase()}`);
         console.log(`[/api/generate-admin-doc] - Final shouldSaveToBank: ${shouldSaveToBank}`);
-        
+
         // DEBUG: Force alert to show server state
         console.log(`\n\n=== DEBUG ALERT FROM SERVER ===`);
         console.log(`simpanBank parameter received: ${extraData?.simpanBank}`);
@@ -4542,38 +4544,38 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
             const htmlQuestionMatches = text.match(/<li[^>]*>/gi) || [];
             const numberedQuestions = text.match(/^\d+\./gm) || [];
             const estimatedQuestionCount = Math.max(htmlQuestionMatches.length, numberedQuestions.length);
-            
+
             console.log(`[AI Bank Soal] HTML analysis: ${htmlQuestionMatches.length} <li> tags, ${numberedQuestions.length} numbered questions`);
             console.log(`[AI Bank Soal] Estimated question count: ${estimatedQuestionCount}`);
-            
+
             // STRATEGY 1: Direct HTML parsing (most efficient - no AI cost)
             console.log(`[AI Bank Soal] === STRATEGY 1: Direct HTML Parsing ===`);
             const questionsFromHtml = forceParseQuestionsFromHtml(text, mapel, fase);
             console.log(`[AI Bank Soal] Strategy 1 result: ${questionsFromHtml.length} questions extracted`);
-            
+
             if (questionsFromHtml.length > 0) {
                 // Great! We extracted questions directly from HTML
                 console.log(`[AI Bank Soal] ✅ SUCCESS: Extracted ${questionsFromHtml.length} questions via Strategy 1`);
-                
+
                 if (questionsFromHtml.length < estimatedQuestionCount * 0.8) {
                     console.warn(`[AI Bank Soal] ⚠️ WARNING: Extracted ${questionsFromHtml.length} but expected ~${estimatedQuestionCount} (only ${Math.round(questionsFromHtml.length / estimatedQuestionCount * 100)}%)`);
                 }
-                
+
                 // Normalize and save
                 try {
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
-                    
+
                     console.log(`[AI Bank Soal] Before normalization: ${questionsFromHtml.length} questions`);
-                    
+
                     let normalizedQuestions = questionsFromHtml.map((q, idx) => {
                         const normalized = normalizeQuestion(q, mapel, fase, req.teacherId);
                         if (idx < 3) console.log(`[AI Bank Soal] Normalized [${idx + 1}]: "${normalized.text.substring(0, 40)}..."`);
                         return normalized;
                     });
-                    
+
                     console.log(`[AI Bank Soal] After normalization: ${normalizedQuestions.length} questions`);
-                    
+
                     // Deduplicate
                     const textSet = new Set();
                     const deduplicatedQuestions = [];
@@ -4584,44 +4586,44 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                             deduplicatedQuestions.push(q);
                         }
                     });
-                    
+
                     console.log(`[AI Bank Soal] After deduplication: ${deduplicatedQuestions.length} questions (removed ${normalizedQuestions.length - deduplicatedQuestions.length} duplicates)`);
-                    
+
                     // Filter invalid
                     const validQuestions = deduplicatedQuestions.filter((q, idx) => {
                         const textValid = q.text && q.text.trim().length >= 3;
                         const optionsValid = q.type === 'text' || q.type === 'tf' || (Array.isArray(q.options) && q.options.length >= 4);
                         const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length >= 1);
-                        
+
                         if (!textValid || !optionsValid || !tfValid) {
                             console.warn(`[AI Bank Soal] Filtering out [${idx + 1}]: text=${textValid}, options=${optionsValid}, tf=${tfValid}, type=${q.type}`);
                             return false;
                         }
                         return true;
                     });
-                    
+
                     console.log(`[AI Bank Soal] After validation: ${validQuestions.length} valid questions`);
-                    
+
                     // Save to database
                     db.questions = [...db.questions, ...validQuestions];
                     await writeDB(db);
                     console.log(`[AI Bank Soal] ✅ Successfully saved ${validQuestions.length} questions to database`);
-                    
+
                     parsedQuestions = validQuestions;
                     bankSaveError = null;
-                    
+
                 } catch (error) {
                     console.error(`[AI Bank Soal] Error saving Strategy 1 results: ${error.message}`);
                     bankSaveError = error.message;
                     // Fall through to Strategy 2
                 }
             }
-            
+
             // STRATEGY 2: AI-based extraction (as fallback)
             if (!bankSaveError && (!questionsFromHtml || questionsFromHtml.length === 0)) {
                 console.log(`[AI Bank Soal] === STRATEGY 2: AI-based Extraction (Fallback) ===`);
                 console.log(`[AI Bank Soal] Strategy 1 extracted 0 questions, attempting AI extraction...`);
-                
+
                 const extractionPrompt = `EKSTRAK ${estimatedQuestionCount}+ SOAL KE JSON ARRAY
 
 Dokumen HTML soal:
@@ -4636,23 +4638,23 @@ INSTRUKSI:
 5. HARUS ada ${estimatedQuestionCount}+ soal dalam array
 
 OUTPUT:`;
-                
+
                 try {
                     const extractResult = await callAI(extractionPrompt, req);
                     let extractText = (extractResult.text || '').trim();
-                    
+
                     // Clean markdown
                     extractText = extractText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-                    
+
                     console.log(`[AI Bank Soal] AI response length: ${extractText.length}`);
-                    
+
                     // Parse JSON
                     const arrayStart = extractText.indexOf('[');
                     const arrayEnd = extractText.lastIndexOf(']');
-                    
+
                     if (arrayStart !== -1 && arrayEnd !== -1) {
                         let rawJson = extractText.substring(arrayStart, arrayEnd + 1);
-                        
+
                         // Try parsing with bracket completion if needed
                         let parsed;
                         try {
@@ -4666,16 +4668,16 @@ OUTPUT:`;
                                 throw e; // throw original error
                             }
                         }
-                        
+
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             console.log(`[AI Bank Soal] AI extracted ${parsed.length} questions`);
-                            
+
                             // Save to database
                             const db = (await readDB()) || { questions: [] };
                             if (!db.questions) db.questions = [];
-                            
+
                             let normalizedQuestions = parsed.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
-                            
+
                             // Deduplicate
                             const textSet = new Set();
                             const deduplicatedQuestions = [];
@@ -4686,7 +4688,7 @@ OUTPUT:`;
                                     deduplicatedQuestions.push(q);
                                 }
                             });
-                            
+
                             // Validate
                             const validQuestions = deduplicatedQuestions.filter(q => {
                                 const textValid = q.text && q.text.trim().length >= 3;
@@ -4694,11 +4696,11 @@ OUTPUT:`;
                                 const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length >= 1);
                                 return textValid && optionsValid && tfValid;
                             });
-                            
+
                             db.questions = [...db.questions, ...validQuestions];
                             await writeDB(db);
                             console.log(`[AI Bank Soal] ✅ Saved ${validQuestions.length} questions from AI extraction`);
-                            
+
                             parsedQuestions = validQuestions;
                             bankSaveError = null;
                         }
@@ -4708,7 +4710,7 @@ OUTPUT:`;
                     bankSaveError = aiError.message;
                 }
             }
-            
+
             // Final result logging
             if (bankSaveError) {
                 console.error(`[AI Bank Soal] ❌ FINAL ERROR: ${bankSaveError}`);
@@ -4721,20 +4723,20 @@ OUTPUT:`;
 
 
         console.log(`[/api/generate-admin-doc] Success for ${docType}`);
-        
+
         // Final validation: Check if saved questions match expectations
         const htmlTags = (text.match(/<li[^>]*>/gi) || []).length;
         const numberedItems = (text.match(/^\d+\./gm) || []).length;
         const expectedCount = Math.max(htmlTags, numberedItems);
         const actualSaved = Array.isArray(parsedQuestions) ? parsedQuestions.length : 0;
-        
+
         if (shouldSaveToBank && actualSaved < expectedCount) {
             console.warn(`[/api/generate-admin-doc] ⚠️ FINAL WARNING: Only ${actualSaved} questions saved to bank, but HTML analysis shows ${expectedCount} expected questions`);
             console.warn(`[/api/generate-admin-doc] ⚠️ This indicates incomplete question extraction`);
         } else if (shouldSaveToBank && actualSaved >= expectedCount) {
             console.log(`[/api/generate-admin-doc] ✅ Question extraction complete: ${actualSaved} questions saved (expected: ${expectedCount})`);
         }
-        
+
         return res.json({
             ok: true,
             html: text,
