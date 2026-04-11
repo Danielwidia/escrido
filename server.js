@@ -1631,53 +1631,112 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
 
     // Strategy 1: Try to parse from HTML structure (ol/li with nested options)
     try {
-        // Look for numbered list items
-        const liPattern = /<li[^>]*>([\s\S]*?)(?=<li|<\/ol|$)/gi;
+        // Look for numbered list items - more flexible pattern
+        const liPattern = /<li[^>]*>([\s\S]*?)(?=<li[^>]*>|<\/ol[^>]*>|$)/gi;
         let match;
         
         while ((match = liPattern.exec(htmlText)) !== null && questions.length < 50) {
             const liContent = match[1];
             
-            // Extract main question text (usually in a paragraph tag or as direct text before options)
-            const pPattern = /<p[^>]*>([\s\S]*?)<\/p>/i;
-            const pMatch = pPattern.exec(liContent);
+            // Extract main question text (usually in a paragraph tag or as direct text)
+            let questionText = '';
             
-            if (!pMatch) continue;
+            // Try different patterns for question text
+            const patterns = [
+                /<p[^>]*>([\s\S]*?)<\/p>/i,  // <p> tags
+                /^([^A-D][^.!?]*[.!?])/m,     // Text before options
+                /^([\s\S]*?)(?=[A-D]\s*[\.\)]|$)/m  // Text until options start
+            ];
             
-            let questionText = pMatch[1]
-                .replace(/<[^>]*>/g, '')  // Remove tags
-                .replace(/&nbsp;/g, ' ')
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&quot;/g, '"')
-                .trim();
-            
-            if (!questionText || questionText.length < 5) continue;
-            
-            // Extract options from the same li (usually ol/li or labels)
-            const options = [];
-            
-            // Try to find nested option list
-            const optionListPattern = /<[ou]l[^>]*>[\s\S]*?<li[^>]*>([\s\S]*?)<\/li>[\s\S]*?<\/[ou]l>/gi;
-            const subListMatch = liContent.match(optionListPattern);
-            
-            if (subListMatch) {
-                // Extract from nested list
-                const optionPattern = /<li[^>]*>([\s\S]*?)<\/li>/gi;
-                let optMatch;
-                while ((optMatch = optionPattern.exec(liContent)) !== null && options.length < 4) {
-                    const optText = optMatch[1]
-                        .replace(/<[^>]*>/g, '')
-                        .replace(/&.*?;/g, '')
+            for (const pattern of patterns) {
+                const textMatch = liContent.match(pattern);
+                if (textMatch && textMatch[1]) {
+                    questionText = textMatch[1]
+                        .replace(/<[^>]*>/g, '')  // Remove tags
+                        .replace(/&nbsp;/g, ' ')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>')
+                        .replace(/&quot;/g, '"')
+                        .replace(/\s+/g, ' ')
                         .trim();
-                    if (optText) options.push(optText);
+                    
+                    if (questionText.length >= 10) break; // Found good question text
                 }
             }
             
-            // Try to find inline options (A. B. C. D. pattern)
+            if (!questionText || questionText.length < 10) {
+                console.log(`[AI Bank Soal] Skipping li with insufficient question text: "${questionText?.substring(0, 30)}..."`);
+                continue;
+            }
+            
+            console.log(`[AI Bank Soal] Found question text: "${questionText.substring(0, 50)}..."`);
+            
+            // Extract options from the same li content
+            const options = [];
+            
+            // Try multiple patterns for options
+            const optionPatterns = [
+                // Pattern 1: A. B. C. D. format
+                /([A-D])\s*[\.\)]\s*([^A-D\n]+?)(?=[A-D]\s*[\.\)]|$)/gi,
+                // Pattern 2: Nested li elements
+                /<li[^>]*>([\s\S]*?)<\/li>/gi,
+                // Pattern 3: Strong/bold options
+                /<strong[^>]*>\s*([A-D])\s*[\.\)]\s*([^<]+?)<\/strong>/gi,
+                // Pattern 4: Simple letter patterns
+                /\b([A-D])\.\s*([^\n]+?)(?=\b[A-D]\.|$)/gi
+            ];
+            
+            for (const optPattern of optionPatterns) {
+                let optMatch;
+                while ((optMatch = optPattern.exec(liContent)) !== null && options.length < 4) {
+                    let optText = '';
+                    
+                    if (optMatch[2]) {
+                        // Pattern with letter and text
+                        optText = optMatch[2].replace(/<[^>]*>/g, '').replace(/&.*?;/g, '').trim();
+                    } else if (optMatch[1]) {
+                        // Just the text
+                        optText = optMatch[1].replace(/<[^>]*>/g, '').replace(/&.*?;/g, '').trim();
+                    }
+                    
+                    if (optText && optText.length > 1) {
+                        options.push(optText);
+                        console.log(`[AI Bank Soal] Found option ${options.length}: "${optText.substring(0, 30)}..."`);
+                    }
+                }
+                
+                if (options.length >= 4) break; // Found enough options
+            }
+            
+            // If still no options, try to extract from the entire li content after question
             if (options.length < 4) {
-                const inlinePattern = /[A-D]\s*[\.\)]\s*([^A-D.\)\n]+)(?=[A-D\s\.\)]*[A-D\s\.\)]|$)/gi;
+                const afterQuestion = liContent.replace(questionText, '').trim();
+                const fallbackOptions = extractOptionsFromText(afterQuestion);
+                if (fallbackOptions.length > 0) {
+                    options.push(...fallbackOptions.slice(0, 4 - options.length));
+                }
+            }
+            
+            if (options.length >= 4) {
+                const question = {
+                    text: questionText,
+                    options: options.slice(0, 4),
+                    correct: 0,
+                    type: 'single',
+                    mapel: mapel,
+                    rombel: fase,
+                    level: 'sedang'
+                };
+                questions.push(question);
+                console.log(`[AI Bank Soal] Successfully created question ${questions.length} with ${options.length} options`);
+            } else {
+                console.log(`[AI Bank Soal] Question has only ${options.length} options, skipping: "${questionText.substring(0, 30)}..."`);
+            }
+        }
+    } catch (e) {
+        console.warn(`[AI Bank Soal] HTML structure parsing failed: ${e.message}`);
+    }
                 const inlineMatches = liContent.match(inlinePattern);
                 if (inlineMatches) {
                     for (const opt of inlineMatches) {
@@ -4163,10 +4222,34 @@ ATURAN SANGAT PENTING:
                     // Normalize and save to database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
+                    console.log(`[AI Bank Soal] Before normalization: ${parsedQuestions.length} questions`);
                     parsedQuestions = parsedQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
-                    db.questions = [...db.questions, ...parsedQuestions];
+                    console.log(`[AI Bank Soal] After normalization: ${parsedQuestions.length} questions`);
+                    
+                    // Filter out invalid questions
+                    const validQuestions = parsedQuestions.filter(q => {
+                        if (!q.text || q.text.trim().length < 5) {
+                            console.warn(`[AI Bank Soal] Filtering out question with invalid text: "${q.text?.substring(0, 50)}..."`);
+                            return false;
+                        }
+                        if (q.type === 'single' || q.type === 'multiple') {
+                            if (!Array.isArray(q.options) || q.options.length < 4) {
+                                console.warn(`[AI Bank Soal] Filtering out question with insufficient options: ${q.options?.length || 0} options`);
+                                return false;
+                            }
+                        }
+                        if (q.type === 'tf' && (!Array.isArray(q.subQuestions) || q.subQuestions.length < 3)) {
+                            console.warn(`[AI Bank Soal] Filtering out TF question with insufficient subQuestions: ${q.subQuestions?.length || 0} subQuestions`);
+                            return false;
+                        }
+                        return true;
+                    });
+                    
+                    console.log(`[AI Bank Soal] After validation: ${validQuestions.length} valid questions (filtered ${parsedQuestions.length - validQuestions.length})`);
+                    
+                    db.questions = [...db.questions, ...validQuestions];
                     await writeDB(db);
-                    console.log(`[AI Bank Soal] ✅ Successfully saved ${parsedQuestions.length} questions to database.`);
+                    console.log(`[AI Bank Soal] ✅ Successfully saved ${validQuestions.length} questions to database.`);
                 } else {
                     throw new Error('Tidak ditemukan JSON array dalam respons ekstraksi.');
                 }
@@ -4177,19 +4260,48 @@ ATURAN SANGAT PENTING:
                 
                 // Fallback: Try parsing from HTML as last resort
                 try {
+                    console.log(`[AI Bank Soal] Starting HTML parsing with text length: ${text.length}`);
+                    console.log(`[AI Bank Soal] HTML sample: ${text.substring(0, 200)}...`);
+                    
                     const fallbackQuestions = forceParseQuestionsFromHtml(text, mapel, fase);
+                    console.log(`[AI Bank Soal] HTML parsing completed. Found ${fallbackQuestions?.length || 0} questions`);
+                    
                     if (fallbackQuestions && fallbackQuestions.length > 0) {
                         console.log(`[AI Bank Soal] ✅ Fallback HTML parsing succeeded with ${fallbackQuestions.length} questions`);
                         
                         // Normalize and save to database
                         const db = (await readDB()) || { questions: [] };
                         if (!db.questions) db.questions = [];
+                        console.log(`[AI Bank Soal] Fallback - Before normalization: ${fallbackQuestions.length} questions`);
                         const normalizedQuestions = fallbackQuestions.map(q => normalizeQuestion(q, mapel, fase, req.teacherId));
-                        db.questions = [...db.questions, ...normalizedQuestions];
-                        await writeDB(db);
-                        console.log(`[AI Bank Soal] ✅ Successfully saved ${normalizedQuestions.length} questions from HTML parsing to database.`);
+                        console.log(`[AI Bank Soal] Fallback - After normalization: ${normalizedQuestions.length} questions`);
                         
-                        parsedQuestions = normalizedQuestions;
+                        // Filter out invalid questions
+                        const validQuestions = normalizedQuestions.filter(q => {
+                            if (!q.text || q.text.trim().length < 5) {
+                                console.warn(`[AI Bank Soal] Fallback - Filtering out question with invalid text: "${q.text?.substring(0, 50)}..."`);
+                                return false;
+                            }
+                            if (q.type === 'single' || q.type === 'multiple') {
+                                if (!Array.isArray(q.options) || q.options.length < 4) {
+                                    console.warn(`[AI Bank Soal] Fallback - Filtering out question with insufficient options: ${q.options?.length || 0} options`);
+                                    return false;
+                                }
+                            }
+                            if (q.type === 'tf' && (!Array.isArray(q.subQuestions) || q.subQuestions.length < 3)) {
+                                console.warn(`[AI Bank Soal] Fallback - Filtering out TF question with insufficient subQuestions: ${q.subQuestions?.length || 0} subQuestions`);
+                                return false;
+                            }
+                            return true;
+                        });
+                        
+                        console.log(`[AI Bank Soal] Fallback - After validation: ${validQuestions.length} valid questions (filtered ${normalizedQuestions.length - validQuestions.length})`);
+                        
+                        db.questions = [...db.questions, ...validQuestions];
+                        await writeDB(db);
+                        console.log(`[AI Bank Soal] ✅ Successfully saved ${validQuestions.length} questions from HTML parsing to database.`);
+                        
+                        parsedQuestions = validQuestions;
                         bankSaveError = null; // Clear error since fallback succeeded
                     } else {
                         console.error(`[AI Bank Soal] Fallback HTML parsing returned 0 questions`);
