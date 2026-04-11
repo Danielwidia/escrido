@@ -1646,17 +1646,18 @@ function parseQuestionsFromHtml(htmlText, mapel, fase) {
         }
 
         if (options.length >= 4) {
+            const questionType = detectQuestionType(questionText, options);
             const question = {
                 text: questionText,
                 options: options.slice(0, 4), // Take only first 4 options
                 correct: correct,
-                type: 'single',
+                type: questionType,
                 mapel: mapel,
                 rombel: fase,
                 level: 'sedang' // default level
             };
             questions.push(question);
-            console.log(`[AI Bank Soal] parseQuestionsFromHtml: Successfully parsed question with ${options.length} options`);
+            console.log(`[AI Bank Soal] parseQuestionsFromHtml: Successfully parsed ${questionType} question with ${options.length} options`);
         } else {
             console.log(`[AI Bank Soal] parseQuestionsFromHtml: Question ${questionNumber} has only ${options.length} options, skipping`);
         }
@@ -1676,6 +1677,38 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
     
     const textSet = new Set();  // Track unique questions
+    
+    // Helper function to detect question type
+    function detectQuestionType(questionText, options) {
+        const text = questionText.toLowerCase();
+        
+        // Check for essay/text questions (contains keywords)
+        if (text.includes('jelaskan') || text.includes('uraikan') || text.includes('deskripsikan') || 
+            text.includes('apa yang dimaksud') || text.includes('sebutkan') || 
+            text.includes('berikan contoh') || text.includes('tuliskan') ||
+            text.length > 200) {
+            return 'text';
+        }
+        
+        // Check for true/false questions
+        if (text.includes('benar atau salah') || text.includes('true or false') || 
+            text.includes('ya atau tidak') || text.includes('salah satu berikut') ||
+            (options.length === 2 && 
+             ((options[0].toLowerCase().includes('benar') && options[1].toLowerCase().includes('salah')) ||
+              (options[0].toLowerCase().includes('ya') && options[1].toLowerCase().includes('tidak')) ||
+              (options[0].toLowerCase().includes('true') && options[1].toLowerCase().includes('false'))))) {
+            return 'tf';
+        }
+        
+        // Check for multiple choice (more than one correct answer indicated)
+        if (text.includes('pilih yang benar') || text.includes('lebih dari satu') || 
+            text.includes('banyak jawaban') || text.includes('semua yang benar')) {
+            return 'multiple';
+        }
+        
+        // Default to single choice
+        return 'single';
+    }
     
     // STRATEGY 1: Parse from HTML structure (ol/li with nested options)
     console.log(`[AI Bank Soal] Strategy 1: Parsing HTML structure...`);
@@ -1750,18 +1783,41 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 }
             }
             
-            if (options.length >= 4) {
+            // Accept questions with at least 2 options (for TF) or 4 options (for single/multiple)
+            const minOptions = questionText.toLowerCase().includes('benar atau salah') || 
+                              questionText.toLowerCase().includes('ya atau tidak') ? 2 : 4;
+            
+            if (options.length >= minOptions) {
+                const questionType = detectQuestionType(questionText, options);
                 textSet.add(questionText);
-                questions.push({
+                
+                const question = {
                     text: questionText,
-                    options: options.slice(0, 4),
                     correct: 0,
-                    type: 'single',
+                    type: questionType,
                     mapel: mapel,
                     rombel: fase,
                     level: 'sedang'
-                });
+                };
+                
+                // Add type-specific fields
+                if (questionType === 'text') {
+                    // Essay questions don't need options
+                    question.correct = '';
+                } else if (questionType === 'tf') {
+                    // True/False questions need subQuestions array
+                    question.subQuestions = [
+                        { text: questionText, correct: 0 } // Default to true
+                    ];
+                    question.options = options.slice(0, 2); // Only 2 options for TF
+                } else {
+                    // Single/multiple choice questions
+                    question.options = options.slice(0, 4);
+                }
+                
+                questions.push(question);
                 strategy1Count++;
+                console.log(`[AI Bank Soal] Strategy 1: Added ${questionType} question: "${questionText.substring(0, 50)}..."`);
             }
         }
         console.log(`[AI Bank Soal] Strategy 1 found ${strategy1Count} questions`);
@@ -1789,18 +1845,34 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const context = cleanText.substring(contextStart, contextStart + 300);
                 const options = extractOptionsFromText(context);
                 
-                if (options.length >= 4) {
+                if (options.length >= 2) { // Allow TF questions with 2 options
+                    const questionType = detectQuestionType(questionText, options);
                     textSet.add(questionText);
-                    questions.push({
+                    
+                    const question = {
                         text: questionText,
-                        options: options.slice(0, 4),
                         correct: 0,
-                        type: 'single',
+                        type: questionType,
                         mapel: mapel,
                         rombel: fase,
                         level: 'sedang'
-                    });
+                    };
+                    
+                    // Add type-specific fields
+                    if (questionType === 'text') {
+                        question.correct = '';
+                    } else if (questionType === 'tf') {
+                        question.subQuestions = [
+                            { text: questionText, correct: 0 }
+                        ];
+                        question.options = options.slice(0, 2);
+                    } else {
+                        question.options = options.slice(0, 4);
+                    }
+                    
+                    questions.push(question);
                     strategy2Count++;
+                    console.log(`[AI Bank Soal] Strategy 2: Added ${questionType} question: "${questionText.substring(0, 50)}..."`);
                 }
             }
         }
@@ -1828,18 +1900,34 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const nextContent = lines.slice(i + 1, i + 6).join(' ');
                 const options = extractOptionsFromText(nextContent);
                 
-                if (options.length >= 4) {
+                if (options.length >= 2) { // Allow TF questions with 2 options
+                    const questionType = detectQuestionType(line, options);
                     textSet.add(line);
-                    questions.push({
+                    
+                    const question = {
                         text: line,
-                        options: options.slice(0, 4),
                         correct: 0,
-                        type: 'single',
+                        type: questionType,
                         mapel: mapel,
                         rombel: fase,
                         level: 'sedang'
-                    });
+                    };
+                    
+                    // Add type-specific fields
+                    if (questionType === 'text') {
+                        question.correct = '';
+                    } else if (questionType === 'tf') {
+                        question.subQuestions = [
+                            { text: line, correct: 0 }
+                        ];
+                        question.options = options.slice(0, 2);
+                    } else {
+                        question.options = options.slice(0, 4);
+                    }
+                    
+                    questions.push(question);
                     strategy3Count++;
+                    console.log(`[AI Bank Soal] Strategy 3: Added ${questionType} question: "${line.substring(0, 50)}..."`);
                 }
             }
         }
