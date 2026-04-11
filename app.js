@@ -1736,7 +1736,6 @@ function showLoginForm(type) {
             if (!apiKey) return showToast('API Key harus diisi', 'error');
 
             try {
-                showLoadingOverlay('Menyimpan Global Key...');
                 const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1744,7 +1743,6 @@ function showLoginForm(type) {
                 });
 
                 const result = await response.json();
-                hideLoadingOverlay();
 
                 if (result.ok) {
                     showToast('Global API Key berhasil ditambahkan di Supabase', 'success');
@@ -1754,7 +1752,6 @@ function showLoginForm(type) {
                     showToast(result.error || 'Gagal menambahkan key', 'error');
                 }
             } catch (err) {
-                hideLoadingOverlay();
                 showToast('Error: ' + err.message, 'error');
             }
         };
@@ -1764,7 +1761,6 @@ function showLoginForm(type) {
             if (!apiKey) return showToast('API Key harus diisi', 'error');
 
             try {
-                showLoadingOverlay('Menyimpan Global Key...');
                 const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1772,7 +1768,6 @@ function showLoginForm(type) {
                 });
 
                 const result = await response.json();
-                hideLoadingOverlay();
 
                 if (result.ok) {
                     showToast('Global API Key berhasil ditambahkan', 'success');
@@ -1783,7 +1778,6 @@ function showLoginForm(type) {
                     showToast(result.error || 'Gagal menambahkan key', 'error');
                 }
             } catch (err) {
-                hideLoadingOverlay();
                 showToast('Error: ' + err.message, 'error');
             }
         };
@@ -1834,7 +1828,6 @@ function showLoginForm(type) {
             if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini?')) return;
 
             try {
-                showLoadingOverlay('Menghapus Global Key...');
                 const response = await fetch(getApiBaseUrl() + '/api/admin/remove-global-key', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1842,7 +1835,6 @@ function showLoginForm(type) {
                 });
 
                 const result = await response.json();
-                hideLoadingOverlay();
 
                 if (result.ok) {
                     showToast('Global API Key berhasil dihapus', 'success');
@@ -1852,7 +1844,6 @@ function showLoginForm(type) {
                     showToast(result.error || 'Gagal menghapus key', 'error');
                 }
             } catch (err) {
-                hideLoadingOverlay();
                 showToast('Error: ' + err.message, 'error');
             }
         };
