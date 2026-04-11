@@ -3949,18 +3949,30 @@ ATURAN SANGAT PENTING:
                 const arrayStart = extractText.indexOf('[');
                 const arrayEnd = extractText.lastIndexOf(']');
                 if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-                    let jsonStr = extractText.substring(arrayStart, arrayEnd + 1);
+                    let rawJson = extractText.substring(arrayStart, arrayEnd + 1);
                     
                     try {
-                        jsonStr = cleanAIResponse(jsonStr)
+                        let jsonStr = cleanAIResponse(rawJson)
                             .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
                             .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');  // Quote unquoted keys
                         
+                        // Sanitize structural literal newlines inside strings that break JSON.parse
+                        jsonStr = jsonStr.replace(/\n(?=[^"]*"\s*(?:[:,}\]]))/g, " ");
+
                         parsedQuestions = JSON.parse(jsonStr);
                     } catch (parseErr) {
-                        // Fallback parsing if aggressive clean fails
                         console.warn(`[AI Bank Soal] Aggressive JSON clean failed:`, parseErr.message);
-                        parsedQuestions = JSON.parse(extractText.substring(arrayStart, arrayEnd + 1));
+                        console.warn(`[AI Bank Soal] Attempting loose parsing via Function eval...`);
+                        try {
+                            // Loose evaluation handles single quotes, structural differences
+                            parsedQuestions = new Function('return ' + rawJson)();
+                        } catch (evalErr) {
+                            console.error(`[AI Bank Soal] Function eval also failed:`, evalErr.message);
+                            console.error(`[AI Bank Soal] ===== FAILED RAW JSON PAYLOAD =====`);
+                            console.error(rawJson);
+                            console.error(`[AI Bank Soal] ===================================`);
+                            throw new Error(`Gagal parse JSON Extract: ${parseErr.message}`);
+                        }
                     }
 
                     if (!Array.isArray(parsedQuestions)) {
