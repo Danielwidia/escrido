@@ -2133,7 +2133,7 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             if ((line.includes('?') || line.split(' ').length > 5) &&
                 line.length > 15 &&
                 !textSet.has(line) &&
-                !line.match(/^[A-E1-5]\s*[\.\)]/)) {
+                !line.match(/^[A-E]\s*[\.\)]/)) {
 
                 // Look for options in next 5 lines
                 // JOIN WITH NEWLINE instead of space to allow the plain-text parser to split options correctly
