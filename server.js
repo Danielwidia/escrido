@@ -1489,12 +1489,60 @@ async function attachGeneratedImagesToQuestions(questions, req) {
  */
 function cleanAIResponse(text) {
     try {
-        // Cari karakter [ dan ] pertama dan terakhir
+        // First try: extract from script tag if available
+        const scriptMatch = text.match(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>([\s\S]*?)<\/script>/i);
+        if (scriptMatch && scriptMatch[1]) {
+            return scriptMatch[1].trim();
+        }
+
+        // Second try: extract and combine all JSON arrays from categorized format
+        const jsonArrays = [];
+        const lines = text.split('\n');
+        let currentArray = null;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            // Check if this is a category header (contains "Soal)" )
+            if (trimmed.includes(' Soal)') && !trimmed.includes('[') && !trimmed.includes('{')) {
+                // Start of new category, reset current array
+                currentArray = null;
+                continue;
+            }
+
+            // Look for JSON array start
+            if (trimmed.startsWith('[') && currentArray === null) {
+                currentArray = trimmed;
+            } else if (currentArray !== null) {
+                currentArray += line;
+            }
+
+            // Check if we have a complete array
+            if (currentArray && currentArray.includes(']')) {
+                try {
+                    const parsed = JSON.parse(currentArray);
+                    if (Array.isArray(parsed)) {
+                        jsonArrays.push(...parsed);
+                    }
+                } catch (e) {
+                    // Not a valid JSON array, continue
+                }
+                currentArray = null;
+            }
+        }
+
+        // If we found arrays, return combined array
+        if (jsonArrays.length > 0) {
+            return JSON.stringify(jsonArrays);
+        }
+
+        // Fallback: Cari karakter [ dan ] pertama dan terakhir
         const start = text.indexOf('[');
         const end = text.lastIndexOf(']');
         if (start !== -1 && end !== -1) {
             return text.substring(start, end + 1);
         }
+
         return text;
     } catch (e) {
         return text;
@@ -3787,8 +3835,26 @@ CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. 
 
     prompt += `\n\nFormat Output: WAJIB JSON array valid yang berisi PERSIS ${actualJumlah} soal, tanpa penjelasan atau teks lain di luar JSON.
 VALIDASI ARRAY: Array harus memiliki TEPAT ${actualJumlah} elemen, tidak boleh kurang. Periksa kembali sebelum submit.
-Contoh format BENAR (dengan 2 soal):
-[{"text":"[STIMULUS] Teks bacaan... \\n\\n [PERTANYAAN] Apa yang...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang"},{"text":"Pernyataan berikut...","type":"tf","subQuestions":[{"statement":"Pernyataan 1...","answer":"Benar"},{"statement":"Pernyataan 2...","answer":"Salah"},{"statement":"Pernyataan 3...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${rombel}"}]
+
+FORMAT OUTPUT YANG WAJIB DIIKUTI:
+Kelompokkan soal berdasarkan tipe dengan judul kategori sebagai berikut:
+
+Pilihan Ganda (X Soal)
+[Array JSON soal single choice]
+
+Pilihan Ganda Kompleks (X Soal)
+[Array JSON soal multiple choice]
+
+Benar/Salah (X Soal)
+[Array JSON soal tf]
+
+Esai/Uraian (X Soal)
+[Array JSON soal text]
+
+Menjodohkan (X Soal)
+[Array JSON soal matching]
+
+Dimana X adalah jumlah soal untuk tipe tersebut. Jika suatu tipe tidak ada soal, jangan tampilkan judul kategorinya.
 
 FORMAT JSON YANG BENAR PER TIPE SOAL:
 
@@ -3840,14 +3906,34 @@ FORMAT JSON YANG BENAR PER TIPE SOAL:
   "level": "sedang"
 }
 
+5. MATCHING (Menjodohkan):
+{
+  "text": "Menjodohkan kolom A dengan kolom B!",
+  "questions": ["Item A1", "Item A2", "Item A3", "Item A4", "Item A5"],
+  "answers": ["Item B1", "Item B2", "Item B3", "Item B4", "Item B5"],
+  "correct": ["Item B2", "Item B1", "Item B4", "Item B3", "Item B5"],
+  "type": "matching",
+  "mapel": "${mapel}",
+  "rombel": "${rombel}",
+  "level": "sedang"
+}
+
 PENTING: 
 - Field "text" WAJIB diisi dengan pertanyaan lengkap
 - Untuk TF: subQuestions HARUS tepat 3 objek, correct HARUS array 3 string
 - Untuk single/multiple: options HARUS tepat 4 items, correct sesuai format di atas
 - Untuk text: correct HARUS string kosong "", tidak ada options
+- Untuk matching: questions dan answers HARUS array 5 items, correct HARUS array 5 string
 
-Contoh array dengan 3 soal berbeda tipe:
-[{"text":"Apa hasil 2+2?","options":["2","3","4","5"],"correct":2,"type":"single","mapel":"${mapel}","rombel":"${rombel}"},{"text":"Tentukan benar/salah!","type":"tf","subQuestions":[{"statement":"2+2=4","answer":"Benar"},{"statement":"3+3=5","answer":"Salah"},{"statement":"5+5=10","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"options":["2+2=4","3+3=5","5+5=10"],"mapel":"${mapel}","rombel":"${rombel}"},{"text":"Jelaskan hukum Newton!","correct":"","type":"text","mapel":"${mapel}","rombel":"${rombel}"}]
+Contoh output lengkap:
+Pilihan Ganda (2 Soal)
+[{"text":"Apa hasil 2+2?","options":["2","3","4","5"],"correct":2,"type":"single","mapel":"Matematika","rombel":"X"},{"text":"5x6=?","options":["25","30","35","40"],"correct":1,"type":"single","mapel":"Matematika","rombel":"X"}]
+
+Benar/Salah (1 Soal)
+[{"text":"Tentukan benar/salah!","type":"tf","subQuestions":[{"statement":"2+2=4","answer":"Benar"},{"statement":"3+3=5","answer":"Salah"},{"statement":"5+5=10","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"options":["2+2=4","3+3=5","5+5=10"],"mapel":"Matematika","rombel":"X"}]
+
+Esai/Uraian (1 Soal)
+[{"text":"Jelaskan hukum Newton!","correct":"","type":"text","mapel":"Matematika","rombel":"X"}]
 
 PENTING untuk tiap tipe soal:
 - single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D). "text" harus berisi pertanyaan lengkap.
@@ -3858,13 +3944,20 @@ PENTING untuk tiap tipe soal:
 [INSTRUKSI KRITIS - WAJIB DIIKUTI]
 Jika parameter simpanBank bernilai true, maka di bagian PALING AKHIR respons Anda HARUS menyertakan tag script JSON dengan format berikut:
 <script id="ai-json-data" type="application/json">
-[JSON_ARRAY_DISINI]
+[ARRAY_JSON_GABUNGAN_SEMUA_KATEGORI]
 </script>
 
+PENTING: Array dalam tag script HARUS berisi GABUNGAN dari semua array JSON yang ada di atas (dari semua kategori). Jadi jika ada 3 kategori masing-masing dengan 2 soal, maka total array harus berisi 6 soal dalam satu array besar.
+
 Contoh lengkap respons jika simpanBank=true:
-[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
+Pilihan Ganda (2 Soal)
+[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"},{"text":"Soal 2...","options":["A","B","C","D"],"correct":1,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
+
+Benar/Salah (1 Soal)
+[{"text":"Soal TF...","type":"tf","subQuestions":[{"statement":"Statement 1","answer":"Benar"}],"correct":["Benar"],"options":["Statement 1"],"mapel":"Matematika","rombel":"Fase D (Kelas 7)"}]
+
 <script id="ai-json-data" type="application/json">
-[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
+[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"},{"text":"Soal 2...","options":["A","B","C","D"],"correct":1,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"},{"text":"Soal TF...","type":"tf","subQuestions":[{"statement":"Statement 1","answer":"Benar"}],"correct":["Benar"],"options":["Statement 1"],"mapel":"Matematika","rombel":"Fase D (Kelas 7)"}]
 </script>
 
 ⚠️ PERINGATAN: Tag script HARUS berada di bagian paling akhir respons, setelah JSON array utama. Jika Anda tidak menyertakan tag script ini, sistem akan mencoba mengekstrak JSON secara otomatis, tetapi ini kurang dapat diandalkan. SELALU sertakan tag script untuk memastikan soal tersimpan dengan benar.`;
