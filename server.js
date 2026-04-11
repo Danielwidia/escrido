@@ -3919,18 +3919,19 @@ ${text}
 Tugasmu: Ekstrak SEMUA soal dari dokumen HTML di atas dan ubah menjadi JSON array yang valid.
 Output HANYA JSON array, tanpa teks penjelasan, tanpa markdown, tanpa tag HTML.
 
-Format setiap soal:
+Format setiap soal HARUS lengkap:
 - type "single" (pilihan ganda): {"text":"...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
 - type "text" (uraian): {"text":"...","correct":"kunci jawaban singkat","type":"text","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
-- type "tf" (benar/salah): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"},{"statement":"...","answer":"Salah"},{"statement":"...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${fase}"}
+- type "tf" (benar/salah): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"},{"statement":"...","answer":"Salah"}],"correct":["Benar","Salah"],"mapel":"${mapel}","rombel":"${fase}"}
 - type "multiple" (PG kompleks): {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
 
 ATURAN SANGAT PENTING:
 1. Untuk "correct" pada single: indeks integer jawaban benar (0=A, 1=B, 2=C, 3=D)
-2. Setiap soal WAJIB punya field "text" berisi teks pertanyaan
+2. Setiap soal WAJIB punya field "text", "type", dan field lain sesuai typenya
 3. Output HANYA array JSON, mulai dari [ dan diakhiri ]
-4. Sertakan SEMUA soal yang ada dalam dokumen
-5. KRITIS: Jika teks mengandung tanda kutip ganda ("), WAJIB diganti dengan tanda kutip tunggal (') atau di-escape (\\"). Jangan sampai merusak struktur JSON!`;
+4. Pastikan setiap object soal lengkap dan valid JSON
+5. KRITIS: Jika teks mengandung tanda kutip ganda ("), WAJIB diganti dengan tanda kutip tunggal (') atau di-escape (\\"). Jangan sampai merusak struktur JSON!
+6. JANGAN potong output - sertakan semua soal lengkap`;
 
             try {
                 const extractResult = await callAI(extractionPrompt, req);
@@ -3951,6 +3952,93 @@ ATURAN SANGAT PENTING:
                 if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
                     let rawJson = extractText.substring(arrayStart, arrayEnd + 1);
                     
+                    // Function to complete incomplete JSON
+                    function completeIncompleteJSON(jsonStr) {
+                        let completed = jsonStr;
+                        
+                        // Count braces and brackets
+                        let openBraces = 0, openBrackets = 0;
+                        let inString = false;
+                        let escapeNext = false;
+                        
+                        for (let i = 0; i < completed.length; i++) {
+                            const char = completed[i];
+                            
+                            if (escapeNext) {
+                                escapeNext = false;
+                                continue;
+                            }
+                            
+                            if (char === '\\') {
+                                escapeNext = true;
+                                continue;
+                            }
+                            
+                            if (char === '"') {
+                                inString = !inString;
+                                continue;
+                            }
+                            
+                            if (inString) continue;
+                            
+                            if (char === '{') openBraces++;
+                            else if (char === '}') openBraces--;
+                            else if (char === '[') openBrackets++;
+                            else if (char === ']') openBrackets--;
+                        }
+                        
+                        // Add missing closing braces
+                        while (openBraces > 0) {
+                            completed += '}';
+                            openBraces--;
+                        }
+                        
+                        // Add missing closing brackets
+                        while (openBrackets > 0) {
+                            completed += ']';
+                            openBrackets--;
+                        }
+                        
+                        return completed;
+                    }
+                    
+                    // Function to fix incomplete questions by adding missing fields
+                    function fixIncompleteQuestions(jsonStr) {
+                        try {
+                            // Try to parse as is first
+                            return JSON.parse(jsonStr);
+                        } catch (e) {
+                            console.log(`[AI Bank Soal] Attempting to fix incomplete JSON...`);
+                            
+                            // Complete the JSON structure first
+                            let completedJson = completeIncompleteJSON(jsonStr);
+                            
+                            try {
+                                let parsed = JSON.parse(completedJson);
+                                
+                                // Now fix incomplete question objects
+                                if (Array.isArray(parsed)) {
+                                    parsed = parsed.map(q => {
+                                        if (typeof q === 'object' && q.text && q.options && !q.correct) {
+                                            // Add missing fields for single choice questions
+                                            q.correct = q.correct !== undefined ? q.correct : 0;
+                                            q.type = q.type || 'single';
+                                            q.mapel = q.mapel || mapel;
+                                            q.rombel = q.rombel || fase;
+                                            q.level = q.level || 'sedang';
+                                        }
+                                        return q;
+                                    });
+                                }
+                                
+                                return parsed;
+                            } catch (e2) {
+                                console.warn(`[AI Bank Soal] Could not complete JSON: ${e2.message}`);
+                                throw e; // Throw original error
+                            }
+                        }
+                    }
+                    
                     try {
                         let jsonStr = cleanAIResponse(rawJson)
                             .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
@@ -3959,7 +4047,7 @@ ATURAN SANGAT PENTING:
                         // Sanitize structural literal newlines inside strings that break JSON.parse
                         jsonStr = jsonStr.replace(/\n(?=[^"]*"\s*(?:[:,}\]]))/g, " ");
 
-                        parsedQuestions = JSON.parse(jsonStr);
+                        parsedQuestions = fixIncompleteQuestions(jsonStr);
                     } catch (parseErr) {
                         console.warn(`[AI Bank Soal] Aggressive JSON clean failed:`, parseErr.message);
                         console.warn(`[AI Bank Soal] Attempting loose parsing via Function eval...`);
