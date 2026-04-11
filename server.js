@@ -3262,9 +3262,11 @@ app.post('/api/generate-ai', async (req, res) => {
     if (hots > 0) levelParts.push(`${hots} HOTS`);
 
     // --- PROMPT YANG DITINGKATKAN ---
-    let prompt = `[INSTRUKSI SISTEM - WAJIB DIIKUTI]
+    let prompt = `[INSTRUKSI KRITIS - WAJIB DIIKUTI]
 Jika parameter simpanBank bernilai true, maka ANDA HARUS menyertakan tag script JSON di bagian PALING AKHIR respons Anda.
 Tag script tersebut diperlukan agar soal dapat disimpan ke database. Tanpa tag tersebut, soal tidak akan tersimpan.
+
+⚠️ PENTING: Jika Anda tidak menyertakan tag script JSON yang diminta, sistem akan mencoba mengekstrak JSON dari respons utama Anda. Namun, ini kurang dapat diandalkan. SELALU sertakan tag script untuk memastikan soal tersimpan dengan benar.
 
 Anda adalah pakar pengembang kurikulum dan pembuat soal ujian profesional. 
 
@@ -3362,7 +3364,7 @@ Contoh lengkap respons jika simpanBank=true:
 [{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
 </script>
 
-PENTING: Tag script HARUS berada di bagian paling akhir respons, setelah JSON array utama. Tanpa tag script ini, soal tidak akan tersimpan ke bank soal.`;
+⚠️ PERINGATAN: Tag script HARUS berada di bagian paling akhir respons, setelah JSON array utama. Jika Anda tidak menyertakan tag script ini, sistem akan mencoba mengekstrak JSON secara otomatis, tetapi ini kurang dapat diandalkan. SELALU sertakan tag script untuk memastikan soal tersimpan dengan benar.`;
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}, imageEnabled=${imageEnabled}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
@@ -3775,8 +3777,46 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
         const shouldSaveToBank = extraData && (extraData.simpanBank === true || String(extraData.simpanBank).toLowerCase() === 'true');
         if (shouldSaveToBank) {
             console.log(`[AI Bank Soal] Checking for JSON data in AI response (length: ${text.length})`);
-            const jsonSource = extractAiJsonData(text);
+            let jsonSource = extractAiJsonData(text);
             console.log(`[AI Bank Soal] Extracted JSON source length: ${jsonSource ? jsonSource.length : 0}`);
+
+            // Fallback: Jika tidak ada tag script, ekstrak JSON dari respons utama
+            if (!jsonSource) {
+                console.log(`[AI Bank Soal] No script tag found, trying to extract JSON from main response...`);
+                // Cari JSON array di respons utama
+                const jsonMatch = text.match(/(\[\s*\{[\s\S]*?\}\s*\])/);
+                if (jsonMatch && jsonMatch[1]) {
+                    jsonSource = jsonMatch[1].trim();
+                    console.log(`[AI Bank Soal] Found JSON in main response, length: ${jsonSource.length}`);
+                    console.log(`[AI Bank Soal] JSON preview: ${jsonSource.substring(0, 200)}...`);
+                    // Sisipkan tag script ke respons HTML untuk konsistensi
+                    text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
+                } else {
+                    console.log(`[AI Bank Soal] No JSON array found in main response either.`);
+                    console.log(`[AI Bank Soal] Response preview (last 500 chars): ${text.substring(Math.max(0, text.length - 500))}`);
+                }
+            }
+
+            // Ultimate fallback: Jika masih tidak ada JSON, coba ekstrak dari seluruh respons
+            if (!jsonSource) {
+                console.log(`[AI Bank Soal] Attempting ultimate fallback extraction from entire response...`);
+                // Cari pola JSON array yang lebih luas
+                const ultimateMatch = text.match(/(\[[\s\S]*?\])/);
+                if (ultimateMatch && ultimateMatch[1]) {
+                    try {
+                        // Coba parse untuk memastikan valid
+                        JSON.parse(ultimateMatch[1]);
+                        jsonSource = ultimateMatch[1].trim();
+                        console.log(`[AI Bank Soal] Ultimate fallback successful, JSON length: ${jsonSource.length}`);
+                        text += `\n<script id="ai-json-data" type="application/json">\n${jsonSource}\n</script>`;
+                    } catch (e) {
+                        console.log(`[AI Bank Soal] Ultimate fallback JSON invalid: ${e.message}`);
+                    }
+                } else {
+                    console.log(`[AI Bank Soal] No JSON found anywhere in response`);
+                }
+            }
+
             if (jsonSource) {
                 console.log(`[AI Bank Soal] JSON source preview: ${jsonSource.substring(0, 200)}...`);
                 try {
