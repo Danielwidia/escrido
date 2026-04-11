@@ -1735,11 +1735,12 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     // Helper function to detect type from category header
     function detectTypeFromHeader(headerText) {
         const text = headerText.toLowerCase();
+        // Check complexes/specifics first to avoid partial matches
+        if (text.includes('pg kompleks') || text.includes('multiple') || text.includes('pilih beberapa') || text.includes('pilihan ganda kompleks')) {
+            return 'multiple';
+        }
         if (text.includes('pilihan ganda') || text.includes('single') || text.includes('pg biasa')) {
             return 'single';
-        }
-        if (text.includes('pg kompleks') || text.includes('multiple') || text.includes('pilih beberapa')) {
-            return 'multiple';
         }
         if (text.includes('benar/salah') || text.includes('tf') || text.includes('true/false')) {
             return 'tf';
@@ -2134,9 +2135,12 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 !line.match(/^[A-E1-5]\s*[\.\)]/)) {
 
                 // Look for options in next 5 lines
-                const nextContent = lines.slice(i + 1, i + 6).join(' ');
+                // JOIN WITH NEWLINE instead of space to allow the plain-text parser to split options correctly
+                const nextLinesCount = 5;
+                const nextLines = lines.slice(i + 1, i + 1 + nextLinesCount);
+                const nextContent = nextLines.join('\n');
                 const options = extractOptionsFromText(nextContent);
-
+                
                 if (options.length >= 2) { // Allow TF questions with 2 options
                     let questionType = currentType; // Use type from current section
 
@@ -2178,6 +2182,17 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     questions.push(question);
                     strategy3Count++;
                     console.log(`[AI Bank Soal] Strategy 3: Added ${questionType} question: "${line.substring(0, 50)}..."`);
+                    
+                    // SKIP lines that were likely part of the options to avoid re-detecting them as questions
+                    // If we found X options, skip at least that many lines if they match the extracted options
+                    let linesToSkip = 0;
+                    for (let j = 0; j < nextLines.length; j++) {
+                        const trimmedNext = nextLines[j].trim();
+                        if (options.some(opt => trimmedNext.includes(opt.substring(0, 20)))) {
+                            linesToSkip = j + 1;
+                        }
+                    }
+                    i += linesToSkip;
                 }
             }
         }
