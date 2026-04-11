@@ -20,9 +20,35 @@ CREATE TABLE IF NOT EXISTS cbt_results (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. PENTING: Disable RLS agar anon key bisa baca/tulis
+-- 3. Buat tabel untuk Global API Keys (NEW - untuk penyimpanan terpisah)
+CREATE TABLE IF NOT EXISTS global_api_keys (
+  id BIGSERIAL PRIMARY KEY,
+  provider TEXT NOT NULL,
+  key TEXT NOT NULL UNIQUE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'exhausted')),
+  note TEXT,
+  vercel_env_var TEXT,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Buat tabel untuk Teacher API Keys
+CREATE TABLE IF NOT EXISTS teacher_api_keys (
+  id BIGSERIAL PRIMARY KEY,
+  teacher_id TEXT NOT NULL,
+  key TEXT NOT NULL UNIQUE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'exhausted')),
+  note TEXT,
+  vercel_env_var TEXT,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. PENTING: Disable RLS agar anon key bisa baca/tulis
 ALTER TABLE cbt_database DISABLE ROW LEVEL SECURITY;
 ALTER TABLE cbt_results  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE global_api_keys DISABLE ROW LEVEL SECURITY;
+ALTER TABLE teacher_api_keys DISABLE ROW LEVEL SECURITY;
 
 -- 4. Sisipkan data awal (hanya jika tabel masih kosong)
 INSERT INTO cbt_database (id, data)
