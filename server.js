@@ -3780,21 +3780,80 @@ KRITERIA KUALITAS:
     {"statement": "Pernyataan 2 tentang [Topik]...", "answer": "Salah"},
     {"statement": "Pernyataan 3 tentang [Topik]...", "answer": "Benar"}
   ],
-  "correct": ["Benar", "Salah", "Benar"]
+  "correct": ["Benar", "Salah", "Benar"],
+  "options": ["Pernyataan 1 tentang [Topik]...", "Pernyataan 2 tentang [Topik]...", "Pernyataan 3 tentang [Topik]..."]
 }
-CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. Hanya buat SATU soal yang memiliki 3 pernyataan berhubungan dalam "subQuestions" field.`;
+CATATAN PENTING: Jangan buat 5 soal terpisah masing-masing dengan 1 pernyataan. Hanya buat SATU soal yang memiliki 3 pernyataan berhubungan dalam "subQuestions" field. Field "options" diisi untuk kompatibilitas frontend.`;
 
     prompt += `\n\nFormat Output: WAJIB JSON array valid yang berisi PERSIS ${actualJumlah} soal, tanpa penjelasan atau teks lain di luar JSON.
 VALIDASI ARRAY: Array harus memiliki TEPAT ${actualJumlah} elemen, tidak boleh kurang. Periksa kembali sebelum submit.
 Contoh format BENAR (dengan 2 soal):
 [{"text":"[STIMULUS] Teks bacaan... \\n\\n [PERTANYAAN] Apa yang...","options":["A","B","C","D"],"correct":0,"mapel":"${mapel}","rombel":"${rombel}","type":"single","level":"sedang"},{"text":"Pernyataan berikut...","type":"tf","subQuestions":[{"statement":"Pernyataan 1...","answer":"Benar"},{"statement":"Pernyataan 2...","answer":"Salah"},{"statement":"Pernyataan 3...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${rombel}"}]
 
+FORMAT JSON YANG BENAR PER TIPE SOAL:
+
+1. SINGLE (Pilihan Ganda): 
+{
+  "text": "Pertanyaan lengkap di sini?",
+  "options": ["A. Pilihan A", "B. Pilihan B", "C. Pilihan C", "D. Pilihan D"],
+  "correct": 0,
+  "type": "single",
+  "mapel": "${mapel}",
+  "rombel": "${rombel}",
+  "level": "sedang"
+}
+
+2. MULTIPLE (PG Kompleks - 2-3 jawaban benar):
+{
+  "text": "Pertanyaan lengkap di sini?",
+  "options": ["A. Pilihan A", "B. Pilihan B", "C. Pilihan C", "D. Pilihan D"],
+  "correct": [0, 2],
+  "type": "multiple",
+  "mapel": "${mapel}",
+  "rombel": "${rombel}",
+  "level": "sedang"
+}
+
+3. TF (Benar/Salah - TEPAT 3 pernyataan):
+{
+  "text": "Tentukan apakah pernyataan berikut benar atau salah!",
+  "type": "tf",
+  "subQuestions": [
+    {"statement": "Pernyataan 1 tentang topik...", "answer": "Benar"},
+    {"statement": "Pernyataan 2 tentang topik...", "answer": "Salah"},
+    {"statement": "Pernyataan 3 tentang topik...", "answer": "Benar"}
+  ],
+  "correct": ["Benar", "Salah", "Benar"],
+  "options": ["Pernyataan 1 tentang topik...", "Pernyataan 2 tentang topik...", "Pernyataan 3 tentang topik..."],
+  "mapel": "${mapel}",
+  "rombel": "${rombel}",
+  "level": "sedang"
+}
+
+4. TEXT (Uraian/Essay):
+{
+  "text": "Jelaskan konsep X secara lengkap!",
+  "correct": "",
+  "type": "text",
+  "mapel": "${mapel}",
+  "rombel": "${rombel}",
+  "level": "sedang"
+}
+
+PENTING: 
+- Field "text" WAJIB diisi dengan pertanyaan lengkap
+- Untuk TF: subQuestions HARUS tepat 3 objek, correct HARUS array 3 string
+- Untuk single/multiple: options HARUS tepat 4 items, correct sesuai format di atas
+- Untuk text: correct HARUS string kosong "", tidak ada options
+
+Contoh array dengan 3 soal berbeda tipe:
+[{"text":"Apa hasil 2+2?","options":["2","3","4","5"],"correct":2,"type":"single","mapel":"${mapel}","rombel":"${rombel}"},{"text":"Tentukan benar/salah!","type":"tf","subQuestions":[{"statement":"2+2=4","answer":"Benar"},{"statement":"3+3=5","answer":"Salah"},{"statement":"5+5=10","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"options":["2+2=4","3+3=5","5+5=10"],"mapel":"${mapel}","rombel":"${rombel}"},{"text":"Jelaskan hukum Newton!","correct":"","type":"text","mapel":"${mapel}","rombel":"${rombel}"}]
+
 PENTING untuk tiap tipe soal:
 - single (Pilihan Ganda): "correct" adalah indeks integer (0-3). Wajib 4 opsi (A,B,C,D). "text" harus berisi pertanyaan lengkap.
 - multiple (PG Kompleks): "correct" adalah array indeks benar MAKSIMAL 3, contoh: [0, 2]. Wajib TEPAT 4 opsi (A,B,C,D), jangan 5 atau lebih. "text" harus berisi pertanyaan lengkap.
-- tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. "text" harus ada. JANGAN GUNAKAN "options" field untuk tf.
-- matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers". "text" harus ada.
-- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat. "text" harus berisi pertanyaan lengkap.
+- tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. "text" harus ada. "options" diisi untuk kompatibilitas frontend.
+- text (Uraian): "correct" HARUS berisi string kosong "". Tidak ada "options" field. "text" harus berisi pertanyaan lengkap.
 
 [INSTRUKSI KRITIS - WAJIB DIIKUTI]
 Jika parameter simpanBank bernilai true, maka di bagian PALING AKHIR respons Anda HARUS menyertakan tag script JSON dengan format berikut:
