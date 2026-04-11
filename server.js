@@ -1683,30 +1683,49 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         const text = questionText.toLowerCase();
         
         // Check for essay/text questions (contains keywords)
-        if (text.includes('jelaskan') || text.includes('uraikan') || text.includes('deskripsikan') || 
-            text.includes('apa yang dimaksud') || text.includes('sebutkan') || 
-            text.includes('berikan contoh') || text.includes('tuliskan') ||
-            text.length > 200) {
+        const essayKeywords = ['jelaskan', 'uraikan', 'deskripsikan', 'apa yang dimaksud', 'sebutkan', 
+                              'berikan contoh', 'tuliskan', 'apa yang terjadi', 'bagaimana cara', 
+                              'mengapa', 'kenapa', 'apa penyebab', 'apa akibat', 'apa fungsi',
+                              'apa perbedaan', 'apa persamaan', 'apa ciri', 'apa sifat',
+                              'tentukan', 'hitunglah', 'carilah', 'susunlah', 'buatlah'];
+        
+        const hasEssayKeyword = essayKeywords.some(keyword => text.includes(keyword));
+        const isLongQuestion = text.length > 120; // Reduced threshold
+        const hasNoOptions = !options || options.length < 2;
+        const hasQuestionWords = text.includes('?') || text.includes('apakah') || text.includes('bagaimana');
+        
+        if (hasEssayKeyword || (isLongQuestion && hasQuestionWords) || hasNoOptions) {
+            console.log(`[AI Bank Soal] Detected TEXT question: "${questionText.substring(0, 50)}..." (keyword:${hasEssayKeyword}, long:${isLongQuestion}, noOpts:${hasNoOptions})`);
             return 'text';
         }
         
         // Check for true/false questions
-        if (text.includes('benar atau salah') || text.includes('true or false') || 
-            text.includes('ya atau tidak') || text.includes('salah satu berikut') ||
-            (options.length === 2 && 
-             ((options[0].toLowerCase().includes('benar') && options[1].toLowerCase().includes('salah')) ||
-              (options[0].toLowerCase().includes('ya') && options[1].toLowerCase().includes('tidak')) ||
-              (options[0].toLowerCase().includes('true') && options[1].toLowerCase().includes('false'))))) {
+        const tfKeywords = ['benar atau salah', 'benar/salah', 'true or false', 'true/false', 
+                           'ya atau tidak', 'ya/tidak', 'betul atau salah', 'betul/salah'];
+        const hasTfKeyword = tfKeywords.some(keyword => text.includes(keyword));
+        
+        const hasTfOptions = options && options.length === 2 && 
+                           ((options[0].toLowerCase().includes('benar') && options[1].toLowerCase().includes('salah')) ||
+                            (options[0].toLowerCase().includes('ya') && options[1].toLowerCase().includes('tidak')) ||
+                            (options[0].toLowerCase().includes('true') && options[1].toLowerCase().includes('false')) ||
+                            (options[0].toLowerCase().includes('betul') && options[1].toLowerCase().includes('salah')));
+        
+        if (hasTfKeyword || hasTfOptions) {
+            console.log(`[AI Bank Soal] Detected TF question: "${questionText.substring(0, 50)}..." (keyword:${hasTfKeyword}, tfOpts:${hasTfOptions})`);
             return 'tf';
         }
         
         // Check for multiple choice (more than one correct answer indicated)
-        if (text.includes('pilih yang benar') || text.includes('lebih dari satu') || 
-            text.includes('banyak jawaban') || text.includes('semua yang benar')) {
+        const multipleKeywords = ['pilih yang benar', 'lebih dari satu', 'banyak jawaban', 'semua yang benar',
+                                 'pilih beberapa', 'jawaban lebih dari satu', 'banyak pilihan benar',
+                                 'pilih yang tepat', 'jawaban benar lebih dari satu'];
+        if (multipleKeywords.some(keyword => text.includes(keyword))) {
+            console.log(`[AI Bank Soal] Detected MULTIPLE question: "${questionText.substring(0, 50)}..."`);
             return 'multiple';
         }
         
         // Default to single choice
+        console.log(`[AI Bank Soal] Detected SINGLE question: "${questionText.substring(0, 50)}..."`);
         return 'single';
     }
     
@@ -1784,11 +1803,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             }
             
             // Accept questions with at least 2 options (for TF) or 4 options (for single/multiple)
-            const minOptions = questionText.toLowerCase().includes('benar atau salah') || 
-                              questionText.toLowerCase().includes('ya atau tidak') ? 2 : 4;
+            // But first try to detect type to determine minimum required options
+            let questionType = 'single'; // default
+            let minOptions = 4; // default
+            
+            // Try to detect type based on current options
+            if (options.length >= 2) {
+                questionType = detectQuestionType(questionText, options);
+                minOptions = (questionType === 'tf') ? 2 : 
+                           (questionType === 'text') ? 0 : 4;
+            }
             
             if (options.length >= minOptions) {
-                const questionType = detectQuestionType(questionText, options);
                 textSet.add(questionText);
                 
                 const question = {
