@@ -1674,31 +1674,31 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     if (!htmlText || typeof htmlText !== 'string') return questions;
 
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
-
-    // Strategy 1: Try to parse from HTML structure (ol/li with nested options)
+    
+    const textSet = new Set();  // Track unique questions
+    
+    // STRATEGY 1: Parse from HTML structure (ol/li with nested options)
+    console.log(`[AI Bank Soal] Strategy 1: Parsing HTML structure...`);
     try {
-        // Look for numbered list items - more flexible pattern
         const liPattern = /<li[^>]*>([\s\S]*?)(?=<li[^>]*>|<\/ol[^>]*>|$)/gi;
         let match;
+        let strategy1Count = 0;
         
-        while ((match = liPattern.exec(htmlText)) !== null && questions.length < 50) {
+        while ((match = liPattern.exec(htmlText)) !== null && questions.length < 100) {
             const liContent = match[1];
             
-            // Extract main question text (usually in a paragraph tag or as direct text)
             let questionText = '';
-            
-            // Try different patterns for question text
             const patterns = [
-                /<p[^>]*>([\s\S]*?)<\/p>/i,  // <p> tags
-                /^([^A-D][^.!?]*[.!?])/m,     // Text before options
-                /^([\s\S]*?)(?=[A-D]\s*[\.\)]|$)/m  // Text until options start
+                /<p[^>]*>([\s\S]*?)<\/p>/i,
+                /^([^A-D][^.!?]*[.!?])/m,
+                /^([\s\S]*?)(?=[A-D]\s*[\.\)]|$)/m
             ];
             
             for (const pattern of patterns) {
                 const textMatch = liContent.match(pattern);
                 if (textMatch && textMatch[1]) {
                     questionText = textMatch[1]
-                        .replace(/<[^>]*>/g, '')  // Remove tags
+                        .replace(/<[^>]*>/g, '')
                         .replace(/&nbsp;/g, ' ')
                         .replace(/&amp;/g, '&')
                         .replace(/&lt;/g, '<')
@@ -1707,29 +1707,17 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                         .replace(/\s+/g, ' ')
                         .trim();
                     
-                    if (questionText.length >= 10) break; // Found good question text
+                    if (questionText.length >= 10) break;
                 }
             }
             
-            if (!questionText || questionText.length < 10) {
-                console.log(`[AI Bank Soal] Skipping li with insufficient question text: "${questionText?.substring(0, 30)}..."`);
-                continue;
-            }
+            if (!questionText || questionText.length < 10 || textSet.has(questionText)) continue;
             
-            console.log(`[AI Bank Soal] Found question text: "${questionText.substring(0, 50)}..."`);
-            
-            // Extract options from the same li content
             const options = [];
-            
-            // Try multiple patterns for options
             const optionPatterns = [
-                // Pattern 1: A. B. C. D. format
                 /([A-D])\s*[\.\)]\s*([^A-D\n]+?)(?=[A-D]\s*[\.\)]|$)/gi,
-                // Pattern 2: Nested li elements
                 /<li[^>]*>([\s\S]*?)<\/li>/gi,
-                // Pattern 3: Strong/bold options
                 /<strong[^>]*>\s*([A-D])\s*[\.\)]\s*([^<]+?)<\/strong>/gi,
-                // Pattern 4: Simple letter patterns
                 /\b([A-D])\.\s*([^\n]+?)(?=\b[A-D]\.|$)/gi
             ];
             
@@ -1737,35 +1725,34 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 let optMatch;
                 while ((optMatch = optPattern.exec(liContent)) !== null && options.length < 4) {
                     let optText = '';
-                    
                     if (optMatch[2]) {
-                        // Pattern with letter and text
                         optText = optMatch[2].replace(/<[^>]*>/g, '').replace(/&.*?;/g, '').trim();
                     } else if (optMatch[1]) {
-                        // Just the text
                         optText = optMatch[1].replace(/<[^>]*>/g, '').replace(/&.*?;/g, '').trim();
                     }
                     
-                    if (optText && optText.length > 1) {
+                    if (optText && optText.length > 1 && !options.includes(optText)) {
                         options.push(optText);
-                        console.log(`[AI Bank Soal] Found option ${options.length}: "${optText.substring(0, 30)}..."`);
                     }
                 }
-                
-                if (options.length >= 4) break; // Found enough options
+                if (options.length >= 4) break;
             }
             
-            // If still no options, try to extract from the entire li content after question
             if (options.length < 4) {
                 const afterQuestion = liContent.replace(questionText, '').trim();
                 const fallbackOptions = extractOptionsFromText(afterQuestion);
                 if (fallbackOptions.length > 0) {
-                    options.push(...fallbackOptions.slice(0, 4 - options.length));
+                    fallbackOptions.forEach(opt => {
+                        if (options.length < 4 && !options.includes(opt)) {
+                            options.push(opt);
+                        }
+                    });
                 }
             }
             
             if (options.length >= 4) {
-                const question = {
+                textSet.add(questionText);
+                questions.push({
                     text: questionText,
                     options: options.slice(0, 4),
                     correct: 0,
@@ -1773,90 +1760,99 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                     mapel: mapel,
                     rombel: fase,
                     level: 'sedang'
-                };
-                questions.push(question);
-                console.log(`[AI Bank Soal] Successfully created question ${questions.length} with ${options.length} options`);
-            } else {
-                console.log(`[AI Bank Soal] Question has only ${options.length} options, skipping: "${questionText.substring(0, 30)}..."`);
+                });
+                strategy1Count++;
             }
         }
+        console.log(`[AI Bank Soal] Strategy 1 found ${strategy1Count} questions`);
     } catch (e) {
         console.warn(`[AI Bank Soal] HTML structure parsing failed: ${e.message}`);
     }
     
-    // Strategy 2: If Strategy 1 got few results, try aggressive text-based extraction
-    if (questions.length < 3) {
-        console.log(`[AI Bank Soal] Strategy 1 got ${questions.length} questions, trying Strategy 2 (text-based)...`);
+    // STRATEGY 2: Aggressive regex-based extraction from raw text
+    if (questions.length < 10) {
+        console.log(`[AI Bank Soal] Strategy 2: Regex extraction from raw text...`);
         
-        // Remove HTML tags to get clean text
-        const cleanText = htmlText.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-        console.log(`[AI Bank Soal] Cleaned text length: ${cleanText.length}`);
-
-        // Look for question patterns in clean text
-        const patterns = [
-            // Pattern 1: Numbered questions with options: "1. Question? A. Option B. Option C. Option D. Option"
-            /(\d+)\.\s*([^?]*\?)\s*(?:A\.|a\.)\s*([^B]*?)(?:B\.|b\.)\s*([^C]*?)(?:C\.|c\.)\s*([^D]*?)(?:D\.|d\.)\s*([^0-9]*?)(?=\d+\.|$)/gi,
-            // Pattern 2: Simpler pattern with just numbered questions
-            /(\d+)\.\s*([^.?]+[.?])/gi
-        ];
-
-        for (const pattern of patterns) {
-            let match;
-            
-            while ((match = pattern.exec(cleanText)) !== null && questions.length < 50) {
-                const questionNum = match[1];
-                let questionText = match[2].trim();
+        const cleanText = htmlText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        let strategy2Count = 0;
+        
+        // Pattern: "1. Question text A. Option B. Option C. Option D. Option"
+        const numberedPattern = /(\d+)\.\s+([^A-D\n]+?)(?=A[\s.]+[^B]+?B[\s.]+[^C]+?C[\s.]+[^D]+?D[\s.]+)/gi;
+        let match;
+        
+        while ((match = numberedPattern.exec(cleanText)) !== null && questions.length < 100) {
+            let questionText = match[2].trim();
+            if (!textSet.has(questionText) && questionText.length > 10) {
                 
-                if (!questionText.endsWith('?')) {
-                    questionText += '?';
-                }
-
-                console.log(`[AI Bank Soal] Found question ${questionNum}: ${questionText.substring(0, 50)}...`);
-
-                // Extract options
-                let options = [];
-                if (match[3] && match[4] && match[5] && match[6]) {
-                    options = [
-                        match[3].trim(),
-                        match[4].trim(),
-                        match[5].trim(),
-                        match[6].trim()
-                    ];
-                } else {
-                    // Try to extract from surrounding text
-                    options = extractOptionsFromText(cleanText.substring(match.index, match.index + match[0].length + 200));
-                }
-
+                // Extract options from the context around the match
+                const contextStart = match.index + match[0].length;
+                const context = cleanText.substring(contextStart, contextStart + 300);
+                const options = extractOptionsFromText(context);
+                
                 if (options.length >= 4) {
-                    // Skip if we already have this question
-                    const isDuplicate = questions.some(q => q.text === questionText);
-                    if (!isDuplicate) {
-                        const question = {
-                            text: questionText,
-                            options: options.slice(0, 4),
-                            correct: 0,
-                            type: 'single',
-                            mapel: mapel,
-                            rombel: fase,
-                            level: 'sedang'
-                        };
-                        questions.push(question);
-                        console.log(`[AI Bank Soal] Successfully created question ${questions.length} with ${options.length} options`);
-                    }
+                    textSet.add(questionText);
+                    questions.push({
+                        text: questionText,
+                        options: options.slice(0, 4),
+                        correct: 0,
+                        type: 'single',
+                        mapel: mapel,
+                        rombel: fase,
+                        level: 'sedang'
+                    });
+                    strategy2Count++;
                 }
             }
-            
-            if (questions.length > 0) break; // Stop at first successful pattern
         }
+        console.log(`[AI Bank Soal] Strategy 2 found ${strategy2Count} questions`);
+    }
+    
+    // STRATEGY 3: Line-by-line text analysis
+    if (questions.length < 10) {
+        console.log(`[AI Bank Soal] Strategy 3: Line-by-line analysis...`);
+        
+        const cleanText = htmlText.replace(/<[^>]*>/g, ' ').replace(/&.*?;/g, '').trim();
+        const lines = cleanText.split(/\n/).map(l => l.trim()).filter(l => l.length > 5);
+        let strategy3Count = 0;
+        
+        for (let i = 0; i < lines.length && questions.length < 100; i++) {
+            const line = lines[i];
+            
+            // Check if line looks like a question (has question mark or is substantial)
+            if ((line.includes('?') || line.split(' ').length > 5) && 
+                line.length > 15 && 
+                !textSet.has(line) &&
+                !line.match(/^[A-D]\s*[\.\)]/)) {
+                
+                // Look for options in next 5 lines
+                const nextContent = lines.slice(i + 1, i + 6).join(' ');
+                const options = extractOptionsFromText(nextContent);
+                
+                if (options.length >= 4) {
+                    textSet.add(line);
+                    questions.push({
+                        text: line,
+                        options: options.slice(0, 4),
+                        correct: 0,
+                        type: 'single',
+                        mapel: mapel,
+                        rombel: fase,
+                        level: 'sedang'
+                    });
+                    strategy3Count++;
+                }
+            }
+        }
+        console.log(`[AI Bank Soal] Strategy 3 found ${strategy3Count} questions`);
     }
 
     if (questions.length === 0) {
-        console.log(`[AI Bank Soal] No questions found by any strategy`);
+        console.log(`[AI Bank Soal] ⚠️ No questions found by any strategy`);
     } else if (questions.length < 5) {
         console.warn(`[AI Bank Soal] ⚠️ WARNING: Only ${questions.length} questions found (expected more)`);
     }
 
-    console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Total questions created: ${questions.length}`);
+    console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Total ${questions.length} unique questions created`);
     return questions;
 }
 async function callHuggingFaceAI(prompt, req) {
@@ -4088,38 +4084,43 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
             console.log(`[AI Bank Soal] HTML analysis: ${htmlQuestionMatches.length} <li> tags, ${numberedQuestions.length} numbered questions`);
             console.log(`[AI Bank Soal] Estimated question count: ${estimatedQuestionCount}`);
             
-            const extractionPrompt = `ANALISIS DOKUMEN SOAL DAN EKSTRAK SEMUA SOAL:
+            const extractionPrompt = `INSTRUKSI EKSTRAKSI SOAL - CRITICAL REQUIREMENT:
 
-DOKUMEN HTML:
+Berikut adalah dokumen soal ujian dalam format HTML:
 ${text}
 
-INSTRUKSI EKSTRAKSI:
-1. CARI semua soal dalam dokumen HTML di atas
-2. HITUNG total soal: ${estimatedQuestionCount} soal (atau lebih jika ada yang terlewat)
-3. EKSTRAK setiap soal satu per satu tanpa terkecuali
-4. OUTPUT hanya JSON array valid dengan semua soal
+WAJIB DIIKUTI SEBELUM OUTPUT:
+1. HITUNG berapa total soal dalam dokumen (gunakan perkiraan konservatif)
+2. EXTRACT SEMUA soal satu per satu tanpa ada yang terlewat
+3. VALIDASI bahwa jumlah soal dalam array = jumlah di dokumen
+4. JIKA kurang dari expected, TAMBAH soal dari awal dokumen sampai match
 
-CONTOH OUTPUT YANG BENAR:
-[{"text":"Apa ibukota Indonesia?","options":["Jakarta","Surabaya","Bandung","Medan"],"correct":0,"type":"single"},{"text":"Jelaskan proses fotosintesis","correct":"Proses pembuatan makanan oleh tumbuhan","type":"text"}]
+ESTIMASI SOAL DALAM DOKUMEN: ${estimatedQuestionCount}+ soal
 
-FORMAT SOAL WAJIB:
-- {"text":"pertanyaan lengkap","options":["A. pilihan","B. pilihan","C. pilihan","D. pilihan"],"correct":0,"type":"single"}
-- {"text":"pertanyaan uraian","correct":"jawaban singkat","type":"text"}
+FORMAT OUTPUT YANG DIINGINKAN:
+[
+  {"text":"Soal 1","options":["A. Pilihan 1","B. Pilihan 2","C. Pilihan 3","D. Pilihan 4"],"correct":0,"type":"single"},
+  {"text":"Soal 2 - Kompleks","options":["A. Jawaban 1","B. Jawaban 2","C. Jawaban 3","D. Jawaban 4"],"correct":0,"type":"single"},
+  ... TAMBAH SEMUA SOAL DI SINI SAMPAI ${estimatedQuestionCount}+ soal ...
+]
 
-ATURAN KRITIS:
-✅ EKSTRAK SEMUA SOAL - TIDAK BOLEH ADA YANG TERLEWAT
-✅ Setiap soal HARUS punya "text", "correct", "type"
-✅ Untuk pilihan ganda: HARUS punya "options" array dengan 4 pilihan
-✅ "correct" untuk single = angka 0-3 (A=0, B=1, C=2, D=3)
-✅ JANGAN potong output - semua soal harus ada
-✅ Jika ada kutip ganda dalam text, ganti dengan single quote
+ATURAN KETAT TANPA KECUALI:
+✅ Output HANYA JSON array, tanpa penjelasan, markdown, atau teks lain
+✅ Setiap soal HARUS punya: "text", "options" (4 item), "correct" (0-3), "type" ("single")
+✅ "correct" adalah INTEGER untuk index jawaban benar (A=0, B=1, C=2, D=3)
+✅ TIDAK BOLEH potong/skip soal, HARUS ada semua
+✅ Jika perlu escape quote dalam text, gunakan backslash atau single quote
+✅ Output HARUS memiliki MINIMUM ${estimatedQuestionCount} soal dalam array
 
-VALIDASI SEBELUM OUTPUT:
-- Hitung soal di HTML: ${estimatedQuestionCount}+
-- Pastikan array JSON memiliki jumlah yang sama
-- Setiap soal lengkap dan valid
+CRITICAL: Jika sudah extract ${estimatedQuestionCount} soal, STOP dan jangan tambah lagi. Tapi jika belum sampai, LANJUT extract sampai correct count.
 
-OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
+VALIDATION SEBELUM OUTPUT:
+- Hitung jumlah object { } dalam array
+- Pastikan = ${estimatedQuestionCount}+ items
+- Setiap item lengkap dengan text, options, correct, type
+
+MULAI OUTPUT SEKARANG (hanya JSON, tanpa apapun lagi):`;
+
 
             try {
                 const extractResult = await callAI(extractionPrompt, req);
@@ -4139,6 +4140,10 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                 const arrayEnd = extractText.lastIndexOf(']');
                 if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
                     let rawJson = extractText.substring(arrayStart, arrayEnd + 1);
+                    
+                    console.log(`[AI Bank Soal] Raw JSON extraction: ${rawJson.length} chars`);
+                    console.log(`[AI Bank Soal] First 200 chars: ${rawJson.substring(0, 200)}`);
+                    console.log(`[AI Bank Soal] Last 200 chars: ${rawJson.substring(Math.max(0, rawJson.length - 200))}`);
                     
                     // Function to complete incomplete JSON
                     function completeIncompleteJSON(jsonStr) {
@@ -4175,6 +4180,8 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                             else if (char === ']') openBrackets--;
                         }
                         
+                        console.log(`[AI Bank Soal] Before completion: openBraces=${openBraces}, openBrackets=${openBrackets}`);
+                        
                         // Add missing closing braces
                         while (openBraces > 0) {
                             completed += '}';
@@ -4187,6 +4194,7 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                             openBrackets--;
                         }
                         
+                        console.log(`[AI Bank Soal] After completion: added ${completed.length - jsonStr.length} chars`);
                         return completed;
                     }
                     
@@ -4194,15 +4202,18 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                     function fixIncompleteQuestions(jsonStr) {
                         try {
                             // Try to parse as is first
-                            return JSON.parse(jsonStr);
+                            const parsed = JSON.parse(jsonStr);
+                            console.log(`[AI Bank Soal] ✅ Direct JSON parse successful: ${Array.isArray(parsed) ? parsed.length : 'not array'} items`);
+                            return parsed;
                         } catch (e) {
-                            console.log(`[AI Bank Soal] Attempting to fix incomplete JSON...`);
+                            console.log(`[AI Bank Soal] Direct parse failed: ${e.message}, attempting to fix...`);
                             
                             // Complete the JSON structure first
                             let completedJson = completeIncompleteJSON(jsonStr);
                             
                             try {
                                 let parsed = JSON.parse(completedJson);
+                                console.log(`[AI Bank Soal] ✅ Completed JSON parse successful: ${Array.isArray(parsed) ? parsed.length : 'not array'} items`);
                                 
                                 // Now fix incomplete question objects
                                 if (Array.isArray(parsed)) {
@@ -4222,6 +4233,7 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                                 return parsed;
                             } catch (e2) {
                                 console.warn(`[AI Bank Soal] Could not complete JSON: ${e2.message}`);
+                                console.log(`[AI Bank Soal] Attempted completed JSON first 500 chars: ${completedJson.substring(0, 500)}`);
                                 throw e; // Throw original error
                             }
                         }
@@ -4230,32 +4242,52 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                     try {
                         let jsonStr = cleanAIResponse(rawJson)
                             .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
-                            .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');  // Quote unquoted keys
+                            .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')  // Quote unquoted keys
+                            .replace(/\n/g, ' ');  // Replace newlines with spaces
                         
-                        // Sanitize structural literal newlines inside strings that break JSON.parse
-                        jsonStr = jsonStr.replace(/\n(?=[^"]*"\s*(?:[:,}\]]))/g, " ");
+                        console.log(`[AI Bank Soal] After cleanup: ${jsonStr.length} chars`);
+                        console.log(`[AI Bank Soal] Cleaned sample (first 300): ${jsonStr.substring(0, 300)}`);
 
                         parsedQuestions = fixIncompleteQuestions(jsonStr);
                     } catch (parseErr) {
-                        console.warn(`[AI Bank Soal] Aggressive JSON clean failed:`, parseErr.message);
-                        console.warn(`[AI Bank Soal] Attempting loose parsing via Function eval...`);
+                        console.warn(`[AI Bank Soal] JSON cleanup failed: ${parseErr.message}`);
+                        console.warn(`[AI Bank Soal] Attempting alternative parsing...`);
                         try {
-                            // Loose evaluation handles single quotes, structural differences
-                            parsedQuestions = new Function('return ' + rawJson)();
-                        } catch (evalErr) {
-                            console.error(`[AI Bank Soal] Function eval also failed:`, evalErr.message);
-                            console.error(`[AI Bank Soal] ===== FAILED RAW JSON PAYLOAD =====`);
-                            console.error(rawJson);
+                            // Try splitting by object markers to extract individual questions
+                            // extraction approach: split and reparse
+                            const objectPattern = /\{[^{}]*"text"[^{}]*\}/gs;
+                            const matches = rawJson.match(objectPattern) || [];
+                            console.log(`[AI Bank Soal] Found ${matches.length} potential question objects via regex`);
+                            
+                            if (matches.length > 0) {
+                                parsedQuestions = [];
+                                for (const match of matches) {
+                                    try {
+                                        const q = JSON.parse(match);
+                                        parsedQuestions.push(q);
+                                    } catch (e) {
+                                        console.warn(`[AI Bank Soal] Could not parse question: ${match.substring(0, 100)}`);
+                                    }
+                                }
+                                console.log(`[AI Bank Soal] Successfully parsed ${parsedQuestions.length} questions via regex splitting`);
+                            } else {
+                                throw new Error('No questions matched by regex pattern');
+                            }
+                        } catch (fallbackErr) {
+                            console.error(`[AI Bank Soal] Fallback parsing failed: ${fallbackErr.message}`);
+                            console.error(`[AI Bank Soal] ===== RAW JSON PAYLOAD (first 1000 chars) =====`);
+                            console.error(rawJson.substring(0, 1000));
                             console.error(`[AI Bank Soal] ===================================`);
-                            throw new Error(`Gagal parse JSON Extract: ${parseErr.message}`);
+                            throw new Error(`Failed to parse extracted JSON: ${parseErr.message}`);
                         }
                     }
 
                     if (!Array.isArray(parsedQuestions)) {
+                        console.error(`[AI Bank Soal] ❌ ParsedQuestions is not an array: ${typeof parsedQuestions}`);
                         throw new Error('Hasil ekstraksi bukan JSON array.');
                     }
 
-                    console.log(`[AI Bank Soal] Successfully extracted ${parsedQuestions.length} questions via second AI call`);
+                    console.log(`[AI Bank Soal] ✅ Successfully extracted ${parsedQuestions.length} questions via second AI call`);
                     
                     // Validate extraction completeness
                     const expectedFromHTML = (text.match(/<li[^>]*>/gi) || []).length;
@@ -4286,8 +4318,22 @@ OUTPUT HANYA JSON ARRAY TANPA PENJELASAN:`;
                     });
                     console.log(`[AI Bank Soal] After normalization: ${parsedQuestions.length} questions`);
                     
+                    // Deduplicate by question text
+                    const textSet = new Set();
+                    const deduplicatedQuestions = [];
+                    parsedQuestions.forEach((q, idx) => {
+                        const textKey = q.text?.toLowerCase().trim();
+                        if (textKey && !textSet.has(textKey)) {
+                            textSet.add(textKey);
+                            deduplicatedQuestions.push(q);
+                        } else {
+                            console.log(`[AI Bank Soal] Duplicate found [${idx + 1}]: "${q.text?.substring(0, 40)}..."`);
+                        }
+                    });
+                    console.log(`[AI Bank Soal] After deduplication: ${deduplicatedQuestions.length} questions (removed ${parsedQuestions.length - deduplicatedQuestions.length} duplicates)`);
+                    
                     // Filter out invalid questions - RELAXED validation
-                    const validQuestions = parsedQuestions.filter((q, idx) => {
+                    const validQuestions = deduplicatedQuestions.filter((q, idx) => {
                         const textValid = q.text && q.text.trim().length >= 3;
                         const optionsValid = q.type === 'text' || (Array.isArray(q.options) && q.options.length >= 4);
                         const tfValid = q.type !== 'tf' || (Array.isArray(q.subQuestions) && q.subQuestions.length > 0);
