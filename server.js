@@ -1853,12 +1853,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                               'apa perbedaan', 'apa persamaan', 'apa ciri', 'apa sifat',
                               'tentukan', 'hitunglah', 'carilah', 'susunlah', 'buatlah'];
         
-        const hasEssayKeyword = essayKeywords.some(keyword => text.includes(keyword));
-        const isLongQuestion = text.length > 120; // Reduced threshold
+        const hasEssayKeyword = essayKeywords.some(keyword => text.startsWith(keyword) || text.includes(' ' + keyword));
+        const isLongQuestion = text.length > 500; // Increased threshold from 120 to 500
         const hasNoOptions = !options || options.length < 2;
         const hasQuestionWords = text.includes('?') || text.includes('apakah') || text.includes('bagaimana');
         
-        if (hasEssayKeyword || (isLongQuestion && hasQuestionWords) || hasNoOptions) {
+        // If it has enough options, prioritize single/multiple choice over text
+        if (options && options.length >= 4) {
+            // Even if long or has question words, if NOT having explicit essay keyword at start, it's PG
+            if (!hasEssayKeyword) return 'single';
+        }
+
+        if (hasEssayKeyword || (isLongQuestion && hasQuestionWords && hasNoOptions) || hasNoOptions) {
             console.log(`[AI Bank Soal] Detected TEXT question: "${questionText.substring(0, 50)}..." (keyword:${hasEssayKeyword}, long:${isLongQuestion}, noOpts:${hasNoOptions})`);
             return 'text';
         }
@@ -2112,6 +2118,14 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         for (let i = 0; i < lines.length && questions.length < 100; i++) {
             const line = lines[i];
             
+            // Check for category header during line-by-line analysis
+            if (line.match(/^(A\.|B\.|C\.|D\.|E\.|F\.|G\.|H\.|I\.|J\.|K\.|L\.|M\.|N\.|O\.|P\.|Q\.|R\.|S\.|T\.|U\.|V\.|W\.|X\.|Y\.|Z\.|\d+\.|\-\s*)?(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching)/i) ||
+                line.match(/(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching).*Soal\)/i)) {
+                currentType = detectTypeFromHeader(line);
+                console.log(`[AI Bank Soal] Strategy 3: Updated currentType to ${currentType} from header: "${line}"`);
+                continue;
+            }
+
             // Check if line looks like a question (has question mark or is substantial)
             if ((line.includes('?') || line.split(' ').length > 5) && 
                 line.length > 15 && 
@@ -2123,16 +2137,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const options = extractOptionsFromText(nextContent);
                 
                 if (options.length >= 2) { // Allow TF questions with 2 options
-                    let questionType = currentType; // Use type from category header
+                    let questionType = currentType; // Use type from current section
                     
-                    // Special handling for TF detection
-                    if (questionType !== 'tf') {
-                        const detectedType = detectQuestionType(line, options);
-                        if (detectedType === 'tf') {
-                            questionType = 'tf';
-                        } else if (detectedType === 'text') {
-                            questionType = 'text';
-                        }
+                    // Allow auto-detection to override if specific markers are found
+                    const detectedType = detectQuestionType(line, options);
+                    
+                    // If we are in 'text' (esai) section but found many options, it's actually PG
+                    if (questionType === 'text' && options.length >= 4) {
+                        questionType = 'single';
+                    } else if (questionType !== 'tf' && detectedType === 'tf') {
+                        questionType = 'tf';
+                    } else if (questionType === 'single' && detectedType === 'text' && options.length < 2) {
+                        questionType = 'text';
                     }
                     
                     textSet.add(line);
