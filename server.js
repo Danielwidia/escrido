@@ -1504,13 +1504,22 @@ function cleanAIResponse(text) {
 function extractAiJsonData(text) {
     if (!text || typeof text !== 'string') return null;
 
+    // First try: exact script tag match
     const scriptMatch = text.match(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>([\s\S]*?)<\/script>/i);
     if (scriptMatch && scriptMatch[1]) {
         return scriptMatch[1].trim();
     }
 
-    const fallbackMatch = text.match(/(\[\s*\{[\s\S]*\}\s*\])/m);
-    return fallbackMatch ? fallbackMatch[1].trim() : null;
+    // Second try: look for JSON array at the end of the text (last 2000 characters)
+    const endText = text.substring(Math.max(0, text.length - 2000));
+    const fallbackMatch = endText.match(/(\[\s*\{[\s\S]*?\}\s*\])$/m);
+    if (fallbackMatch && fallbackMatch[1]) {
+        return fallbackMatch[1].trim();
+    }
+
+    // Third try: look for any JSON array in the entire text
+    const anyArrayMatch = text.match(/(\[\s*\{[\s\S]*?\}\s*\])/m);
+    return anyArrayMatch ? anyArrayMatch[1].trim() : null;
 }
 
 /**
@@ -3499,15 +3508,41 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         }
 
         if (extraData?.simpanBank) {
-            promptText += `\nSANGAT PENTING (INSTRUKSI DATABASE): Agar soal dapat otomatis disimpan ke database, pada bagian PALING AKHIR dokumen Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini: <script id="ai-json-data" type="application/json"> [ARRAY_JSON] </script>. 
-            Gunakan format JSON standar: { "text": "[Stimulus...] \\n\\n Pertanyaan?", "options": ["A","B","C","D"], "correct": 0, "type": "single", "mapel": "${mapel}", "rombel": "${fase}" }.
-            JENIS SOAL:
-            - single: "correct" index (0, 1...).
-            - multiple: "correct" array index (contoh: [0, 2]).
-            - tf: "options" minimal 3 pernyataan, "correct" array boolean (panjang sama dengan options).
-            - matching: "questions" array 5 item kiri, "answers" array 5 item kanan, "correct" array 5 string jawaban (item dari array "answers").
-            - text: "correct" string kunci jawaban singkat.
-            Pisahkan gambar ke properti "images": ["URL"] jika menggunakan opsi gambar auto/link.`;
+            promptText += `\n\nSANGAT PENTING (INSTRUKSI DATABASE): Agar soal dapat otomatis disimpan ke database, pada bagian PALING AKHIR dokumen Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini:
+<script id="ai-json-data" type="application/json">
+[ARRAY_JSON]
+</script>
+
+Contoh format JSON yang BENAR untuk 2 soal:
+<script id="ai-json-data" type="application/json">
+[
+  {
+    "text": "Apa ibukota Indonesia?",
+    "options": ["Jakarta", "Surabaya", "Bandung", "Medan"],
+    "correct": 0,
+    "type": "single",
+    "mapel": "${mapel}",
+    "rombel": "${fase}"
+  },
+  {
+    "text": "Pilih jawaban yang benar: 2 + 2 = ?",
+    "options": ["3", "4", "5", "6"],
+    "correct": 1,
+    "type": "single",
+    "mapel": "${mapel}",
+    "rombel": "${fase}"
+  }
+]
+</script>
+
+JENIS SOAL:
+- single: "correct" adalah index integer (0, 1, 2, 3 untuk A, B, C, D).
+- multiple: "correct" adalah array index (contoh: [0, 2] untuk A dan C).
+- tf: "subQuestions" array 3 objek dengan "statement" dan "answer", "correct" array boolean.
+- matching: "questions" array 5 item kiri, "answers" array 5 item kanan, "correct" array 5 string.
+- text: "correct" string kunci jawaban singkat.
+
+WAJIB: Tag script ini HARUS berada di bagian PALING AKHIR dokumen, setelah semua konten soal dan jawaban. JANGAN letakkan di tempat lain. JANGAN lupa menyertakan tag script ini jika Anda ingin soal tersimpan ke database!`;
         }
     } else if (type === 'ppt-pintar') {
         docType = `Presentasi PowerPoint Pintar`;
@@ -3701,17 +3736,23 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
         let bankSaveError = null;
         const shouldSaveToBank = extraData && (extraData.simpanBank === true || String(extraData.simpanBank).toLowerCase() === 'true');
         if (shouldSaveToBank) {
+            console.log(`[AI Bank Soal] Checking for JSON data in AI response (length: ${text.length})`);
             const jsonSource = extractAiJsonData(text);
+            console.log(`[AI Bank Soal] Extracted JSON source length: ${jsonSource ? jsonSource.length : 0}`);
             if (jsonSource) {
+                console.log(`[AI Bank Soal] JSON source preview: ${jsonSource.substring(0, 200)}...`);
                 try {
                     const cleanedJson = cleanAIResponse(jsonSource)
                         .replace(/,(\s*[}\]])/g, '$1')
                         .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
 
+                    console.log(`[AI Bank Soal] Cleaned JSON preview: ${cleanedJson.substring(0, 200)}...`);
                     parsedQuestions = JSON.parse(cleanedJson);
                     if (!Array.isArray(parsedQuestions)) {
                         throw new Error('JSON bukan array pertanyaan.');
                     }
+
+                    console.log(`[AI Bank Soal] Parsed ${parsedQuestions.length} questions successfully`);
 
                     // Tambahkan ke database
                     const db = (await readDB()) || { questions: [] };
@@ -3726,11 +3767,14 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                     text = text.replace(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>[\s\S]*?<\/script>/i, '');
                 } catch (parseError) {
                     bankSaveError = parseError.message || String(parseError);
-                    console.error('[AI Bank Soal] Failed to parse/generated JSON:', bankSaveError);
+                    console.error('[AI Bank Soal] Failed to parse generated JSON:', bankSaveError);
+                    console.error('[AI Bank Soal] Raw JSON source:', jsonSource.substring(0, 500));
                 }
             } else {
                 bankSaveError = 'Tidak menemukan tag <script id="ai-json-data"> dalam respons AI.';
                 console.warn('[AI Bank Soal] simpanBank=true but AI response did not include valid ai-json-data JSON payload.');
+                console.warn('[AI Bank Soal] AI response preview (last 1000 chars):', text.substring(Math.max(0, text.length - 1000)));
+                console.warn('[AI Bank Soal] AI response preview (first 500 chars):', text.substring(0, 500));
             }
         }
 
