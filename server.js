@@ -1729,6 +1729,28 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
     console.log(`[AI Bank Soal] forceParseQuestionsFromHtml: Starting aggressive parsing of ${htmlText.length} chars`);
     
     const textSet = new Set();  // Track unique questions
+    let currentType = 'single'; // Default type, will be updated based on category headers
+    
+    // Helper function to detect type from category header
+    function detectTypeFromHeader(headerText) {
+        const text = headerText.toLowerCase();
+        if (text.includes('pilihan ganda') || text.includes('single') || text.includes('pg biasa')) {
+            return 'single';
+        }
+        if (text.includes('pg kompleks') || text.includes('multiple') || text.includes('pilih beberapa')) {
+            return 'multiple';
+        }
+        if (text.includes('benar/salah') || text.includes('tf') || text.includes('true/false')) {
+            return 'tf';
+        }
+        if (text.includes('uraian') || text.includes('esai') || text.includes('text')) {
+            return 'text';
+        }
+        if (text.includes('menjodohkan') || text.includes('matching') || text.includes('pasangkan')) {
+            return 'matching';
+        }
+        return 'single'; // default
+    }
     
     // STRATEGY 0: Check for AI structured format with category headers
     if (htmlText.includes(' Soal)') && htmlText.includes('[') && htmlText.includes('{')) {
@@ -1871,6 +1893,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
         return 'single';
     }
     
+    // Pre-scan for category headers to set types
+    const lines = htmlText.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        // Look for category headers like "Pilihan Ganda (5 Soal)" or "A. Pilihan Ganda (Pilihlah satu jawaban yang paling tepat!)"
+        if (trimmed.match(/^(A\.|B\.|C\.|D\.|E\.|F\.|G\.|H\.|I\.|J\.|K\.|L\.|M\.|N\.|O\.|P\.|Q\.|R\.|S\.|T\.|U\.|V\.|W\.|X\.|Y\.|Z\.|\d+\.|\-\s*)?(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching)/i) ||
+            trimmed.match(/(Pilihan Ganda|PG|Multiple Choice|Benar\/Salah|TF|True\/False|Uraian|Esai|Text|Menjodohkan|Matching).*Soal\)/i)) {
+            currentType = detectTypeFromHeader(trimmed);
+            console.log(`[AI Bank Soal] Detected category header: "${trimmed.substring(0, 50)}..." -> type: ${currentType}`);
+        }
+    }
+    
     // STRATEGY 1: Parse from HTML structure (ol/li with nested options)
     console.log(`[AI Bank Soal] Strategy 1: Parsing HTML structure...`);
     try {
@@ -1945,15 +1979,24 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
             }
             
             // Accept questions with at least 2 options (for TF) or 4 options (for single/multiple)
-            // But first try to detect type to determine minimum required options
-            let questionType = 'single'; // default
+            // Use currentType from category header, but allow override for TF detection
+            let questionType = currentType; // Use type from category header
             let minOptions = 4; // default
             
-            // Try to detect type based on current options
-            if (options.length >= 2) {
-                questionType = detectQuestionType(questionText, options);
-                minOptions = (questionType === 'tf') ? 2 : 
-                           (questionType === 'text') ? 0 : 4;
+            // Special handling for TF questions that might be detected from content
+            if (questionType !== 'tf' && options.length >= 2) {
+                const detectedType = detectQuestionType(questionText, options);
+                if (detectedType === 'tf') {
+                    questionType = 'tf';
+                    minOptions = 2;
+                } else if (detectedType === 'text') {
+                    questionType = 'text';
+                    minOptions = 0;
+                }
+            } else if (questionType === 'tf') {
+                minOptions = 2;
+            } else if (questionType === 'text') {
+                minOptions = 0;
             }
             
             if (options.length >= minOptions) {
@@ -2014,7 +2057,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const options = extractOptionsFromText(context);
                 
                 if (options.length >= 2) { // Allow TF questions with 2 options
-                    const questionType = detectQuestionType(questionText, options);
+                    let questionType = currentType; // Use type from category header
+                    
+                    // Special handling for TF detection
+                    if (questionType !== 'tf') {
+                        const detectedType = detectQuestionType(questionText, options);
+                        if (detectedType === 'tf') {
+                            questionType = 'tf';
+                        } else if (detectedType === 'text') {
+                            questionType = 'text';
+                        }
+                    }
+                    
                     textSet.add(questionText);
                     
                     const question = {
@@ -2069,7 +2123,18 @@ function forceParseQuestionsFromHtml(htmlText, mapel, fase) {
                 const options = extractOptionsFromText(nextContent);
                 
                 if (options.length >= 2) { // Allow TF questions with 2 options
-                    const questionType = detectQuestionType(line, options);
+                    let questionType = currentType; // Use type from category header
+                    
+                    // Special handling for TF detection
+                    if (questionType !== 'tf') {
+                        const detectedType = detectQuestionType(line, options);
+                        if (detectedType === 'tf') {
+                            questionType = 'tf';
+                        } else if (detectedType === 'text') {
+                            questionType = 'text';
+                        }
+                    }
+                    
                     textSet.add(line);
                     
                     const question = {
@@ -3955,6 +4020,23 @@ Menjodohkan (X Soal)
 
 Dimana X adalah jumlah soal untuk tipe tersebut. Jika suatu tipe tidak ada soal, jangan tampilkan judul kategorinya.
 
+PENTING: Output HARUS berupa teks plain dengan kategori header diikuti JSON array. JANGAN gunakan format HTML, markdown, atau format lain. Hanya teks plain dengan header kategori dan JSON array.
+
+Contoh output yang BENAR:
+Pilihan Ganda (2 Soal)
+[{"text":"Apa hasil 2+2?","options":["A. 2","B. 3","C. 4","D. 5"],"correct":2,"type":"single","mapel":"Matematika","rombel":"X","level":"sedang"},{"text":"5x6=?","options":["A. 25","B. 30","C. 35","D. 40"],"correct":1,"type":"single","mapel":"Matematika","rombel":"X","level":"sedang"}]
+
+Contoh output yang SALAH (jangan lakukan ini):
+<h2>Pilihan Ganda</h2>
+<p>Apa hasil 2+2?</p>
+A. 2
+B. 3
+C. 4
+D. 5
+
+Output HARUS plain text dengan header kategori dan JSON array saja.`;
+
+    prompt += `
 FORMAT JSON YANG BENAR PER TIPE SOAL:
 
 1. SINGLE (Pilihan Ganda): 
