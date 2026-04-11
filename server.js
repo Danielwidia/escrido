@@ -1501,6 +1501,18 @@ function cleanAIResponse(text) {
     }
 }
 
+function extractAiJsonData(text) {
+    if (!text || typeof text !== 'string') return null;
+
+    const scriptMatch = text.match(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>([\s\S]*?)<\/script>/i);
+    if (scriptMatch && scriptMatch[1]) {
+        return scriptMatch[1].trim();
+    }
+
+    const fallbackMatch = text.match(/(\[\s*\{[\s\S]*\}\s*\])/m);
+    return fallbackMatch ? fallbackMatch[1].trim() : null;
+}
+
 /**
  * Helper to call Hugging Face Inference API
  */
@@ -3686,12 +3698,21 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
 
         // Cek apakah ada script JSON Bank Soal
         let parsedQuestions = null;
+        let bankSaveError = null;
         const shouldSaveToBank = extraData && (extraData.simpanBank === true || String(extraData.simpanBank).toLowerCase() === 'true');
         if (shouldSaveToBank) {
-            const match = text.match(/<script id="ai-json-data"[^>]*>([\s\S]*?)<\/script>/i);
-            if (match && match[1]) {
+            const jsonSource = extractAiJsonData(text);
+            if (jsonSource) {
                 try {
-                    parsedQuestions = JSON.parse(match[1].trim());
+                    const cleanedJson = cleanAIResponse(jsonSource)
+                        .replace(/,(\s*[}\]])/g, '$1')
+                        .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+
+                    parsedQuestions = JSON.parse(cleanedJson);
+                    if (!Array.isArray(parsedQuestions)) {
+                        throw new Error('JSON bukan array pertanyaan.');
+                    }
+
                     // Tambahkan ke database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
@@ -3701,18 +3722,27 @@ DILARANG menggunakan format HTML. Gunakan format plain text persis seperti conto
                     await writeDB(db);
                     console.log(`[AI Bank Soal] Successfully saved ${parsedQuestions.length} questions to database.`);
 
-                    // Hilangkan tag script dari HTML render
-                    text = text.replace(match[0], '');
+                    // Remove the JSON script block from HTML render if it exists
+                    text = text.replace(/<script[^>]*id\s*=\s*["']?ai-json-data["']?[^>]*>[\s\S]*?<\/script>/i, '');
                 } catch (parseError) {
-                    console.error('[AI Bank Soal] Failed to parse generated JSON:', parseError);
+                    bankSaveError = parseError.message || String(parseError);
+                    console.error('[AI Bank Soal] Failed to parse/generated JSON:', bankSaveError);
                 }
             } else {
-                console.warn('[AI Bank Soal] simpanBank=true but AI response did not include valid <script id="ai-json-data"> JSON payload.');
+                bankSaveError = 'Tidak menemukan tag <script id="ai-json-data"> dalam respons AI.';
+                console.warn('[AI Bank Soal] simpanBank=true but AI response did not include valid ai-json-data JSON payload.');
             }
         }
 
         console.log(`[/api/generate-admin-doc] Success for ${docType}`);
-        return res.json({ ok: true, html: text, savedToBankSoal: !!parsedQuestions, requestedSaveToBankSoal: shouldSaveToBank });
+        return res.json({
+            ok: true,
+            html: text,
+            savedToBankSoal: !!parsedQuestions,
+            requestedSaveToBankSoal: shouldSaveToBank,
+            savedQuestionsCount: Array.isArray(parsedQuestions) ? parsedQuestions.length : 0,
+            bankSaveError
+        });
     } catch (e) {
         console.error('[/api/generate-admin-doc] Fatal error:', e.message);
         const quotaExhausted = /kuota|quota|limit|habis/i.test(e.message);

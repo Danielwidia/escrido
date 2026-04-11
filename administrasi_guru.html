@@ -1158,7 +1158,8 @@
                 if (data.savedToBankSoal) {
                     showToast('Dokumen Berhasil! Soal otomatis tersimpan ke Bank Soal.');
                 } else if (data.requestedSaveToBankSoal || (activeTab === 'soal-jawaban' && extraData.simpanBank)) {
-                    showToast('Dokumen berhasil dibuat, tetapi soal tidak tersimpan ke Bank Soal. Silakan cek output AI dan coba lagi.', true);
+                    const errorMessage = data.bankSaveError ? `: ${data.bankSaveError}` : '.';
+                    showToast(`Dokumen berhasil dibuat, tetapi soal tidak tersimpan ke Bank Soal${errorMessage}`, true);
                 } else {
                     showToast('Dokumen Administrasi Berhasil Disusun!');
                 }
