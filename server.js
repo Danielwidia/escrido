@@ -3262,7 +3262,11 @@ app.post('/api/generate-ai', async (req, res) => {
     if (hots > 0) levelParts.push(`${hots} HOTS`);
 
     // --- PROMPT YANG DITINGKATKAN ---
-    let prompt = `Anda adalah pakar pengembang kurikulum dan pembuat soal ujian profesional. 
+    let prompt = `[INSTRUKSI SISTEM - WAJIB DIIKUTI]
+Jika parameter simpanBank bernilai true, maka ANDA HARUS menyertakan tag script JSON di bagian PALING AKHIR respons Anda.
+Tag script tersebut diperlukan agar soal dapat disimpan ke database. Tanpa tag tersebut, soal tidak akan tersimpan.
+
+Anda adalah pakar pengembang kurikulum dan pembuat soal ujian profesional. 
 
 ⚠️ INSTRUKSI KRITIS JUMLAH SOAL:
 Anda WAJIB membuat PERSIS ${actualJumlah} soal dalam JSON array. Tidak boleh kurang, tidak boleh lebih. Contohnya:
@@ -3344,7 +3348,21 @@ PENTING untuk tiap tipe soal:
 - multiple (PG Kompleks): "correct" adalah array indeks benar MAKSIMAL 3, contoh: [0, 2]. Wajib TEPAT 4 opsi (A,B,C,D), jangan 5 atau lebih. "text" harus berisi pertanyaan lengkap.
 - tf (Benar/Salah): "subQuestions" adalah array TEPAT 3 objek dengan "statement" dan "answer" ("Benar" atau "Salah"), "correct" adalah array string ["Benar", "Salah", "Benar"] dengan panjang TEPAT 3. "text" harus ada. JANGAN GUNAKAN "options" field untuk tf.
 - matching (Menjodohkan): "questions" = array 5 item kiri, "answers" = array 5 item kanan, "correct" = array 5 string jawaban benar dari "answers". "text" harus ada.
-- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat. "text" harus berisi pertanyaan lengkap.`;
+- text (Uraian): "correct" berisi kunci jawaban / poin utama dalam teks singkat. "text" harus berisi pertanyaan lengkap.
+
+[INSTRUKSI KRITIS - WAJIB DIIKUTI]
+Jika parameter simpanBank bernilai true, maka di bagian PALING AKHIR respons Anda HARUS menyertakan tag script JSON dengan format berikut:
+<script id="ai-json-data" type="application/json">
+[JSON_ARRAY_DISINI]
+</script>
+
+Contoh lengkap respons jika simpanBank=true:
+[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
+<script id="ai-json-data" type="application/json">
+[{"text":"Soal 1...","options":["A","B","C","D"],"correct":0,"type":"single","mapel":"Matematika","rombel":"Fase D (Kelas 7)","level":"sedang"}]
+</script>
+
+PENTING: Tag script HARUS berada di bagian paling akhir respons, setelah JSON array utama. Tanpa tag script ini, soal tidak akan tersimpan ke bank soal.`;
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}, imageEnabled=${imageEnabled}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
@@ -3508,26 +3526,16 @@ app.post('/api/generate-admin-doc', upload.single('blueprint'), async (req, res)
         }
 
         if (extraData?.simpanBank) {
-            promptText += `\n\nSANGAT PENTING (INSTRUKSI DATABASE): Agar soal dapat otomatis disimpan ke database, pada bagian PALING AKHIR dokumen Anda, sematkan array JSON data soal-soal tersebut HANYA di dalam tag ini:
-<script id="ai-json-data" type="application/json">
-[ARRAY_JSON]
-</script>
+            promptText += `\n\n[INSTRUKSI KRITIS - WAJIB DIIKUTI]
+UNTUK MENYIMPAN SOAL KE DATABASE, ANDA HARUS MENYERTAKAN TAG SCRIPT JSON DI AKHIR DOKUMEN.
 
-Contoh format JSON yang BENAR untuk 2 soal:
+FORMAT YANG HARUS DIPATUHI PERSIS:
 <script id="ai-json-data" type="application/json">
 [
   {
-    "text": "Apa ibukota Indonesia?",
-    "options": ["Jakarta", "Surabaya", "Bandung", "Medan"],
+    "text": "Pertanyaan 1?",
+    "options": ["A", "B", "C", "D"],
     "correct": 0,
-    "type": "single",
-    "mapel": "${mapel}",
-    "rombel": "${fase}"
-  },
-  {
-    "text": "Pilih jawaban yang benar: 2 + 2 = ?",
-    "options": ["3", "4", "5", "6"],
-    "correct": 1,
     "type": "single",
     "mapel": "${mapel}",
     "rombel": "${fase}"
@@ -3535,14 +3543,44 @@ Contoh format JSON yang BENAR untuk 2 soal:
 ]
 </script>
 
-JENIS SOAL:
-- single: "correct" adalah index integer (0, 1, 2, 3 untuk A, B, C, D).
-- multiple: "correct" adalah array index (contoh: [0, 2] untuk A dan C).
-- tf: "subQuestions" array 3 objek dengan "statement" dan "answer", "correct" array boolean.
-- matching: "questions" array 5 item kiri, "answers" array 5 item kanan, "correct" array 5 string.
-- text: "correct" string kunci jawaban singkat.
+ATURAN WAJIB:
+1. TAG SCRIPT HARUS BERADA DI BARIS PALING AKHIR DOKUMEN
+2. ID HARUS BERADA PERSIS "ai-json-data"
+3. TYPE HARUS BERADA PERSIS "application/json"
+4. ISI HARUS ARRAY JSON VALID
+5. SETIAP SOAL HARUS PUNYA: text, options, correct, type, mapel, rombel
 
-WAJIB: Tag script ini HARUS berada di bagian PALING AKHIR dokumen, setelah semua konten soal dan jawaban. JANGAN letakkan di tempat lain. JANGAN lupa menyertakan tag script ini jika Anda ingin soal tersimpan ke database!`;
+JIKA ANDA TIDAK MENYERTAKAN TAG INI, SOAL TIDAK AKAN TERSIMPAN KE DATABASE!
+
+CONTOH LENGKAP UNTUK 3 SOAL:
+<script id="ai-json-data" type="application/json">
+[
+  {
+    "text": "Apa warna langit pada siang hari?",
+    "options": ["Merah", "Biru", "Hijau", "Kuning"],
+    "correct": 1,
+    "type": "single",
+    "mapel": "${mapel}",
+    "rombel": "${fase}"
+  },
+  {
+    "text": "Manakah yang termasuk bilangan prima?",
+    "options": ["1", "2", "4", "6"],
+    "correct": 1,
+    "type": "single",
+    "mapel": "${mapel}",
+    "rombel": "${fase}"
+  },
+  {
+    "text": "Berapakah hasil 5 + 3?",
+    "options": ["6", "7", "8", "9"],
+    "correct": 2,
+    "type": "single",
+    "mapel": "${mapel}",
+    "rombel": "${fase}"
+  }
+]
+</script>`;
         }
     } else if (type === 'ppt-pintar') {
         docType = `Presentasi PowerPoint Pintar`;
