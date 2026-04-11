@@ -3925,11 +3925,12 @@ Format setiap soal:
 - type "tf" (benar/salah): {"text":"...","type":"tf","subQuestions":[{"statement":"...","answer":"Benar"},{"statement":"...","answer":"Salah"},{"statement":"...","answer":"Benar"}],"correct":["Benar","Salah","Benar"],"mapel":"${mapel}","rombel":"${fase}"}
 - type "multiple" (PG kompleks): {"text":"...","options":["A","B","C","D"],"correct":[0,2],"type":"multiple","mapel":"${mapel}","rombel":"${fase}","level":"sedang"}
 
-ATURAN:
+ATURAN SANGAT PENTING:
 1. Untuk "correct" pada single: indeks integer jawaban benar (0=A, 1=B, 2=C, 3=D)
 2. Setiap soal WAJIB punya field "text" berisi teks pertanyaan
 3. Output HANYA array JSON, mulai dari [ dan diakhiri ]
-4. Sertakan SEMUA soal yang ada dalam dokumen`;
+4. Sertakan SEMUA soal yang ada dalam dokumen
+5. KRITIS: Jika teks mengandung tanda kutip ganda ("), WAJIB diganti dengan tanda kutip tunggal (') atau di-escape (\\"). Jangan sampai merusak struktur JSON!`;
 
             try {
                 const extractResult = await callAI(extractionPrompt, req);
