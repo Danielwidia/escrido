@@ -3948,8 +3948,19 @@ ATURAN:
                 const arrayStart = extractText.indexOf('[');
                 const arrayEnd = extractText.lastIndexOf(']');
                 if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-                    const jsonStr = extractText.substring(arrayStart, arrayEnd + 1);
-                    parsedQuestions = JSON.parse(jsonStr);
+                    let jsonStr = extractText.substring(arrayStart, arrayEnd + 1);
+                    
+                    try {
+                        jsonStr = cleanAIResponse(jsonStr)
+                            .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
+                            .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');  // Quote unquoted keys
+                        
+                        parsedQuestions = JSON.parse(jsonStr);
+                    } catch (parseErr) {
+                        // Fallback parsing if aggressive clean fails
+                        console.warn(`[AI Bank Soal] Aggressive JSON clean failed:`, parseErr.message);
+                        parsedQuestions = JSON.parse(extractText.substring(arrayStart, arrayEnd + 1));
+                    }
 
                     if (!Array.isArray(parsedQuestions)) {
                         throw new Error('Hasil ekstraksi bukan JSON array.');
