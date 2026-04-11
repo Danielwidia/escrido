@@ -1633,8 +1633,8 @@ function extractOptionsFromText(text) {
                 .replace(/\n+/g, ' ')     // Replace newlines with space
                 .trim();
             
-            // Only add if it's meaningful text (> 2 chars and not just numbers/symbols)
-            if (optText && optText.length > 2 && !/^[\s\d\W]*$/.test(optText)) {
+            // Only add if it's meaningful text (and not just empty)
+            if (optText && optText.length >= 1) {
                 // Check if it's already in options (to avoid duplicates)
                 if (!patternOptions.includes(optText)) {
                     patternOptions.push(optText);
