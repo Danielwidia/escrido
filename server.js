@@ -692,7 +692,7 @@ app.post('/api/generate-ai', async (req, res) => {
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
-    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar minimal 3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
+    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar tepat 2-3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
@@ -710,8 +710,10 @@ app.post('/api/generate-ai', async (req, res) => {
 
         const parsed = JSON.parse(match[0]);
 
+        console.log(`[/api/generate-ai] Parsed questions:`, JSON.stringify(parsed, null, 2));
+
         // Normalize question formats
-        const normalizedQuestions = parsed.map(q => {
+        let normalizedQuestions = parsed.map(q => {
             const normalized = { ...q };
 
             // Ensure mapel and rombel are set
@@ -720,8 +722,24 @@ app.post('/api/generate-ai', async (req, res) => {
 
             // Normalize TF questions
             if (normalized.type === 'tf') {
+                if (typeof normalized.options === 'string') {
+                    // If options is a string, try to split into array
+                    normalized.options = normalized.options.split(/\n|;/).map(s => s.trim()).filter(s => s);
+                }
                 if (!Array.isArray(normalized.options)) {
                     normalized.options = [];
+                }
+                // If options is empty but text contains statements, try to parse
+                if (normalized.options.length === 0 && normalized.text && typeof normalized.text === 'string') {
+                    // Try to split text into statements
+                    const statements = normalized.text.split(/\d+\.\s*/).filter(s => s.trim()).map(s => s.trim());
+                    if (statements.length >= 3) {
+                        normalized.options = statements.slice(0, 3);
+                        normalized.text = ''; // Clear text as it's now in options
+                    } else if (statements.length > 0) {
+                        // If less than 3, use what we have
+                        normalized.options = statements;
+                    }
                 }
                 if (!Array.isArray(normalized.correct)) {
                     // If correct is not array, try to convert or set default
@@ -738,14 +756,6 @@ app.post('/api/generate-ai', async (req, res) => {
                 }
                 // Ensure all correct values are boolean
                 normalized.correct = normalized.correct.map(c => Boolean(c));
-                // Ensure at least 3 statements
-                if (normalized.options.length < 3) {
-                    const needed = 3 - normalized.options.length;
-                    for (let i = 0; i < needed; i++) {
-                        normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
-                        normalized.correct.push(false);
-                    }
-                }
             }
 
             // Normalize multiple choice questions
@@ -805,6 +815,19 @@ app.post('/api/generate-ai', async (req, res) => {
 
             return normalized;
         });
+
+        // Filter out invalid questions
+        const originalCount = normalizedQuestions.length;
+        normalizedQuestions = normalizedQuestions.filter(q => {
+            if (q.type === 'tf') {
+                return Array.isArray(q.options) && q.options.length >= 3 && Array.isArray(q.correct) && q.correct.length >= 3;
+            }
+            if (q.type === 'multiple') {
+                return Array.isArray(q.correct) && q.correct.length >= 2 && q.correct.length <= 3;
+            }
+            return true;
+        });
+        console.log(`[/api/generate-ai] Filtered ${originalCount - normalizedQuestions.length} invalid questions. Remaining: ${normalizedQuestions.length}`);
 
         console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
         return res.json({ ok: true, questions: normalizedQuestions });
