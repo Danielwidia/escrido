@@ -660,9 +660,9 @@ app.post('/api/generate-ai', async (req, res) => {
     };
     const typeDescriptions = {
         single: 'pilihan ganda biasa (1 jawaban benar)',
-        multiple: 'pilihan ganda kompleks (lebih dari 1 jawaban benar)',
+        multiple: 'pilihan ganda kompleks (2-3 jawaban benar dari 4 opsi ABCD)',
         text: 'isian / uraian singkat',
-        tf: 'benar/salah (berikan beberapa pernyataan per soal)',
+        tf: 'benar/salah ( 3 pernyataan per soal)',
         matching: 'menjodohkan'
     };
 
@@ -691,7 +691,8 @@ app.post('/api/generate-ai', async (req, res) => {
     }
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
-    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2"],"correct":[true,false]}. ';
+    prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
+    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar minimal 3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
@@ -737,6 +738,39 @@ app.post('/api/generate-ai', async (req, res) => {
                 }
                 // Ensure all correct values are boolean
                 normalized.correct = normalized.correct.map(c => Boolean(c));
+                // Ensure at least 3 statements
+                if (normalized.options.length < 3) {
+                    const needed = 3 - normalized.options.length;
+                    for (let i = 0; i < needed; i++) {
+                        normalized.options.push(`Pernyataan ${normalized.options.length + 1}`);
+                        normalized.correct.push(false);
+                    }
+                }
+            }
+
+            // Normalize multiple choice questions
+            if (normalized.type === 'multiple') {
+                // Ensure 4 options A,B,C,D
+                if (!Array.isArray(normalized.options) || normalized.options.length !== 4) {
+                    normalized.options = ['A', 'B', 'C', 'D'];
+                }
+                if (!Array.isArray(normalized.correct)) {
+                    normalized.correct = [normalized.correct]; // Convert single to array
+                }
+                // Ensure 2-3 correct answers
+                if (normalized.correct.length < 2) {
+                    // Add more correct answers if less than 2
+                    const available = [0,1,2,3].filter(i => !normalized.correct.includes(i));
+                    while (normalized.correct.length < 2 && available.length > 0) {
+                        const idx = available.splice(Math.floor(Math.random() * available.length), 1)[0];
+                        normalized.correct.push(idx);
+                    }
+                } else if (normalized.correct.length > 3) {
+                    // Limit to 3 correct answers
+                    normalized.correct = normalized.correct.slice(0, 3);
+                }
+                // Ensure all are numbers 0-3
+                normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c <= 3);
             }
 
             // Normalize matching questions

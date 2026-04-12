@@ -1247,7 +1247,7 @@ function showLoginForm(type) {
             if (type === 'multiple') {
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
                 const corr = activeCorrectMultiple.slice();
-                if (corr.length === 0) return alert('Pilih minimal satu jawaban benar!');
+                if (corr.length < 2 || corr.length > 3) return alert('Pilih 2-3 jawaban benar untuk soal pilihan ganda kompleks!');
                 record.options = options;
                 record.correct = corr;
             } else if (type === 'text') {
@@ -2486,6 +2486,11 @@ function showLoginForm(type) {
                 if (answerTextContainer) answerTextContainer.classList.remove('hidden');
             } else if (type === 'tf') {
                 if (tfContainer) tfContainer.classList.remove('hidden');
+                // Ensure at least 3 statements for TF questions
+                const existingRows = tfContainer.querySelectorAll('.tf-row').length;
+                for (let i = existingRows; i < 3; i++) {
+                    addTfRow();
+                }
             } else if (type === 'matching') {
                 if (matchingContainer) matchingContainer.classList.remove('hidden');
                 if (qText) qText.classList.add('hidden');
@@ -2511,7 +2516,7 @@ function showLoginForm(type) {
             if (type === 'multiple') {
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
                 const corr = activeCorrectMultiple.slice();
-                if (corr.length === 0) return alert('Pilih minimal satu jawaban benar!');
+                if (corr.length < 2 || corr.length > 3) return alert('Pilih 2-3 jawaban benar untuk soal pilihan ganda kompleks!');
                 record.options = options;
                 record.correct = corr;
             } else if (type === 'text') {
@@ -2520,7 +2525,7 @@ function showLoginForm(type) {
                 record.correct = ans;
             } else if (type === 'tf') {
                 const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length === 0) return alert('Tambahkan minimal satu pernyataan!');
+                if (rows.length < 3) return alert('Soal Benar/Salah harus memiliki minimal 3 pernyataan!');
                 const stmts = [];
                 const corrs = [];
                 for (const r of rows) {
@@ -5493,16 +5498,35 @@ function showLoginForm(type) {
 
         // --- INIT ---
         window.addEventListener('load', async () => {
-            await init();
-            console.log('App initialized, db has', db.students.length, 'students');
-            const typeSel = document.getElementById('q-type');
-            if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
+            // Fallback: Hide loading overlay after 3 seconds regardless
+            setTimeout(() => {
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay && !overlay.classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }
+            }, 3000);
 
-            // Hide loading overlay after initialization
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.add('hidden');
-                overlay.classList.remove('flex');
+            try {
+                await init();
+                console.log('App initialized, db has', db.students.length, 'students');
+                const typeSel = document.getElementById('q-type');
+                if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
+
+                // Hide loading overlay after initialization
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay) {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                // Hide loading overlay even if init fails
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay) {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }
             }
 
             // Add keyboard support for zoom modal
