@@ -460,16 +460,66 @@ app.post('/api/result', async (req, res) => {
 // ─── API: Import Word ─────────────────────────────────────────────────────────
 app.post('/api/import-word', upload.single('file'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: 'No file provided' });
-        const metadata = { subject: req.body.subject || '', class: req.body.class || '', type: req.body.type || 'single' };
+        console.log('📥 Import Word request received');
+        console.log('📄 File info:', req.file ? { name: req.file.originalname, size: req.file.size, mimetype: req.file.mimetype } : 'No file');
+
+        if (!req.file) {
+            console.log('❌ No file provided in request');
+            return res.status(400).json({ error: 'No file provided' });
+        }
+
+        // Validate file type
+        const allowedMimes = [
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+            'application/msword', // .doc
+            'application/octet-stream' // Sometimes Word files are sent as this
+        ];
+
+        if (!allowedMimes.includes(req.file.mimetype) && !req.file.originalname.match(/\.(doc|docx)$/i)) {
+            console.log('❌ Invalid file type:', req.file.mimetype, req.file.originalname);
+            return res.status(400).json({
+                error: 'File harus berupa dokumen Word (.doc atau .docx)'
+            });
+        }
+
+        // Validate file size (minimum 1KB to avoid empty files)
+        if (req.file.size < 1024) {
+            console.log('❌ File too small:', req.file.size, 'bytes');
+            return res.status(400).json({
+                error: 'File terlalu kecil atau kosong'
+            });
+        }
+
+        const metadata = {
+            subject: req.body.subject || '',
+            class: req.body.class || '',
+            type: req.body.type || 'single'
+        };
+        console.log('📋 Metadata:', metadata);
+
         const result = await parseWordDocument(req.file.buffer, metadata);
-        if (!result.success) return res.status(400).json({ error: result.error });
+        console.log('📊 Parse result:', { success: result.success, count: result.count, error: result.error });
+
+        if (!result.success) {
+            console.log('❌ Parsing failed:', result.error);
+            return res.status(400).json({ error: result.error });
+        }
+
         const db = (await readDB()) || { ...DEFAULT_DB };
+        const beforeCount = db.questions ? db.questions.length : 0;
         db.questions = [...(db.questions || []), ...result.questions];
         await writeDB(db);
-        return res.json({ ok: true, imported: result.count, questions: result.questions, warnings: result.warnings || [] });
+
+        console.log(`✅ Successfully imported ${result.count} questions (total: ${db.questions.length})`);
+        return res.json({
+            ok: true,
+            imported: result.count,
+            questions: result.questions,
+            warnings: result.warnings || []
+        });
     } catch (e) {
-        console.error('POST /api/import-word error:', e.message);
+        console.error('❌ POST /api/import-word error:', e.message);
+        console.error('❌ Stack trace:', e.stack);
         return res.status(500).json({ error: e.message });
     }
 });

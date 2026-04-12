@@ -39,6 +39,17 @@ async function parseWordDocument(fileBuffer, metadata = {}) {
             }
         }
 
+        // Validate that we found at least some questions
+        if (questions.length === 0) {
+            console.log('⚠️ No questions found in document');
+            return {
+                success: false,
+                error: 'Tidak ada soal yang ditemukan dalam dokumen. Pastikan dokumen menggunakan format yang didukung.',
+                count: 0,
+                questions: []
+            };
+        }
+
         return {
             success: true,
             count: questions.length,
@@ -46,9 +57,11 @@ async function parseWordDocument(fileBuffer, metadata = {}) {
             warnings: result.warnings || []
         };
     } catch (error) {
+        console.error('❌ Word parsing error:', error.message);
+        console.error('❌ Error stack:', error.stack);
         return {
             success: false,
-            error: error.message,
+            error: `Gagal memproses file Word: ${error.message}`,
             count: 0,
             questions: []
         };
