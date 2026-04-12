@@ -122,7 +122,7 @@ function parseCorrectAnswers(raw, options) {
     const raw_trimmed = raw.trim();
     if (!raw_trimmed) return null;
     const indices = new Set();
-    let parts = raw_trimmed.split(/[,;\/]+/).map(p => p.trim()).filter(Boolean);
+    let parts = raw_trimmed.split(/[\s,;\/]+/).map(p => p.trim()).filter(Boolean);
     for (const part of parts) {
         if (/^[A-Z]$/i.test(part)) {
             const idx = part.toUpperCase().charCodeAt(0) - 65;
@@ -140,7 +140,7 @@ function parseCorrectAnswers(raw, options) {
 
 function parseTextFormatQuestions(rawText, metadata = {}) {
     const questions = [];
-    const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
+    const lines = rawText.replace(/\r\n?/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
     let i = 0;
     while (i < lines.length) {
         const questionData = parseSingleTextQuestion(lines, i, metadata);
@@ -161,13 +161,14 @@ function parseSingleTextQuestion(lines, startIndex, metadata) {
     if (numMatch) questionText = numMatch[1].trim();
 
     const options = [];
-    while (i < lines.length && options.length < 6) {
-        const line = lines[i];
-        const match = line.match(/^[A-F][\.\)\:\-]?\s*(.+)$/i);
-        if (match) {
-            options.push(match[1].trim());
+    while (i < lines.length && options.length < 10) {
+        const option = parseOptionLine(lines[i]);
+        if (option) {
+            options.push(option.text);
             i++;
-        } else break;
+        } else {
+            break;
+        }
     }
 
     let correctAnswer = null;
@@ -180,7 +181,7 @@ function parseSingleTextQuestion(lines, startIndex, metadata) {
         }
     }
 
-    if (correctAnswer) {
+    if (correctAnswer && options.length > 0) {
         const indices = options.length >= 2 ? parseCorrectAnswers(correctAnswer, options) : null;
         const qObj = {
             text: questionText,
@@ -198,6 +199,31 @@ function parseSingleTextQuestion(lines, startIndex, metadata) {
         return { question: qObj, nextIndex: i };
     }
     return { question: null, nextIndex: i };
+}
+
+function parseOptionLine(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+
+    const bulletMatch = trimmed.match(/^[\u2022\u2023\u25E6\u2043\u2219\-\*\+]\s*(.+)$/);
+    const candidate = bulletMatch ? bulletMatch[1].trim() : trimmed;
+
+    const letterMatch = candidate.match(/^([A-F])(?:[\.\)\:\-]|\s+)\s*(.+)$/i);
+    if (letterMatch) {
+        return { label: letterMatch[1].toUpperCase(), text: letterMatch[2].trim() };
+    }
+
+    const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-]|\s+)\s*(.+)$/);
+    if (numericMatch) {
+        return { label: null, text: numericMatch[2].trim() };
+    }
+
+    // Accept pure bullet list items without labels as options too.
+    if (bulletMatch) {
+        return { label: null, text: candidate };
+    }
+
+    return null;
 }
 
 module.exports = { parseWordDocument };
