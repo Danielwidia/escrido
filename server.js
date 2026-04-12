@@ -635,8 +635,7 @@ app.post('/api/generate-ai', async (req, res) => {
         mapel = '',
         rombel = '',
         typeCounts = {},
-        levelCounts = {},
-        useJavanese = false
+        levelCounts = {}
     } = req.body;
 
     if (!materi) return res.status(400).json({ error: 'Materi is required' });
@@ -687,16 +686,13 @@ app.post('/api/generate-ai', async (req, res) => {
         prompt += `bertipe ${typeDescriptions[tipe] || 'pilihan ganda'} `;
     }
     prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} tentang: ${materi}. `;
-    if (useJavanese) {
-        prompt += 'Gunakan aksara Jawa untuk semua teks soal, opsi jawaban, dan pernyataan. ';
-    }
     if (levelParts.length > 0) {
         prompt += `Sebarkan level soal sebagai ${levelParts.join(', ')}. `;
     }
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
-    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar tepat 2-3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
+    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar minimal 3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
@@ -726,26 +722,68 @@ app.post('/api/generate-ai', async (req, res) => {
 
             // Normalize TF questions
             if (normalized.type === 'tf') {
-                if (typeof normalized.options === 'string') {
-                    // If options is a string, try to split into array
-                    normalized.options = normalized.options.split(/\n|;/).map(s => s.trim()).filter(s => s);
+                const parseBooleanAnswer = value => {
+                    if (typeof value === 'boolean') return value;
+                    if (typeof value === 'number') return value === 1;
+                    if (typeof value !== 'string') return false;
+                    const clean = value.toString().trim().toLowerCase();
+                    if (['benar', 'true', 't', 'ya', 'yes', '1'].includes(clean)) return true;
+                    if (['salah', 'false', 'f', 'tidak', 'no', '0'].includes(clean)) return false;
+                    return false;
+                };
+
+                const normalizeOptionList = raw => {
+                    if (Array.isArray(raw)) {
+                        return raw.flatMap(item => {
+                            if (typeof item !== 'string') return [];
+                            const parts = item.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
+                            return parts;
+                        }).map(s => s.trim()).filter(Boolean);
+                    }
+                    if (typeof raw === 'string') {
+                        return raw.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
+                    }
+                    return [];
+                };
+
+                const parseStatementsFromText = text => {
+                    const statements = [];
+                    const corrects = [];
+                    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+                    for (const line of lines) {
+                        const match = line.match(/^(?:\d+\.|\-|\*)?\s*(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\))?\s*$/i);
+                        if (match) {
+                            const stmt = match[1].trim();
+                            const answer = match[2] || match[3] || '';
+                            if (stmt) {
+                                statements.push(stmt);
+                                corrects.push(parseBooleanAnswer(answer));
+                            }
+                        }
+                    }
+                    return { statements, corrects };
+                };
+
+                normalized.options = normalizeOptionList(normalized.options);
+
+                // If options were provided as an array containing a single multiline string,
+                // flatten that single item into separate statements.
+                if (normalized.options.length === 1 && /\r?\n/.test(normalized.options[0])) {
+                    normalized.options = normalized.options[0].split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
                 }
-                if (!Array.isArray(normalized.options)) {
-                    normalized.options = [];
-                }
-                
-                // Parse options if they contain answers in parentheses
+
+                // Detect statements and answers embedded in options if present
                 if (normalized.options.length > 0) {
                     const parsedOptions = [];
                     const parsedCorrects = [];
                     for (const opt of normalized.options) {
-                        const match = opt.match(/^(.+?)\s*\((Benar|Salah|True|False|true|false)\)$/i);
+                        const match = opt.match(/^(.+?)\s*(?:[\-:–]\s*|\()?(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\)?$/i);
                         if (match) {
                             parsedOptions.push(match[1].trim());
-                            parsedCorrects.push(match[2].toLowerCase() === 'benar' || match[2].toLowerCase() === 'true');
+                            parsedCorrects.push(parseBooleanAnswer(match[2] || match[3]));
                         } else {
                             parsedOptions.push(opt);
-                            parsedCorrects.push(false); // Default
+                            parsedCorrects.push(false);
                         }
                     }
                     normalized.options = parsedOptions;
@@ -753,54 +791,36 @@ app.post('/api/generate-ai', async (req, res) => {
                         normalized.correct = parsedCorrects;
                     }
                 }
-                
-                // If options is empty but text contains statements, try to parse
+
+                // If options are empty or need stronger parsing, try text field
                 if (normalized.options.length === 0 && normalized.text && typeof normalized.text === 'string') {
-                    // Try to parse text with patterns like "1. Statement (True/False)" or "1. Statement\n2. Statement"
-                    const lines = normalized.text.split('\n').map(l => l.trim()).filter(l => l);
-                    const statements = [];
-                    const corrects = [];
-                    
-                    for (const line of lines) {
-                        // Match patterns like "1. Statement (Benar)" or "1. Statement (True)"
-                        const match = line.match(/^(\d+)\.\s*(.+?)\s*\((Benar|Salah|True|False|true|false)\)$/i);
-                        if (match) {
-                            statements.push(match[2].trim());
-                            corrects.push(match[3].toLowerCase() === 'benar' || match[3].toLowerCase() === 'true');
-                        } else {
-                            // Fallback: just take the line without number
-                            const noNumber = line.replace(/^\d+\.\s*/, '').trim();
-                            if (noNumber) {
-                                statements.push(noNumber);
-                                corrects.push(false); // Default to false
-                            }
-                        }
-                    }
-                    
+                    const { statements, corrects } = parseStatementsFromText(normalized.text);
                     if (statements.length >= 3) {
                         normalized.options = statements.slice(0, 3);
                         normalized.correct = corrects.slice(0, 3);
-                        normalized.text = ''; // Clear text as it's now in options
+                        normalized.text = '';
                     } else if (statements.length > 0) {
                         normalized.options = statements;
                         normalized.correct = corrects;
                     }
                 }
+
                 if (!Array.isArray(normalized.correct)) {
-                    // If correct is not array, try to convert or set default
                     normalized.correct = normalized.options.map(() => false);
                 } else if (normalized.correct.length !== normalized.options.length) {
-                    // Pad or truncate correct array to match options length
                     const correctLength = normalized.correct.length;
                     const optionsLength = normalized.options.length;
                     if (correctLength < optionsLength) {
-                        normalized.correct = [...normalized.correct, ...Array(optionsLength - correctLength).fill(false)];
+                        normalized.correct = [
+                            ...normalized.correct,
+                            ...Array(optionsLength - correctLength).fill(false)
+                        ];
                     } else if (correctLength > optionsLength) {
                         normalized.correct = normalized.correct.slice(0, optionsLength);
                     }
                 }
-                // Ensure all correct values are boolean
-                normalized.correct = normalized.correct.map(c => Boolean(c));
+
+                normalized.correct = normalized.correct.map(parseBooleanAnswer);
             }
 
             // Normalize multiple choice questions
