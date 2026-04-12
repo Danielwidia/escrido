@@ -1684,7 +1684,7 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div class="break-words font-medium text-slate-800 text-sm leading-relaxed">${q.text}</div>
+                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -1694,7 +1694,7 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <span class="font-bold text-sky-600 text-sm break-words">${corrText}</span>
+                        <span style="word-wrap: break-word; white-space: pre-wrap; max-width: none; font-weight: bold; color: #0369a1; font-size: 0.875rem;">${corrText}</span>
                     </td>
                     <td class="px-6 py-4">
                         <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold whitespace-nowrap">${typeName}</span>
@@ -2626,7 +2626,7 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <p class="font-medium text-slate-800 text-sm leading-relaxed break-words">${q.text}</p>
+                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -2636,7 +2636,7 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <span class="font-bold text-sky-600 text-sm break-words">${corrText}</span>
+                        <span style="word-wrap: break-word; white-space: pre-wrap; max-width: none; font-weight: bold; color: #0369a1; font-size: 0.875rem;">${corrText}</span>
                     </td>
                     <td class="px-6 py-4">
                         <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold whitespace-nowrap">${typeName}</span>
