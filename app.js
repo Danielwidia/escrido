@@ -9,8 +9,6 @@ function showLoginForm(type) {
                 m.classList.remove('flex');
                 m.classList.add('hidden');
             });
-            const aiHint = document.getElementById('ai-open-hint');
-            if (aiHint) aiHint.classList.add('hidden');
             const qText = document.getElementById('q-text');
             if (qText) qText.value = '';
             document.querySelectorAll('.q-opt').forEach(i => i.value = '');
@@ -43,104 +41,11 @@ function showLoginForm(type) {
     
 
 
-        // --- GOOGLE SIGN-IN FOR TEACHERS ---
-        window.googleSignInReady = false;
-        
-        function initGoogleSignIn() {
-            if (window.googleSignInReady || typeof google === 'undefined') return;
-            
-            try {
-                google.accounts.id.initialize({
-                    client_id: '1234567890-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com', // GANTI dengan Google OAuth Client ID Anda
-                    callback: handleGoogleSignInResponse,
-                    auto_select: false
-                });
-                
-                google.accounts.id.renderButton(
-                    document.getElementById('google-signin-btn'),
-                    {
-                        theme: 'outline',
-                        size: 'large',
-                        width: '100%'
-                    }
-                );
-                
-                window.googleSignInReady = true;
-            } catch (e) {
-                console.warn('Google Sign-In not available:', e);
-            }
-        }
-        
-        function handleGoogleSignInResponse(response) {
-            if (!response || !response.credential) {
-                showError('Google Sign-In gagal. Silakan coba lagi.');
-                return;
-            }
-            
-            // Decode JWT token dari Google
-            const credential = response.credential;
-            const base64Url = credential.split('.')[1];
-            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
-            
-            const userData = JSON.parse(jsonPayload);
-            console.log('Google User:', userData);
-            
-            // Cari guru dengan email Google
-            const googleEmail = userData.email;
-            let teacher = db.students.find(x => 
-                x.role === 'teacher' && 
-                (x.googleEmail === googleEmail || x.email === googleEmail)
-            );
-            
-            if (!teacher) {
-                // Auto-create teacher dengan Google account jika belum ada
-                const newTeacherId = `GURU_${googleEmail.split('@')[0].toUpperCase()}`;
-                teacher = {
-                    id: newTeacherId,
-                    name: userData.name,
-                    email: googleEmail,
-                    googleEmail: googleEmail,
-                    password: 'GOOGLE_OAUTH', // Dummy password
-                    role: 'teacher',
-                    subjects: [],
-                    apiKeys: []
-                };
-                db.students.push(teacher);
-                save();
-                console.log('New teacher auto-created from Google:', newTeacherId);
-            }
-            
-            // Login dengan guru account
-            currentSiswa = teacher;
-            saveSession();
-            
-            // Show loading dan redirect
-            document.getElementById('loading-overlay').classList.remove('hidden');
-            document.getElementById('loading-overlay').classList.add('flex');
-            
-            setTimeout(() => {
-                window.location.href = 'guru.html';
-            }, 1500);
-        }
-        
-        // --- GOOGLE SIGN-IN END ---
-        
         const DB_KEY = "EXAM_DORKAS_DATABASE_OFFICIAL";
         const SESSION_KEY = "EXAM_DORKAS_SESSION";
         const REMOTE_SERVER_KEY = "EXAM_DORKAS_REMOTE_SERVER_URL";
         const IDB_DB_NAME = 'DORKAS_EXAM_STORAGE';
         const IDB_STORE = 'store';
-
-        // Markdown Parser Function - Converts *text* to <strong>text</strong>
-        function parseMarkdown(text) {
-            if (typeof text !== 'string') return text;
-            // Replace *text* with <strong>text</strong> (bold)
-            // Uses non-greedy matching to handle multiple bold sections in one text
-            return text.replace(/\*([^\*]+)\*/g, '<strong>$1</strong>');
-        }
 
         // Global Anti-Cheat State
         let isExamActive = false;
@@ -529,13 +434,6 @@ function showLoginForm(type) {
         }
 
         async function init() {
-            // Show loading overlay during initialization
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.remove('hidden');
-                overlay.classList.add('flex');
-            }
-
             const loginBtn = document.getElementById('login-btn');
             const loginBtnText = loginBtn ? loginBtn.innerHTML : '';
             if (loginBtn) {
@@ -626,20 +524,13 @@ function showLoginForm(type) {
 
             // Verify user still exists in database
             if (currentSiswa) {
-                const dbUser = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
-                if (!dbUser) {
+                const userExists = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
+                if (!userExists) {
                     console.warn('User from session not found in database, logging out');
                     clearSession();
                     window.location.href = 'index.html';
                     return;
                 }
-
-                // Keep locally added teacher session data in sync with the DB entry
-                if (Array.isArray(currentSiswa.apiKeys)) {
-                    dbUser.apiKeys = currentSiswa.apiKeys;
-                }
-                currentSiswa = dbUser;
-                saveSession();
 
                 const page = window.location.pathname.split('/').pop().split('?')[0];
                 if (currentSiswa.role === 'admin' && page !== 'admin.html') {
@@ -674,14 +565,6 @@ function showLoginForm(type) {
                     const tcLabel = document.getElementById('teacher-info-label');
                     if (tcLabel) tcLabel.innerText = `${currentSiswa.name} | Guru ${formatTeacherSubjects(currentSiswa)}`;
                     if (typeof renderTeacherQuestions === 'function' && teacherDash) renderTeacherQuestions();
-                    
-                    // Sync API keys from server and then render
-                    syncTeacherAPIKeysFromServer().then(() => {
-                        if (typeof renderTeacherAPIKeys === 'function') renderTeacherAPIKeys();
-                    });
-                    
-                    // Load global API keys stats without rendering the full list
-                    loadGlobalAPIKeysStats();
                 }
                 migrateTeacherData();
                 updateStats();
@@ -692,12 +575,6 @@ function showLoginForm(type) {
             if (page !== '' && page !== 'index.html') {
                 window.location.href = 'index.html';
             } else {
-                // Hide loading overlay after initialization
-                const overlay = document.getElementById('loading-overlay');
-                if (overlay) {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                }
                 if(typeof showLoginScreen === 'function' && document.getElementById('login-screen')) showLoginScreen();
             }
         }
@@ -867,12 +744,7 @@ function showLoginForm(type) {
                 console.warn('Local persistence failed:', e.message || e);
             }
 
-            if (currentSiswa) {
-                saveSession();
-            }
-
             updateStats();
-            return serverSaveSuccess;
         }
 
         function updateStats() {
@@ -882,15 +754,13 @@ function showLoginForm(type) {
             const students = Array.isArray(db?.students) ? db.students : [];
             const results = Array.isArray(db?.results) ? db.results : [];
 
-            const ids = ['stat-subjects', 'stat-questions', 'stat-rombel', 'stat-students', 'stat-results', 'stat-api-active', 'stat-api-exhausted'];
+            const ids = ['stat-subjects', 'stat-questions', 'stat-rombel', 'stat-students', 'stat-results'];
             const vals = [
                 subjects.length,
                 questions.length,
                 rombels.length,
                 students.filter(x => x.role !== 'admin').length,
-                results.filter(r => !r.deleted).length,
-                window.globalApiKeysActive || 0,
-                window.globalApiKeysExhausted || 0
+                results.filter(r => !r.deleted).length
             ];
             ids.forEach((id, i) => { if (document.getElementById(id)) document.getElementById(id).innerText = vals[i]; });
         }
@@ -1014,25 +884,7 @@ function showLoginForm(type) {
         // --- AUTH ---
         // showLoginForm moved to top
 
-        /**
-         * Displays an error message in the login modal.
-         * @param {string} message - The error message to display.
-         */
-        function showError(message) {
-            const errorDiv = document.getElementById('login-error');
-            if (!errorDiv) return;
-
-            errorDiv.innerHTML = `<i class="fas fa-exclamation-circle text-xs"></i> <span class="text-xs font-bold">${message}</span>`;
-            errorDiv.classList.remove('hidden');
-            
-            // Auto-hide after 5 seconds
-            if (window.loginErrorTimeout) clearTimeout(window.loginErrorTimeout);
-            window.loginErrorTimeout = setTimeout(() => {
-                errorDiv.classList.add('hidden');
-            }, 5000);
-        }
-
-        function handleLogin(role) {
+        function handleLogin() {
             const u = document.getElementById('username').value.trim().toUpperCase();
             const p = document.getElementById('password').value.trim();
 
@@ -1062,25 +914,11 @@ function showLoginForm(type) {
                     currentSiswa = user;
                     // For student updateCompletionCharts is used
                     if (user.role === 'student' && typeof updateCompletionCharts === 'function') updateCompletionCharts();
-                    
-                    // Initialize API keys array if not exists (for teachers)
-                    if (user.role === 'teacher' && !Array.isArray(user.apiKeys)) {
-                        user.apiKeys = [];
-                        save();
-                    }
-                    
                     saveSession();
 
-                    // Show loading overlay
-                    document.getElementById('loading-overlay').classList.remove('hidden');
-                    document.getElementById('loading-overlay').classList.add('flex');
-
-                    // Delay redirect to show loading animation
-                    setTimeout(() => {
-                        if (user.role === 'admin') window.location.href = 'admin.html';
-                        else if (user.role === 'student') window.location.href = 'siswa.html';
-                        else if (user.role === 'teacher') window.location.href = 'guru.html';
-                    }, 1500); // 1.5 seconds delay
+                    if (user.role === 'admin') window.location.href = 'admin.html';
+                    else if (user.role === 'student') window.location.href = 'siswa.html';
+                    else if (user.role === 'teacher') window.location.href = 'guru.html';
                 } else {
                     console.log('Role mismatch - Expected:', window.loginType, 'Actual:', user.role);
                     showError(`Akun ini terdaftar sebagai ${user.role}. Silakan klik menu login yang sesuai.`);
@@ -1097,1014 +935,22 @@ function showLoginForm(type) {
         }
 
         // attach login button listener once DOM ready to avoid reference errors
-        window.addEventListener('load', () => {
+        document.addEventListener('DOMContentLoaded', () => {
             const btn = document.getElementById('login-btn');
             if (btn) btn.addEventListener('click', handleLogin);
-
-            // Hide loading overlay for index.html after DOM ready
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.add('hidden');
-                overlay.classList.remove('flex');
-            }
-
-            // Clear login error when typing
-            const loginId = document.getElementById('username');
-            const loginPass = document.getElementById('password');
-            const errorDiv = document.getElementById('login-error');
-            
-            if (loginId && errorDiv) {
-                loginId.addEventListener('input', () => errorDiv.classList.add('hidden'));
-            }
-            if (loginPass && errorDiv) {
-                loginPass.addEventListener('input', () => errorDiv.classList.add('hidden'));
-            }
         });
 
-        // --- API KEY MANAGEMENT FOR TEACHERS ---
-        function addTeacherAPIKey() {
-            if (!currentSiswa || currentSiswa.role !== 'teacher') {
-                alert('Hanya guru yang dapat menambahkan API Key');
-                return;
-            }
-            
-            const apiKey = prompt('Masukkan Google Gemini API Key Anda:\n\n(Dapatkan dari: https://aistudio.google.com/app/apikey)');
-            if (!apiKey || apiKey.trim() === '') return;
-            
-            // Show loading state (simulate with a simple message)
-            alert('Memproses...');
-            
-            // Send to server for auto-setup to Vercel
-            fetch(getApiBaseUrl() + '/api/teacher/add-api-key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    teacherId: currentSiswa.id,
-                    apiKey: apiKey.trim()
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.ok) {
-                    alert(data.error || 'Gagal menambahkan API Key');
-                    return;
-                }
-                
-                // Update local state
-                if (!Array.isArray(currentSiswa.apiKeys)) {
-                    currentSiswa.apiKeys = [];
-                }
-
-                const trimmedKey = apiKey.trim();
-                const alreadyExists = currentSiswa.apiKeys.some(entry => {
-                    if (typeof entry === 'string') return entry.trim() === trimmedKey;
-                    if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
-                    return false;
-                });
-
-                if (!alreadyExists) {
-                    currentSiswa.apiKeys.push({
-                        key: trimmedKey,
-                        status: 'active',
-                        addedAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        note: ''
-                    });
-                }
-
-                save();
-                renderTeacherAPIKeys();
-                showToast('API Key berhasil ditambahkan!', 'success');
-                
-                // Sync with server to ensure consistency
-                syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys());
-            })
-            .catch(err => {
-                console.error('Error adding API key:', err);
-                alert('Gagal menambahkan API Key: ' + err.message);
-            });
-        }
-        
-        function removeTeacherAPIKey(index) {
-            if (!currentSiswa || currentSiswa.role !== 'teacher') {
-                alert('Hanya guru yang dapat menghapus API Key');
-                return;
-            }
-            
-            if (!Array.isArray(currentSiswa.apiKeys) || index < 0 || index >= currentSiswa.apiKeys.length) {
-                alert('API Key tidak valid');
-                return;
-            }
-            
-            if (confirm('Hapus API Key ini? Kuota dari key ini tidak akan digunakan lagi.')) {
-                // Send to server first
-                fetch(getApiBaseUrl() + '/api/teacher/remove-api-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        teacherId: currentSiswa.id,
-                        keyIndex: index
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.ok) {
-                        alert(data.error || 'Gagal menghapus API Key dari server');
-                        return;
-                    }
-                    
-                    // Remove from local state
-                    currentSiswa.apiKeys.splice(index, 1);
-                    save();
-                    
-                    // Update display
-                    if (typeof renderTeacherAPIKeys === 'function') {
-                        renderTeacherAPIKeys();
-                    }
-                    
-                    showToast('API Key berhasil dihapus', 'success');
-                    
-                    // Sync with server to ensure consistency
-                    syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys());
-                })
-                .catch(err => {
-                    console.error('Error removing API key:', err);
-                    alert('Gagal menghapus API Key: ' + err.message);
-                });
-            }
-        }
-        
-        function normalizeTeacherApiKeyEntry(entry) {
-            if (!entry) return null;
-            if (typeof entry === 'string') {
-                const trimmed = entry.trim();
-                if (!trimmed) return null;
-                return {
-                    key: trimmed,
-                    status: 'active',
-                    addedAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    note: ''
-                };
-            }
-            if (typeof entry === 'object' && entry.key && typeof entry.key === 'string') {
-                const trimmed = entry.key.trim();
-                if (!trimmed) return null;
-                
-                let currentStatus = entry.status === 'exhausted' ? 'exhausted' : 'active';
-                let updatedAtTime = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
-                
-                // Auto-revive exhausted personal keys after 60 seconds
-                if (currentStatus === 'exhausted' && (Date.now() - updatedAtTime > 60000)) {
-                    currentStatus = 'active';
-                }
-                
-                return {
-                    ...entry,
-                    key: trimmed,
-                    status: currentStatus,
-                    addedAt: entry.addedAt || entry.createdAt || new Date().toISOString(),
-                    updatedAt: entry.updatedAt || new Date().toISOString(),
-                    note: entry.note || ''
-                };
-            }
-            return null;
+        function showError(customMsg) {
+            const err = document.getElementById('login-error');
+            const defaultRoleMsg = window.loginType === 'teacher' ? 'Password default: escrido123' : 'Password default: escrido';
+            err.innerHTML = (customMsg || `ID atau password salah!`) + `<br><span class="text-[10px] opacity-70 mt-1 block tracking-tight">• ${defaultRoleMsg}</span>`;
+            err.classList.remove('hidden');
         }
 
-        function normalizeTeacherApiKeys() {
-            if (!currentSiswa || currentSiswa.role !== 'teacher') return [];
-            if (!Array.isArray(currentSiswa.apiKeys)) currentSiswa.apiKeys = [];
-
-            // Robust filtering for personal keys only
-            const isPersonalKey = (entry) => {
-                if (!entry) return false;
-                // If it's just a string, it's likely a personal key added in early versions
-                if (typeof entry === 'string') return true;
-                
-                // If it's an object, check markers
-                if (typeof entry === 'object') {
-                    if (entry.isGlobal === true) return false;
-                    if (entry.addedAt && entry.addedAt.includes('System')) return false;
-                    // Keep everything else as potentially personal
-                    return true;
-                }
-                return false;
-            };
-
-            const normalized = currentSiswa.apiKeys
-                .filter(isPersonalKey)
-                .map(normalizeTeacherApiKeyEntry)
-                .filter(entry => entry && entry.key && !entry.isGlobal);
-
-            currentSiswa.apiKeys = normalized;
-            return currentSiswa.apiKeys;
-        }
-
-        function getTeacherApiKeyObjects() {
-            return normalizeTeacherApiKeys();
-        }
-
-        function getTeacherActiveApiKeyObjects() {
-            return getTeacherApiKeyObjects().filter(entry => entry.status !== 'exhausted');
-        }
-
-        function markLocalTeacherKeysAsExhausted(keys = []) {
-            if (!Array.isArray(keys) || !currentSiswa || currentSiswa.role !== 'teacher') return false;
-            const apiKeys = getTeacherApiKeyObjects();
-            let changed = false;
-            const now = new Date().toISOString();
-
-            currentSiswa.apiKeys = apiKeys.map(entry => {
-                if (keys.includes(entry.key) && entry.status !== 'exhausted') {
-                    changed = true;
-                    return { ...entry, status: 'exhausted', updatedAt: now, note: 'Terkena 429' };
-                }
-                return entry;
-            });
-
-            if (changed) save();
-            return changed;
-        }
-
-        async function syncTeacherAPIKeysFromServer() {
-            if (!currentSiswa || currentSiswa.role !== 'teacher') return;
-            
-            try {
-                const response = await fetch(getApiBaseUrl() + `/api/teacher/api-keys?teacherId=${encodeURIComponent(currentSiswa.id)}`);
-                if (!response.ok) {
-                    console.warn('Failed to sync API keys from server:', response.status);
-                    return;
-                }
-                
-                const result = await response.json();
-                if (result.ok && Array.isArray(result.apiKeys)) {
-                    // Filter out global keys, only keep personal teacher keys strictly
-                    const personalKeys = result.apiKeys.filter(key => 
-                        !key.isGlobal && 
-                        (!key.addedAt || !key.addedAt.includes('System'))
-                    );
-                    // Update local currentSiswa with server data
-                    currentSiswa.apiKeys = personalKeys;
-                    save(); // Save to local storage
-                    console.log('Synced personal API keys from server:', personalKeys.length, 'keys');
-                }
-            } catch (e) {
-                console.warn('Error syncing API keys from server:', e.message);
-            }
-        }
-
-        async function syncGlobalAPIKeysFromServer() {
-            try {
-                // Refresh global API keys list by re-rendering
-                await renderGlobalAPIKeys();
-                console.log('Synced global API keys from server');
-            } catch (e) {
-                console.warn('Error syncing global API keys from server:', e.message);
-            }
-        }
-
-        // --- END API KEY MANAGEMENT ---
-        
-        // --- RENDER API KEYS UI ---
-        function renderTeacherAPIKeys() {
-            const listContainer = document.getElementById('api-keys-list');
-            const countDisplay = document.getElementById('api-keys-count');
-            const statusBadge = document.getElementById('api-keys-status-badge');
-            const filterSelect = document.getElementById('api-keys-filter');
-
-            if (!listContainer) return;
-
-            const apiKeys = getTeacherApiKeyObjects().filter(entry => !entry.isGlobal && (!entry.addedAt || !entry.addedAt.includes('System')));
-            const activeKeys = getTeacherActiveApiKeyObjects().filter(entry => !entry.isGlobal && (!entry.addedAt || !entry.addedAt.includes('System')));
-            
-            console.log('Rendering teacher API keys:', apiKeys.length, 'keys after filtering');
-            console.log('Raw teacher apiKeys:', currentSiswa.apiKeys);
-            const activeCount = activeKeys.length;
-            const totalCount = apiKeys.length;
-
-            if (countDisplay) {
-                countDisplay.textContent = `${activeCount}/${totalCount}`;
-            }
-
-            if (statusBadge) {
-                const exhaustedCount = totalCount - activeCount;
-                let badgeText, badgeClass;
-                
-                if (totalCount === 0) {
-                    badgeText = '<i class="fas fa-exclamation-circle mr-1"></i>Kuota pribadi belum tersedia';
-                    badgeClass = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
-                } else if (activeCount === 0) {
-                    badgeText = '<i class="fas fa-times-circle mr-1"></i>Semua KUOTA Key Habis';
-                    badgeClass = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
-                } else if (exhaustedCount > 0) {
-                    badgeText = `<i class="fas fa-exclamation-triangle mr-1"></i>${activeCount} Aktif, ${exhaustedCount} Habis`;
-                    badgeClass = 'inline-block px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full';
-                } else {
-                    badgeText = '<i class="fas fa-check-circle mr-1"></i>API Keys Pribadi Siap Digunakan';
-                    badgeClass = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
-                }
-                
-                statusBadge.innerHTML = badgeText;
-                statusBadge.className = badgeClass;
-            }
-
-            if (totalCount > 0) {
-                updateApiKeysWarningBanner('', '');
-            }
-            updateApiKeysQuotaNote();
-
-            // Get filter value
-            const filterValue = filterSelect ? filterSelect.value : 'all';
-            let filteredKeys = apiKeys;
-
-            if (filterValue === 'active') {
-                filteredKeys = activeKeys;
-            } else if (filterValue === 'exhausted') {
-                filteredKeys = apiKeys.filter(entry => entry.status === 'exhausted');
-            }
-
-            if (totalCount === 0) {
-                listContainer.innerHTML = `
-                    <div class="text-center py-8 text-slate-400">
-                        <i class="fas fa-inbox text-3xl mb-2 opacity-30"></i>
-                        <p class="text-sm">Belum ada API Key. Tambahkan satu sekarang untuk meningkatkan kuota!</p>
-                    </div>
-                `;
-                return;
-            }
-
-            if (filteredKeys.length === 0) {
-                let emptyMsg = 'Tidak ada API Key aktif.';
-                if (filterValue === 'active') {
-                    emptyMsg = 'Tidak ada API Key yang aktif saat ini.';
-                } else if (filterValue === 'exhausted') {
-                    emptyMsg = 'Tidak ada API Key yang habis.';
-                }
-                listContainer.innerHTML = `
-                    <div class="text-center py-8 text-slate-400">
-                        <i class="fas fa-search text-3xl mb-2 opacity-30"></i>
-                        <p class="text-sm">${emptyMsg}</p>
-                    </div>
-                `;
-                return;
-            }
-
-            listContainer.innerHTML = filteredKeys.map((entry, index) => {
-                const fullKey = entry.key || '';
-                const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
-                const statusLabel = entry.status === 'exhausted' ? '❌ KUOTA KEY HABIS' : '✅ Aktif';
-                const statusClass = entry.status === 'exhausted'
-                    ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300'
-                    : 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300';
-
-                // Find actual index in full array for remove function
-                const actualIndex = apiKeys.findIndex(k => k.key === entry.key);
-
-                return `
-                    <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all group">
-                        <div class="flex items-center gap-3 flex-1">
-                            <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
-                                <i class="fas fa-key text-sm"></i>
-                            </div>
-                            <div>
-                                <p class="text-xs font-bold text-slate-700">Google Gemini API Key</p>
-                                <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
-                                <span class="${statusClass}">${statusLabel}</span>
-                                ${entry.note ? `<p class="text-xs text-slate-500 mt-1">📝 ${entry.note}</p>` : ''}
-                            </div>
-                        </div>
-                        <button onclick="removeTeacherAPIKey(${actualIndex})"
-                            class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100">
-                            <i class="fas fa-trash mr-1"></i>HAPUS
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        }
-        
-        function updateApiKeysWarningBanner(message, type = 'error') {
-            const banner = document.getElementById('api-keys-warning-banner');
-            if (!banner) return;
-            banner.textContent = message || '';
-            if (!message) {
-                banner.classList.add('hidden');
-                banner.classList.remove('bg-red-50','border-red-200','text-red-700','bg-yellow-50','border-yellow-200','text-yellow-700','bg-green-50','border-green-200','text-green-700');
-                return;
-            }
-            banner.classList.remove('hidden');
-            banner.classList.remove('bg-red-50','border-red-200','text-red-700','bg-yellow-50','border-yellow-200','text-yellow-700','bg-green-50','border-green-200','text-green-700');
-            if (type === 'warning') {
-                banner.classList.add('bg-yellow-50','border-yellow-200','text-yellow-700');
-            } else if (type === 'success') {
-                banner.classList.add('bg-green-50','border-green-200','text-green-700');
-            } else {
-                banner.classList.add('bg-red-50','border-red-200','text-red-700');
-            }
-        }
-
-        function isAIGenerationRequiresApiKey(result) {
-            const message = (result?.error || '').toString();
-            return result?.needsApiKeys || /tidak ada api key|tidak memiliki api key|api key pribadi|dashboard api keys/i.test(message);
-        }
-
-        function isAIGenerationQuotaError(result) {
-            const message = (result?.error || '').toString();
-            return result?.quotaExhausted || /kuota|quota|limit|habis/i.test(message);
-        }
-
-        function updateApiKeysQuotaNote() {
-            const note = document.getElementById('api-keys-quota-note');
-            if (!note) return;
-            const apiKeys = getTeacherApiKeyObjects();
-            const activeKeys = apiKeys.filter(entry => entry.status !== 'exhausted');
-            const exhaustedKeys = apiKeys.filter(entry => entry.status === 'exhausted');
-
-            if (apiKeys.length === 0) {
-                note.textContent = 'Belum ada API Key. Tambahkan satu untuk meningkatkan kuota AI.';
-            } else if (activeKeys.length === 0) {
-                note.textContent = 'Semua API Key Anda sudah habis. Hapus atau ganti key yang bermasalah.';
-            } else if (exhaustedKeys.length > 0) {
-                note.textContent = `${activeKeys.length} aktif dari ${apiKeys.length} key. ${exhaustedKeys.length} key ditandai habis.`;
-            } else {
-                note.textContent = `Jumlah API Key aktif: ${activeKeys.length}. Sisa kuota tidak dapat ditentukan secara pasti oleh penyedia.`;
-            }
-        }
-
-        function updateGlobalApiKeysStats(keys = []) {
-            const countDisplay = document.getElementById('global-api-keys-count');
-            const statusBadge = document.getElementById('global-api-keys-status-badge');
-            
-            if (!Array.isArray(keys)) keys = [];
-            const totalCount = keys.length;
-            const activeCount = keys.filter(k => k.status !== 'exhausted').length;
-            const exhaustedCount = totalCount - activeCount;
-            
-            if (countDisplay) {
-                countDisplay.textContent = `${activeCount}/${totalCount}`;
-            }
-            
-            if (!statusBadge) return;
-
-            if (totalCount === 0) {
-                statusBadge.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Tidak ada key global';
-                statusBadge.className = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
-            } else if (activeCount === 0) {
-                statusBadge.innerHTML = '<i class="fas fa-times-circle mr-1"></i>Semua Global Key Habis';
-                statusBadge.className = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
-            } else if (exhaustedCount > 0) {
-                statusBadge.innerHTML = `<i class="fas fa-exclamation-triangle mr-1"></i>${activeCount} Aktif, ${exhaustedCount} Habis`;
-                statusBadge.className = 'inline-block px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full';
-            } else {
-                statusBadge.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Global Keys Siap';
-                statusBadge.className = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
-            }
-        }
-
-        async function handleAIGenerationError(result) {
-            const message = result?.error || 'Gagal memproses AI. Coba lagi.';
-            if (result?.exhaustedKeys?.length) {
-                const changed = markLocalTeacherKeysAsExhausted(result.exhaustedKeys);
-                if (changed) {
-                    await syncTeacherAPIKeysFromServer();
-                    renderTeacherAPIKeys();
-                }
-            }
-            updateApiKeysWarningBanner(message, 'warning');
-            
-            // Auto redirect to API Keys page if all keys exhausted
-            if (result?.redirectToApiKeys && currentSiswa && currentSiswa.role === 'teacher') {
-                console.log('[AI] Auto-redirecting to API Keys due to all keys exhausted');
-                if (typeof switchTeacherTab === 'function') {
-                    switchTeacherTab('api-keys');
-                }
-                // Show a clear toast notification
-                showToast('Semua API Key habis. Mohon tambahkan API Key baru. Halaman API Keys sudah dibuka untuk Anda.', 'error');
-                return; // Return early to prevent the second toast
-            }
-            
-            if (currentSiswa && currentSiswa.role === 'teacher' && typeof switchTeacherTab === 'function') {
-                switchTeacherTab('api-keys');
-            }
-            showToast(message, 'error');
-        }
-
-        function toggleNewKeyVisibility() {
-            const input = document.getElementById('new-api-key-input');
-            if (!input) return;
-            
-            if (input.type === 'password') {
-                input.type = 'text';
-            } else {
-                input.type = 'password';
-            }
-        }
-
-        async function renderGlobalAPIKeys() {
-            const container = document.getElementById('global-api-keys-list');
-            if (!container) return;
-
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
-                const result = await response.json();
-
-                if (!result.ok || !Array.isArray(result.globalKeys)) {
-                    container.innerHTML = `
-                        <div class="text-center py-8 text-slate-400">
-                            <i class="fas fa-exclamation-circle text-3xl mb-2 opacity-30"></i>
-                            <p class="text-sm">Tidak ada global API key yang dikonfigurasi</p>
-                        </div>
-                    `;
-                    updateGlobalApiKeysStats([]);
-                    return;
-                }
-
-                const keys = result.globalKeys;
-                const isAdmin = currentSiswa && currentSiswa.role === 'admin';
-
-                // Helper function to detect provider from API key
-                function detectProviderFromKey(key) {
-                    if (!key) return 'Unknown';
-                    if (key.startsWith('AIzaSy')) return 'Google Gemini';
-                    if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
-                    if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
-                    if (key.startsWith('gsk_')) return 'Groq';
-                    if (key.includes('deepseek')) return 'DeepSeek';
-                    return 'Unknown';
-                }
-
-                if (keys.length === 0) {
-                    updateGlobalApiKeysStats([]);
-                    container.innerHTML = `
-                        <div class="text-center py-8 text-slate-400">
-                            <i class="fas fa-exclamation-circle text-3xl mb-2 opacity-30"></i>
-                            <p class="text-sm">Tidak ada global API key yang dikonfigurasi</p>
-                        </div>
-                    `;
-                } else {
-                    updateGlobalApiKeysStats(keys);
-                    container.innerHTML = keys.map((entry, idx) => {
-                        const fullKey = entry.key || '';
-                        const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
-                        
-                        // Use detected provider from key format, fallback to stored provider
-                        const detectedProvider = detectProviderFromKey(fullKey);
-                        const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : entry.provider;
-                        
-                        const providerIcon = displayProvider.includes('Gemini') ? 'fa-google' : 'fa-robot';
-                        let providerColor, statusLabel, statusBadgeClass;
-                        
-                        if (displayProvider.includes('Gemini')) {
-                            providerColor = 'blue';
-                        } else if (displayProvider.includes('OpenAI')) {
-                            providerColor = 'green';
-                        } else {
-                            providerColor = 'purple';
-                        }
-                        
-                        if (entry.status === 'exhausted') {
-                            statusLabel = '❌ KUOTA GLOBAL HABIS';
-                            statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300 mt-1';
-                        } else {
-                            statusLabel = entry.isFromDB ? '✅ Aktif (Database)' : '✅ Aktif (Environment)';
-                            statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300 mt-1';
-                        }
-                        
-                        const exhaustedDetail = entry.status === 'exhausted' ? `<p class="text-xs text-red-600 mt-2 font-bold">Kuota habis untuk key ini.</p>` : '';
-                        
-                        // Admin-only actions for DB keys
-                        let adminActions = '';
-                        if (isAdmin && entry.isFromDB) {
-                            const dbIndex = keys.filter((k, i) => k.isFromDB && i <= idx).length - 1;
-                            adminActions = `
-                                <button onclick="removeGlobalAPIKey(${dbIndex})"
-                                    class="ml-2 p-2 text-red-400 hover:text-red-700 transition-colors" title="Hapus dari Database">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            `;
-                        }
-
-                        return `
-                            <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all ${entry.status === 'exhausted' ? 'opacity-70' : ''}">
-                                <div class="flex items-center gap-3 flex-1">
-                                    <div class="w-8 h-8 bg-${providerColor}-100 text-${providerColor}-600 rounded-lg flex items-center justify-center">
-                                        <i class="fas ${providerIcon} text-sm"></i>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-xs font-bold text-slate-700">${displayProvider}</p>
-                                        <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
-                                        <span class="${statusBadgeClass}">${statusLabel}</span>
-                                        ${exhaustedDetail}
-                                        ${entry.quotaInfo ? `<p class="text-xs text-slate-500 mt-2"><i class="fas fa-info-circle mr-1"></i>${entry.quotaInfo}</p>` : ''}
-                                        ${entry.note ? `<p class="text-xs text-amber-600 mt-1">📝 ${entry.note}</p>` : ''}
-                                    </div>
-                                    ${adminActions}
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                }
-
-                // Add Admin "Add Key" Form if applicable
-                if (isAdmin) {
-                    const adminForm = document.createElement('div');
-                    adminForm.className = 'mt-6 pt-6 border-t border-slate-100';
-                    adminForm.innerHTML = `
-                        <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Tambah Global Key (Supabase)</h4>
-                        <div class="space-y-3">
-                            <div class="grid grid-cols-2 gap-2">
-                                <select id="admin-global-provider" class="p-3 bg-white rounded-xl border border-slate-200 text-xs font-bold outline-none">
-                                    <option value="Gemini">Google Gemini</option>
-                                    <option value="OpenAI">OpenAI (ChatGPT)</option>
-                                    <option value="OpenRouter">OpenRouter</option>
-                                    <option value="Groq">Groq</option>
-                                    <option value="DeepSeek">DeepSeek</option>
-                                </select>
-                                <input type="text" id="admin-global-note" placeholder="Catatan (opsional)" class="p-3 bg-white rounded-xl border border-slate-200 text-xs font-bold">
-                            </div>
-                            <div class="flex gap-2">
-                                <input type="password" id="admin-global-key" placeholder="API Key" class="flex-1 p-3 bg-white rounded-xl border border-slate-200 text-xs font-mono">
-                                <button onclick="addGlobalAPIKeyForm()" class="px-4 py-3 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-black transition-all">
-                                    <i class="fas fa-plus mr-1"></i>TAMBAH
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    container.appendChild(adminForm);
-                }
-
-            } catch (err) {
-                console.error('Error loading global API keys:', err);
-                updateGlobalApiKeysStats([]);
-                container.innerHTML = `
-                    <div class="text-center py-8 text-red-400">
-                        <i class="fas fa-exclamation-triangle text-3xl mb-2 opacity-30"></i>
-                        <p class="text-sm">Gagal memuat global API key</p>
-                    </div>
-                `;
-            }
-        }
-
-        window.addGlobalAPIKeyForm = async function() {
-            const provider = document.getElementById('admin-global-provider').value;
-            const apiKey = document.getElementById('admin-global-key').value;
-            const note = document.getElementById('admin-global-note').value;
-
-            if (!apiKey) return showToast('API Key harus diisi', 'error');
-
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider, apiKey, note })
-                });
-
-                const result = await response.json();
-
-                if (result.ok) {
-                    showToast('Global API Key berhasil ditambahkan di Supabase', 'success');
-                    renderGlobalAPIKeys();
-                    updateStats(); // Update stats after adding
-                } else {
-                    showToast(result.error || 'Gagal menambahkan key', 'error');
-                }
-            } catch (err) {
-                showToast('Error: ' + err.message, 'error');
-            }
-        };
-
-        window.addGlobalApiKey = async function() {
-            const apiKey = document.getElementById('new-api-key').value.trim();
-            if (!apiKey) return showToast('API Key harus diisi', 'error');
-
-            // Auto-detect provider based on API key format
-            let detectedProvider = 'OpenAI'; // Default fallback
-            if (apiKey.startsWith('AIzaSy')) {
-                detectedProvider = 'Gemini';
-            } else if (apiKey.startsWith('sk-')) {
-                detectedProvider = 'OpenAI';
-            } else if (apiKey.startsWith('sk-or-v1-') || apiKey.startsWith('sk-or-')) {
-                detectedProvider = 'OpenRouter';
-            } else if (apiKey.startsWith('gsk_')) {
-                detectedProvider = 'Groq';
-            } else if (apiKey.startsWith('sk-') && apiKey.includes('deepseek')) {
-                detectedProvider = 'DeepSeek';
-            }
-
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider: detectedProvider, apiKey, note: '' })
-                });
-
-                const result = await response.json();
-
-                if (result.ok) {
-                    showToast(`Global API Key berhasil ditambahkan (${detectedProvider})`, 'success');
-                    document.getElementById('new-api-key').value = '';
-                    renderApiKeysList(); // Refresh list
-                    updateStats(); // Update stats
-                } else {
-                    showToast(result.error || 'Gagal menambahkan key', 'error');
-                }
-            } catch (err) {
-                showToast('Error: ' + err.message, 'error');
-            }
-        };
-
-        async function renderApiKeysList() {
-            const container = document.getElementById('api-keys-list');
-            if (!container) return;
-
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/admin/global-api-keys');
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-
-                if (result.ok && Array.isArray(result.globalKeys)) {
-                    const keys = result.globalKeys;
-                    window.globalApiKeysActive = result.activeCount || 0;
-                    window.globalApiKeysExhausted = result.exhaustedCount || 0;
-                    updateStats(); // Update stats with new API keys data
-                    
-                    // Helper function to detect provider from API key
-                    function detectProviderFromKey(key) {
-                        if (!key) return 'Unknown';
-                        if (key.startsWith('AIzaSy')) return 'Google Gemini';
-                        if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
-                        if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
-                        if (key.startsWith('gsk_')) return 'Groq';
-                        if (key.includes('deepseek')) return 'DeepSeek';
-                        return 'Unknown';
-                    }
-                    
-                    container.innerHTML = keys.length === 0 ? 
-                        '<p class="text-xs text-slate-500">Belum ada API Key global</p>' :
-                        keys.map((key, index) => {
-                            const fullKey = key.key || '';
-                            const displayKey = fullKey.length > 20 ? fullKey.substring(0, 20) + '...' : fullKey;
-                            
-                            // Use detected provider from key format, fallback to stored provider
-                            const detectedProvider = detectProviderFromKey(fullKey);
-                            const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : (key.provider || 'Unknown');
-                            
-                            return `
-                                <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
-                                    <div class="flex-1">
-                                        <span class="text-xs font-mono text-slate-700">${displayKey}</span>
-                                        <span class="text-xs text-slate-500 ml-2">${displayProvider}</span>
-                                        ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
-                                    </div>
-                                    <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            `;
-                        }).join('');
-                } else {
-                    container.innerHTML = `<p class="text-xs text-red-500">Error: ${result.error || 'Response tidak valid'}</p>`;
-                }
-            } catch (err) {
-                console.error('Error loading API keys:', err);
-                container.innerHTML = `<p class="text-xs text-red-500">Gagal memuat API Keys: ${err.message}</p>`;
-            }
-        }
-
-        window.removeGlobalApiKey = async function(index) {
-            if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini?')) return;
-
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/admin/remove-global-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keyIndex: index })
-                });
-
-                const result = await response.json();
-
-                if (result.ok) {
-                    showToast('Global API Key berhasil dihapus', 'success');
-                    renderApiKeysList(); // Refresh list for admin overview
-                    updateStats(); // Update stats
-                } else {
-                    showToast(result.error || 'Gagal menghapus key', 'error');
-                }
-            } catch (err) {
-                showToast('Error: ' + err.message, 'error');
-            }
-        };
-        
-        function toggleGlobalAPIKeysList() {
-            const list = document.getElementById('global-api-keys-list');
-            const icon = document.getElementById('global-api-keys-toggle-icon');
-            
-            if (!list || !icon) return;
-            
-            const isHidden = list.classList.contains('hidden');
-            
-            if (isHidden) {
-                list.classList.remove('hidden');
-                icon.style.transform = 'rotate(180deg)';
-                // Load the list if it's empty (first time opening)
-                if (list.children.length === 0 || list.querySelector('.fa-loader')) {
-                    renderGlobalAPIKeys();
-                }
-            } else {
-                list.classList.add('hidden');
-                icon.style.transform = 'rotate(0deg)';
-            }
-        }
-        
-        // Make function globally accessible
-        window.toggleGlobalAPIKeysList = toggleGlobalAPIKeysList;
-        
-        async function loadGlobalAPIKeysStats() {
-            try {
-                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
-                const result = await response.json();
-                
-                if (result.ok && Array.isArray(result.globalKeys)) {
-                    updateGlobalApiKeysStats(result.globalKeys);
-                } else {
-                    updateGlobalApiKeysStats([]);
-                }
-            } catch (err) {
-                console.error('Error loading global API keys stats:', err);
-                updateGlobalApiKeysStats([]);
-            }
-        }
-        
-        function toggleNewKeyVisibility() {
-            const input = document.getElementById('new-api-key-input');
-            if (!input) return;
-            
-            if (input.type === 'password') {
-                input.type = 'text';
-            } else {
-                input.type = 'password';
-            }
-        }
-        
-        function addTeacherAPIKeyForm() {
-            const input = document.getElementById('new-api-key-input');
-            if (!input) {
-                showToast('Form tidak ditemukan', 'error');
-                return;
-            }
-            
-            const apiKey = input.value.trim();
-            if (!apiKey) {
-                showToast('Masukkan API Key terlebih dahulu', 'error');
-                return;
-            }
-            
-            if (!currentSiswa || currentSiswa.role !== 'teacher') {
-                alert('Hanya guru yang dapat menambahkan API Key');
-                return;
-            }
-            
-            // Show loading state
-            const btn = event.target;
-            const originalText = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-            
-            // Send to server for auto-setup to Vercel
-            fetch(getApiBaseUrl() + '/api/teacher/add-api-key', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    teacherId: currentSiswa.id,
-                    apiKey: apiKey
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.ok) {
-                    showToast(data.error || 'Gagal menambahkan API Key', 'error');
-                    return;
-                }
-                updateApiKeysWarningBanner('', '');
-                
-                // Update local state
-                if (!Array.isArray(currentSiswa.apiKeys)) {
-                    currentSiswa.apiKeys = [];
-                }
-
-                const trimmedKey = apiKey.trim();
-                const alreadyExists = currentSiswa.apiKeys.some(entry => {
-                    if (typeof entry === 'string') return entry.trim() === trimmedKey;
-                    if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
-                    return false;
-                });
-
-                if (!alreadyExists) {
-                    currentSiswa.apiKeys.push({
-                        key: trimmedKey,
-                        status: 'active',
-                        addedAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        note: ''
-                    });
-                }
-
-                save();
-                input.value = '';
-                input.type = 'password';
-                renderTeacherAPIKeys();
-                
-                // Show success with Vercel status
-                const message = data.vercelStatus 
-                    ? `✅ API Key ditambahkan! ${data.vercelStatus}`
-                    : '✅ API Key berhasil ditambahkan!';
-                showToast(message, 'success');
-                
-            })
-            .catch(err => {
-                console.error('API Key Error:', err);
-                showToast('Terjadi kesalahan: ' + err.message, 'error');
-            })
-            .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            });
-        }
-        
-        function removeTeacherAPIKey(index) {
-            if (!currentSiswa || currentSiswa.role !== 'teacher') {
-                alert('Hanya guru yang dapat menghapus API Key');
-                return;
-            }
-            
-            if (!Array.isArray(currentSiswa.apiKeys) || index < 0 || index >= currentSiswa.apiKeys.length) {
-                alert('API Key tidak valid');
-                return;
-            }
-            
-            if (confirm('Hapus API Key ini?')) {
-                // Show loading
-                const oldRender = renderTeacherAPIKeys;
-                
-                // Call server endpoint
-                fetch(getApiBaseUrl() + '/api/teacher/remove-api-key', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        teacherId: currentSiswa.id,
-                        keyIndex: index
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (!data.ok) {
-                        showToast(data.error || 'Gagal menghapus API Key', 'error');
-                        return;
-                    }
-                    
-                    // Update local state
-                    currentSiswa.apiKeys.splice(index, 1);
-                    save();
-                    renderTeacherAPIKeys();
-                    showToast('API Key berhasil dihapus', 'success');
-                })
-                .catch(err => {
-                    console.error('Remove API Key Error:', err);
-                    showToast('Terjadi kesalahan', 'error');
-                });
-            }
-        }
-        // --- END RENDER API KEYS UI ---
-        
         function logout() {
             isExamActive = false;
             clearSession();
-            // Show loading overlay
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.remove('hidden');
-                overlay.classList.add('flex');
-            }
-            // Delay redirect to show loading animation
-            setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 500);
-        }
-
-        function reloadPage() {
-            // Show loading overlay
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.remove('hidden');
-                overlay.classList.add('flex');
-            }
-            // Delay reload to show loading animation
-            setTimeout(() => {
-                location.reload();
-            }, 500);
+            window.location.href = 'index.html';
         }
 
         // --- IMPORT SISWA (NEW FEATURE) ---
@@ -2333,26 +1179,8 @@ function showLoginForm(type) {
             document.getElementById('q-images-list').innerHTML = '';
             window.storedImages = [];
             document.getElementById('q-opts-container').innerHTML = '<input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi A"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi B"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi C"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi D">';
-            document.getElementById('q-tf-container').innerHTML = `
-                <div class="space-y-3">
-                    ${[1, 2, 3].map(i => `
-                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                            <label class="text-xs font-bold">Pernyataan ${i}</label>
-                            <input type="text" class="tf-statement-${i} w-full p-2 mb-2 rounded border" placeholder="Masukkan pernyataan...">
-                            <select class="tf-answer-${i} w-full p-2 rounded border">
-                                <option value="Benar">Benar</option>
-                                <option value="Salah">Salah</option>
-                            </select>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-            document.getElementById('q-matching-container').innerHTML = '<div class="grid grid-cols-3 gap-4"><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan (Kiri)</label><div id="q-matching-questions" class="space-y-2"><div class="matching-q-row flex items-center gap-2"><input type="text" class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pertanyaan 1"><button type="button" onclick="removeMatchingQRow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pertanyaan</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban (Kanan)</label><div id="q-matching-answers" class="space-y-2"><div class="matching-a-row flex items-center gap-2"><input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban 1" oninput="updateMatchingCorrects()"><button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah Jawaban</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pasangan Benar</label><div id="q-matching-corrects" class="space-y-2"><div class="matching-c-row"><select class="matching-correct flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Pilih--</option></select></div></div></div></div>';
-            // Add 4 more rows to make 5 total
-            for (let i = 0; i < 4; i++) {
-                addMatchingQRow();
-                addMatchingARow();
-            }
+            document.getElementById('q-tf-container').innerHTML = '<div class="tf-row flex items-center gap-2"><input type="text" class="tf-statement flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pernyataan"><select class="tf-correct p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Benar/Salah--</option><option value="true">Benar</option><option value="false">Salah</option></select><button type="button" onclick="removeTfRow(this)" class="text-red-500">&times;</button></div><button type="button" onclick="addTfRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pernyataan</button>';
+            document.getElementById('q-matching-container').innerHTML = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan (Kiri)</label><div id="q-matching-questions" class="space-y-2"><div class="matching-q-row flex items-center gap-2"><input type="text" class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pertanyaan 1"><button type="button" onclick="removeMatchingQRow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pertanyaan</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban (Kanan)</label><div id="q-matching-answers" class="space-y-2"><div class="matching-a-row flex items-center gap-2"><input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban 1"><button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah Jawaban</button></div></div>';
             document.getElementById('save-question-btn').textContent = 'SIMPAN SOAL';
             window.isTeacherMode = true;
             editQuestionIndex = null;
@@ -2427,32 +1255,29 @@ function showLoginForm(type) {
                 if (!ans) return alert('Tuliskan jawaban esai yang benar!');
                 record.correct = ans;
             } else if (type === 'tf') {
-                const subQuestions = [];
-                const answers = [];
-                for (let i = 1; i <= 3; i++) {
-                    const stmt = document.querySelector(`.tf-statement-${i}`).value.trim();
-                    const ans = document.querySelector(`.tf-answer-${i}`).value;
-                    if (!stmt) return alert(`Lengkapi Pernyataan ${i}!`);
-                    if (!ans) return alert(`Pilih Benar/Salah untuk Pernyataan ${i}!`);
-                    subQuestions.push({ statement: stmt, answer: ans });
-                    answers.push(ans);
+                const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
+                if (rows.length === 0) return alert('Tambahkan minimal satu pernyataan!');
+                const stmts = [];
+                const corrs = [];
+                for (const r of rows) {
+                    const stmt = r.querySelector('.tf-statement').value.trim();
+                    const sel = r.querySelector('.tf-correct').value;
+                    if (!stmt || sel === '') return alert('Lengkapi pernyataan dan pilih Benar/Salah!');
+                    stmts.push(stmt);
+                    corrs.push(sel === 'true');
                 }
-                record.subQuestions = subQuestions;
-                record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
-                // Untuk kompatibilitas, isi juga options
-                record.options = subQuestions.map(sq => sq.statement);
+                record.options = stmts;
+                record.correct = corrs;
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
-                const cRows = Array.from(document.querySelectorAll('#q-matching-corrects .matching-correct'));
                 const questions = qRows.map(inp => inp.value.trim()).filter(v => v);
                 const answers = aRows.map(inp => inp.value.trim()).filter(v => v);
-                const corrects = cRows.map(sel => sel.value.trim()).filter(v => v);
-                if (questions.length !== 5 || answers.length !== 5) return alert('Soal menjodohkan harus terdiri dari tepat 5 pertanyaan dan 5 jawaban!');
-                if (corrects.length !== 5 || corrects.some(c => !answers.includes(c))) return alert('Setiap pertanyaan harus memiliki pasangan jawaban yang valid!');
+                if (questions.length === 0 || answers.length === 0) return alert('Tambahkan minimal satu pertanyaan dan satu jawaban!');
+                if (questions.length !== answers.length) return alert('Jumlah pertanyaan dan jawaban harus sama!');
                 record.questions = questions;
                 record.answers = answers;
-                record.correct = corrects; // correct is array of correct answers for each question				
+                record.correct = answers.slice(); // correct is the answers in order				
             } else {
                 // single choice
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
@@ -2495,7 +1320,7 @@ function showLoginForm(type) {
             const q = db.questions[index];
             let msg = `Soal: ${q.text}\n\nType: ${q.type}\nMapel: ${q.mapel}\nRombel: ${q.rombel}\n\n`;
             if (q.type === 'single' || q.type === 'multiple') {
-                msg += `Opsi:\n${q.options.map((opt, idx) => `${['A', 'B', 'C', 'D'][idx]}. ${opt}`).join('\n')}\n`;
+                msg += `Opsi: ${q.options.join(', ')}\n`;
                 msg += `Kunci: ${Array.isArray(q.correct) ? q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(',') : ['A', 'B', 'C', 'D'][q.correct]}`;
             } else if (q.type === 'tf') {
                 msg += q.options.map((s, i) => `${s}: ${q.correct[i] ? 'Benar' : 'Salah'}`).join('\n');
@@ -2507,7 +1332,7 @@ function showLoginForm(type) {
 
         // Switch between teacher dashboard tabs
         function switchTeacherTab(tab) {
-            const tabs = ['bank-soal', 'hasil-ujian', 'api-keys'];
+            const tabs = ['bank-soal', 'hasil-ujian'];
             tabs.forEach(t => {
                 const tabDiv = document.getElementById(`teacher-tab-${t}`);
                 const tabBtn = document.getElementById(`tab-${t}`);
@@ -2531,12 +1356,6 @@ function showLoginForm(type) {
                 // begin polling server for new results if in teacher results tab
                 if (teacherResultsPollInterval) clearInterval(teacherResultsPollInterval);
                 teacherResultsPollInterval = setInterval(fetchAndMerge, 5000);
-            } else if (tab === 'api-keys') {
-                // Sync API keys from server before rendering for real-time status
-                syncTeacherAPIKeysFromServer().then(() => {
-                    renderTeacherAPIKeys();
-                    renderGlobalAPIKeys();
-                });
             } else {
                 if (teacherResultsPollInterval) {
                     clearInterval(teacherResultsPollInterval);
@@ -2865,26 +1684,7 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div class="break-words font-medium text-slate-800 text-sm leading-relaxed">
-                            ${formatQuestionText(q.text)}
-                            ${(q.type === 'single' || q.type === 'multiple') && q.options ? 
-                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
-                                    ${q.options.map((opt, idx) => `<div><strong>${['A', 'B', 'C', 'D'][idx]}.</strong> ${opt}</div>`).join('')}
-                                </div>` : 
-                                q.type === 'tf' && q.subQuestions ? 
-                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
-                                    ${q.subQuestions.map((sq, idx) => `<div><strong>${idx + 1}.</strong> ${sq.statement} <em>(${sq.answer})</em></div>`).join('')}
-                                </div>` : 
-                                q.type === 'text' ? 
-                                `<div class="text-xs text-slate-500 italic mt-2">Jawaban: ${q.correct || 'Teks bebas'}</div>` : 
-                                q.type === 'matching' ? 
-                                `<div class="text-xs text-slate-600 space-y-1 mt-2">
-                                    <div><strong>Pertanyaan:</strong> ${q.questions ? q.questions.slice(0, 2).join(', ') + (q.questions.length > 2 ? '...' : '') : ''}</div>
-                                    <div><strong>Jawaban:</strong> ${q.answers ? q.answers.slice(0, 2).join(', ') + (q.answers.length > 2 ? '...' : '') : ''}</div>
-                                </div>` : 
-                                ''
-                            }
-                        </div>
+                        <div class="line-clamp-2 break-words font-medium text-slate-800 text-sm leading-relaxed">${q.text}</div>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -2916,49 +1716,6 @@ function showLoginForm(type) {
             if (list.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-slate-500 text-sm">Tidak ada soal ditemukan.</td></tr>`;
             }
-        }
-
-        function formatQuestionText(questionText) {
-            if (!questionText) return '';
-            
-            // Check if text contains new stimulus format
-            const stimulusMatch = questionText.match(/\[STIMULUS\]([\s\S]*?)\[\/STIMULUS\]\s*\[PERTANYAAN\]([\s\S]*?)\[\/PERTANYAAN\]/i);
-            if (stimulusMatch) {
-                const stimulus = stimulusMatch[1].trim();
-                const question = stimulusMatch[2].trim();
-                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
-                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
-                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
-                </div>
-                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
-            }
-            
-            // Check if text contains old stimulus format
-            const oldStimulusMatch = questionText.match(/^\[STIMULUS\]([\s\S]*?)\[PERTANYAAN\]([\s\S]*)$/i);
-            if (oldStimulusMatch) {
-                const stimulus = oldStimulusMatch[1].trim();
-                const question = oldStimulusMatch[2].trim();
-                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
-                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
-                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
-                </div>
-                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
-            }
-            
-            // Check for alternative stimulus format (double newline separation)
-            const altStimulusMatch = questionText.match(/^(.*?)\s*\n\s*\n\s*(.+)$/s);
-            if (altStimulusMatch && altStimulusMatch[1].length > 50 && altStimulusMatch[2].length > 10) {
-                // If first part is long (>50 chars) and second part looks like a question, treat as stimulus + question
-                const stimulus = altStimulusMatch[1].trim();
-                const question = altStimulusMatch[2].trim();
-                return `<div class="mb-3 p-3 bg-slate-50 rounded-lg border-l-4 border-sky-400">
-                    <div class="text-xs font-bold text-sky-600 uppercase tracking-widest mb-2">Teks Bacaan</div>
-                    <div class="text-sm text-slate-700 leading-relaxed">${parseMarkdown(stimulus)}</div>
-                </div>
-                <div class="font-medium text-slate-800">${parseMarkdown(question)}</div>`;
-            }
-            
-            return parseMarkdown(questionText);
         }
 
         function toggleTeacherQuestionSelection(event) {
@@ -3181,11 +1938,7 @@ function showLoginForm(type) {
                 populateRaportFilters();
                 renderRaport();
             }
-            if (sec === 'overview') { 
-                updateStats(); 
-                fetchIPs(); 
-                renderApiKeysList().catch(err => console.error('Error loading API keys:', err));
-            }
+            if (sec === 'overview') { updateStats(); fetchIPs(); }
             if (sec === 'settings') {
                 const admin = db.students.find(x => x.role === 'admin');
                 document.getElementById('set-admin-id').value = admin.id;
@@ -3341,20 +2094,11 @@ function showLoginForm(type) {
             `;
 
             container.appendChild(row);
-            addMatchingCRow();
         }
 
         function removeMatchingQRow(btn) {
             const row = btn.closest('.matching-q-row');
-            if (row) {
-                const index = Array.from(row.parentNode.children).indexOf(row);
-                row.remove();
-                // Remove corresponding correct row
-                const correctContainer = document.getElementById('q-matching-corrects');
-                if (correctContainer && correctContainer.children[index]) {
-                    correctContainer.children[index].remove();
-                }
-            }
+            if (row) row.remove();
         }
 
         function addMatchingARow() {
@@ -3364,51 +2108,16 @@ function showLoginForm(type) {
             const row = document.createElement('div');
             row.className = 'matching-a-row flex items-center gap-2';
             row.innerHTML = `
-                <input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban ${container.children.length + 1}" oninput="updateMatchingCorrects()">
+                <input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban ${container.children.length + 1}">
                 <button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button>
             `;
 
             container.appendChild(row);
-            updateMatchingCorrects();
         }
 
         function removeMatchingARow(btn) {
             const row = btn.closest('.matching-a-row');
             if (row) row.remove();
-            updateMatchingCorrects();
-        }
-
-        function addMatchingCRow() {
-            const container = document.getElementById('q-matching-corrects');
-            if (!container) return;
-
-            const row = document.createElement('div');
-            row.className = 'matching-c-row';
-            row.innerHTML = `
-                <select class="matching-correct flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none">
-                    <option value="">--Pilih--</option>
-                </select>
-            `;
-
-            container.appendChild(row);
-            updateMatchingCorrects();
-        }
-
-        function removeMatchingCRow(btn) {
-            const row = btn.closest('.matching-c-row');
-            if (row) row.remove();
-        }
-
-        function updateMatchingCorrects() {
-            const answers = Array.from(document.querySelectorAll('.matching-answer')).map(inp => inp.value.trim()).filter(v => v);
-            const corrects = document.querySelectorAll('.matching-correct');
-            corrects.forEach(sel => {
-                const currentValue = sel.value;
-                sel.innerHTML = '<option value="">--Pilih--</option>' + answers.map(ans => `<option value="${ans}">${ans}</option>`).join('');
-                if (currentValue && answers.includes(currentValue)) {
-                    sel.value = currentValue;
-                }
-            });
         }
 
         function onQuestionTypeChange() {
@@ -3433,21 +2142,6 @@ function showLoginForm(type) {
                 optsContainer.classList.add('hidden');
                 answerTextContainer.classList.add('hidden');
                 tfContainer.classList.remove('hidden');
-                // Set up 3 fixed input rows for tf questions
-                tfContainer.innerHTML = `
-                    <div class="space-y-3">
-                        ${[1, 2, 3].map(i => `
-                            <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                <label class="text-xs font-bold">Pernyataan ${i}</label>
-                                <input type="text" class="tf-statement-${i} w-full p-2 mb-2 rounded border" placeholder="Masukkan pernyataan...">
-                                <select class="tf-answer-${i} w-full p-2 rounded border">
-                                    <option value="Benar">Benar</option>
-                                    <option value="Salah">Salah</option>
-                                </select>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
             } else if (currentQType === 'matching') {
                 optsContainer.classList.add('hidden');
                 answerTextContainer.classList.add('hidden');
@@ -3539,7 +2233,6 @@ function showLoginForm(type) {
                     if (typeof addTfRow === 'function') {
                         addTfRow();
                         addTfRow();
-                        addTfRow();
                     }
                 }
 
@@ -3627,53 +2320,18 @@ function showLoginForm(type) {
             document.getElementById('q-type').value = q.type || 'single';
             onQuestionTypeChange();
             if (q.type === 'tf') {
-                // Populate the 3 fixed input rows
-                if (q.subQuestions && Array.isArray(q.subQuestions)) {
-                    q.subQuestions.forEach((sq, i) => {
-                        if (i < 3) {
-                            const stmtInput = document.querySelector(`.tf-statement-${i + 1}`);
-                            const ansSelect = document.querySelector(`.tf-answer-${i + 1}`);
-                            if (stmtInput) stmtInput.value = sq.statement || '';
-                            if (ansSelect) ansSelect.value = sq.answer || 'Benar';
-                        }
-                    });
-                } else if (q.options && Array.isArray(q.options)) {
-                    // Fallback for old format
-                    q.options.forEach((stmt, i) => {
-                        if (i < 3) {
-                            const stmtInput = document.querySelector(`.tf-statement-${i + 1}`);
-                            const ansSelect = document.querySelector(`.tf-answer-${i + 1}`);
-                            if (stmtInput) stmtInput.value = stmt || '';
-                            if (ansSelect && q.correct && Array.isArray(q.correct)) {
-                                ansSelect.value = q.correct[i] ? 'Benar' : 'Salah';
-                            }
-                        }
-                    });
-                }
-            } else if (q.type === 'matching') {
                 // clear existing rows then populate
-                const qCont = document.getElementById('q-matching-questions');
-                const aCont = document.getElementById('q-matching-answers');
-                const cCont = document.getElementById('q-matching-corrects');
-                qCont.querySelectorAll('.matching-q-row').forEach(r => r.remove());
-                aCont.querySelectorAll('.matching-a-row').forEach(r => r.remove());
-                cCont.querySelectorAll('.matching-c-row').forEach(r => r.remove());
-                (q.questions || []).forEach((quest, i) => {
-                    addMatchingQRow();
+                const tfCont = document.getElementById('q-tf-container');
+                tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
+                (q.options || []).forEach((stmt, i) => {
+                    addTfRow();
                 });
-                (q.answers || []).forEach((ans, i) => {
-                    addMatchingARow();
-                });
-                // fill values
-                document.querySelectorAll('#q-matching-questions .matching-question').forEach((inp, i) => {
-                    if (inp) inp.value = q.questions[i] || '';
-                });
-                document.querySelectorAll('#q-matching-answers .matching-answer').forEach((inp, i) => {
-                    if (inp) inp.value = q.answers[i] || '';
-                });
-                updateMatchingCorrects();
-                document.querySelectorAll('#q-matching-corrects .matching-correct').forEach((sel, i) => {
-                    if (sel && q.correct && Array.isArray(q.correct)) sel.value = q.correct[i] || '';
+                // now fill values
+                document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
+                    const inp = row.querySelector('.tf-statement');
+                    const sel = row.querySelector('.tf-correct');
+                    if (inp) inp.value = q.options[i] || '';
+                    if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
                 });
             } else {
                 const opts = document.querySelectorAll('.q-opt');
@@ -3861,20 +2519,19 @@ function showLoginForm(type) {
                 if (!ans) return alert('Tuliskan jawaban esai yang benar!');
                 record.correct = ans;
             } else if (type === 'tf') {
-                const subQuestions = [];
-                const answers = [];
-                for (let i = 1; i <= 3; i++) {
-                    const stmt = document.querySelector(`.tf-statement-${i}`).value.trim();
-                    const ans = document.querySelector(`.tf-answer-${i}`).value;
-                    if (!stmt) return alert(`Lengkapi Pernyataan ${i}!`);
-                    if (!ans) return alert(`Pilih Benar/Salah untuk Pernyataan ${i}!`);
-                    subQuestions.push({ statement: stmt, answer: ans });
-                    answers.push(ans);
+                const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
+                if (rows.length === 0) return alert('Tambahkan minimal satu pernyataan!');
+                const stmts = [];
+                const corrs = [];
+                for (const r of rows) {
+                    const stmt = r.querySelector('.tf-statement').value.trim();
+                    const sel = r.querySelector('.tf-correct').value;
+                    if (!stmt || sel === '') return alert('Lengkapi pernyataan dan pilih Benar/Salah!');
+                    stmts.push(stmt);
+                    corrs.push(sel === 'true');
                 }
-                record.subQuestions = subQuestions;
-                record.correct = answers; // Tersimpan sebagai ["Benar", "Salah", "Benar"]
-                // Untuk kompatibilitas, isi juga options
-                record.options = subQuestions.map(sq => sq.statement);
+                record.options = stmts;
+                record.correct = corrs;
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
@@ -3905,20 +2562,11 @@ function showLoginForm(type) {
         }
 
         function renderAdminQuestions() {
-            const filterRombel = document.getElementById('filter-rombel');
-            const filterMapel = document.getElementById('filter-mapel');
-            const searchQuestions = document.getElementById('search-questions');
+            const fR = document.getElementById('filter-rombel').value;
+            const fM = document.getElementById('filter-mapel').value;
+            const searchTerm = document.getElementById('search-questions').value.toLowerCase();
             const tbody = document.getElementById('questions-table-body');
             const selectAllCheckbox = document.getElementById('admin-select-all-checkbox');
-
-            if (!filterRombel || !filterMapel || !searchQuestions || !tbody) {
-                console.warn('renderAdminQuestions: Required DOM elements not found, skipping render');
-                return;
-            }
-
-            const fR = filterRombel.value;
-            const fM = filterMapel.value;
-            const searchTerm = searchQuestions.value.toLowerCase();
 
             let filtered = db.questions.filter(q => (fR === 'ALL' || q.rombel === fR) && (fM === 'ALL' || q.mapel === fM));
 
@@ -3928,15 +2576,10 @@ function showLoginForm(type) {
             }
 
             // Update statistics
-            const totalQuestionsEl = document.getElementById('total-questions');
-            const filteredQuestionsEl = document.getElementById('filtered-questions');
-            const totalCountEl = document.getElementById('total-count');
-            const filteredCountEl = document.getElementById('filtered-count');
-
-            if (totalQuestionsEl) totalQuestionsEl.textContent = db.questions.length;
-            if (filteredQuestionsEl) filteredQuestionsEl.textContent = filtered.length;
-            if (totalCountEl) totalCountEl.textContent = db.questions.length;
-            if (filteredCountEl) filteredCountEl.textContent = filtered.length;
+            document.getElementById('total-questions').textContent = db.questions.length;
+            document.getElementById('filtered-questions').textContent = filtered.length;
+            document.getElementById('total-count').textContent = db.questions.length;
+            document.getElementById('filtered-count').textContent = filtered.length;
 
             const allSelected = filtered.length > 0 && filtered.every(q => selectedAdminQuestions.has(q));
             if (selectAllCheckbox) selectAllCheckbox.checked = allSelected;
@@ -4615,7 +3258,7 @@ function showLoginForm(type) {
                         db = parsed;
                         save();
                         alert('Restore berhasil. Halaman akan dimuat ulang.');
-                        reloadPage();
+                        location.reload();
                     } else {
                         alert('Format file tidak valid.');
                     }
@@ -5056,7 +3699,7 @@ function showLoginForm(type) {
                         <span class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center text-sm font-bold">${i + 1}</span>
                         <h4 class="font-bold text-slate-800 text-lg">Soal</h4>
                     </div>
-                    <div class="text-slate-800 mb-4 leading-relaxed">${parseMarkdown(q.text)}</div>
+                    <div class="text-slate-800 mb-4 leading-relaxed">${q.text}</div>
                     <p class="text-xs text-slate-500 mb-2"><strong>Jenis:</strong> ${qType === 'single' ? 'Pilihan ganda' : qType === 'multiple' ? 'Pilihan ganda (Kompleks)' : qType === 'text' ? 'Esai' : qType === 'tf' ? 'Benar / Salah' : escapeHtml(qType)}</p>`;
 
                 if (q.images && Array.isArray(q.images) && q.images.length > 0) {
@@ -5109,7 +3752,7 @@ function showLoginForm(type) {
                             icon = '';
                         }
 
-                        content += `<div class="${className}">${icon}<span class="font-bold">${String.fromCharCode(65 + optIdx)}.</span> ${parseMarkdown(opt)}</div>`;
+                        content += `<div class="${className}">${icon}<span class="font-bold">${String.fromCharCode(65 + optIdx)}.</span> ${opt}</div>`;
                     });
                     content += '</div>';
                 } else if (qType === 'text') {
@@ -5148,7 +3791,7 @@ function showLoginForm(type) {
                         content += `<div class="${className}">
                             ${icon}
                             <div class="flex justify-between items-start">
-                                <span class="flex-1">${parseMarkdown(opt)}</span>
+                                <span class="flex-1">${opt}</span>
                                 <div class="text-right ml-4">
                                     <div class="text-xs text-slate-500 mb-1">Siswa: <span class="font-bold">${studentText}</span></div>
                                     <div class="text-xs text-slate-500">Kunci: <span class="font-bold">${correctText}</span></div>
@@ -5522,40 +4165,10 @@ function showLoginForm(type) {
             const qs = db.questions.filter(q => q.mapel === mapel && q.rombel === currentSiswa.rombel);
 
             // PENTING: Normalisasi setiap soal (tambahkan type jika belum ada)
-            let normalizedQuestions = qs.map(q => ({
+            const normalizedQuestions = qs.map(q => ({
                 ...q,
                 type: q.type || 'single'  // Default ke 'single' jika tidak ada type
             }));
-
-            // Normalisasi khusus untuk soal tf (konversi format lama ke baru)
-            normalizedQuestions = normalizedQuestions.map(q => {
-                if (q.type === 'tf') {
-                    const normalized = { ...q };
-                    // Konversi dari format lama (options + correct boolean array) ke format baru
-                    if (!normalized.subQuestions && Array.isArray(normalized.options) && Array.isArray(normalized.correct)) {
-                        normalized.subQuestions = normalized.options.map((stmt, i) => {
-                            const ans = normalized.correct[i];
-                            return { statement: stmt, answer: ans === true || ans === 'Benar' || ans === 'benar' ? 'Benar' : 'Salah' };
-                        });
-                        // Pastikan tepat 3 pernyataan
-                        if (normalized.subQuestions.length > 3) {
-                            normalized.subQuestions = normalized.subQuestions.slice(0, 3);
-                        }
-                        while (normalized.subQuestions.length < 3) {
-                            normalized.subQuestions.push({ 
-                                statement: `Pernyataan ${normalized.subQuestions.length + 1}`, 
-                                answer: 'Benar' 
-                            });
-                        }
-                        // Update correct array
-                        normalized.correct = normalized.subQuestions.map(sq => sq.answer);
-                        // Untuk kompatibilitas, isi juga options
-                        normalized.options = normalized.subQuestions.map(sq => sq.statement);
-                    }
-                    return normalized;
-                }
-                return q;
-            });
 
             // initialise answers based on question type (multiple => [], text => "", single => null)
             const answers = normalizedQuestions.map(q => {
@@ -5580,8 +4193,6 @@ function showLoginForm(type) {
             updateQuestionStatus();
             updateProgress();
 
-            showStudentInstructionModal(); // Tampilkan petunjuk untuk siswa saat ujian dimulai
-
             const timeLimits = db.timeLimits || {};
             const key = `${currentSiswa.rombel}|${mapel}`.toLowerCase().trim();
             const timeLimit = timeLimits[key] || 30; // default 30 menit
@@ -5594,7 +4205,7 @@ function showLoginForm(type) {
             const q = examData.questions[idx];
             document.getElementById('curr-q-num').innerText = idx + 1;
             document.getElementById('total-q-num').innerText = examData.questions.length;
-            document.getElementById('exam-q-text').innerHTML = formatQuestionText(q.text);
+            document.getElementById('exam-q-text').innerHTML = q.text;
             // refresh progress display (including type)
             updateProgress();
 
@@ -5636,7 +4247,7 @@ function showLoginForm(type) {
                         <input type="checkbox" class="mr-3 w-5 h-5"
                             onchange="toggleAnswer(${i})" ${checked} />
                         <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
-                        <span class="flex-1 text-sm md:text-base">${parseMarkdown(opt)}</span>
+                        <span class="flex-1 text-sm md:text-base">${opt}</span>
                     </label>`;
                 }).join('');
             } else if (q.type === 'text') {
@@ -5646,14 +4257,11 @@ function showLoginForm(type) {
                         oninput="setAnswerText(this.value)">${value}</textarea>`;
             } else if (q.type === 'tf') {
                 const ansArr = examData.answers[idx] || [];
-                // Use subQuestions for TF statements
-                const statements = q.subQuestions && Array.isArray(q.subQuestions) ? q.subQuestions.map(sq => sq.statement) : 
-                                  (q.options && Array.isArray(q.options) ? q.options : []);
-                optionHtml = statements.map((stmt, j) => {
+                optionHtml = q.options.map((stmt, j) => {
                     const val = ansArr[j];
                     return `
                     <div class="flex items-center w-full p-4 md:p-5 rounded-2xl border-2 transition-all ${val === true ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : ''}">
-                        <span class="flex-1 text-sm md:text-base">${parseMarkdown(stmt)}</span>
+                        <span class="flex-1 text-sm md:text-base">${stmt}</span>
                         <div class="flex gap-2">
                             <button onclick="setAnswerTF(${j}, true)" class="px-3 py-1 rounded ${val === true ? 'bg-sky-600 text-white' : 'bg-slate-100'}">Benar</button>
                             <button onclick="setAnswerTF(${j}, false)" class="px-3 py-1 rounded ${val === false ? 'bg-sky-600 text-white' : 'bg-slate-100'}">Salah</button>
@@ -5687,7 +4295,7 @@ function showLoginForm(type) {
                                 ${shuffledAnswers.map((ans, ai) => `
                                     <div class="matching-legend-item">
                                         <span class="matching-legend-label">${String.fromCharCode(65 + ai)}.</span>
-                                        <span>${parseMarkdown(ans)}</span>
+                                        <span>${ans}</span>
                                     </div>
                                 `).join('')}
                             </div>
@@ -5705,7 +4313,7 @@ function showLoginForm(type) {
                                 <div class="matching-item-card ${selected[origQi] != null ? 'answered' : ''}">
                                     <div class="flex items-center gap-3 flex-1">
                                         <div class="w-7 h-7 bg-slate-100 text-slate-600 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0">${displayIdx + 1}</div>
-                                        <div class="matching-question-text">${parseMarkdown(quest)}</div>
+                                        <div class="matching-question-text">${quest}</div>
                                     </div>
                                     <div class="w-full sm:w-64 md:w-80 flex-shrink-0">
                                         <select onchange="setMatchingAnswer(${origQi}, this.value)" class="matching-select">
@@ -5728,7 +4336,7 @@ function showLoginForm(type) {
                 optionHtml = q.options.map((opt, i) => `
                     <button onclick="setAnswer(${i})" class="w-full p-4 md:p-5 text-left rounded-2xl border-2 transition-all ${examData.answers[idx] === i ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : 'border-slate-50 hover:bg-slate-50 text-slate-600'}">
                         <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
-                        <span class="text-sm md:text-base">${parseMarkdown(opt)}</span>
+                        <span class="text-sm md:text-base">${opt}</span>
                     </button>
                 `).join('');
             }
@@ -6037,8 +4645,6 @@ function showLoginForm(type) {
             // This matches the requirement: "skor 1 soal dibagi pernyataan
             // yang dijawab dengan benar" (and similarly for multiple choice).
             // The debug logs below print the intermediate counts.
-            // Jika ada soal menjodohkan, beri bobot lebih tinggi untuk nilai menjodohkan
-            let hasMatching = examData.questions.some(q => q.type === 'matching');
             // count answers at the granularity of TF statements
             let totalItems = 0;
             examData.questions.forEach((q, i) => {
@@ -6052,42 +4658,36 @@ function showLoginForm(type) {
                 const qType = q.type || 'single'; // Default ke single-choice jika tidak ada type
 
                 if (qType === 'tf' && Array.isArray(q.options)) {
-                    // benar/salah 3 poin (dibagi rata per pernyataan/opsi jika ada partial credit)
+                    // tiap pernyataan dianggap satu item dalam perhitungan skor
                     const ansArr = Array.isArray(ans) ? ans : [];
-                    let correctStatements = 0;
                     q.options.forEach((stmt, j) => {
+                        totalItems++;
                         const corrVal = Array.isArray(q.correct) ? q.correct[j] : false;
                         const studentVal = ansArr[j];
                         if (studentVal === corrVal) {
-                            correctStatements++;
+                            correctCount++;
                         }
                     });
-                    totalItems += 3;
-                    correctCount += (correctStatements / q.options.length) * 3;
                 } else if (qType === 'multiple') {
-                    // pilihan ganda kompleks 2 poin
+                    // per-option scoring untuk pilihan ganda kompleks
                     const corr = Array.isArray(q.correct) ? q.correct : [];
                     const ansArr = Array.isArray(ans) ? ans : [];
-                    
                     const selectedCorrect = ansArr.filter(idx => corr.includes(idx)).length;
-                    const incorrectSelected = ansArr.filter(idx => !corr.includes(idx)).length;
-                    const netCorrect = Math.max(0, selectedCorrect - incorrectSelected); // Mencegah check semua poin penuh
 
                     const totalCorrectOptions = corr.length > 0 ? corr.length : 1;
-                    totalItems += 2;
-                    correctCount += (netCorrect / totalCorrectOptions) * 2;
+                    totalItems += totalCorrectOptions;
+                    correctCount += selectedCorrect;
                 } else if (qType === 'matching') {
                     const ansArr = Array.isArray(ans) ? ans : [];
                     const shuffled = Array.isArray(q._shuffledAnswers) ? q._shuffledAnswers : (q.answers || []);
 
                     // SAFETY: Ensure both prompt questions and correct answers exist
                     if (Array.isArray(q.questions) && Array.isArray(q.correct)) {
-                        const weight = hasMatching ? 2 : 1; // Jika ada soal menjodohkan, beri bobot 2 untuk nilai lebih tinggi
                         q.questions.forEach((_, qi) => {
-                            totalItems += weight;
+                            totalItems++;
                             const selectedIdx = ansArr[qi];
                             if (selectedIdx != null && shuffled[selectedIdx] === q.correct[qi]) {
-                                correctCount += weight;
+                                correctCount++;
                             }
                         });
                     } else {
@@ -6096,20 +4696,19 @@ function showLoginForm(type) {
                         totalItems += 1;
                     }
                 } else {
+                    // non-TF and non-multiple questions still contribute satu item
+                    totalItems++;
                     let correct = false;
 
                     if (qType === 'text') {
-                        // uraian 5 poin
-                        totalItems += 5;
                         const corrText = (typeof q.correct === 'string' ? q.correct : '').trim().toLowerCase();
                         correct = typeof ans === 'string' && ans.trim().toLowerCase() === corrText;
-                        if (correct) correctCount += 5;
                     } else {
-                        // pilihan ganda 1 poin (default)
-                        totalItems += 1;
+                        // Single choice (default)
                         correct = ans === q.correct;
-                        if (correct) correctCount += 1;
                     }
+
+                    if (correct) correctCount++;
                 }
             });
 
@@ -6285,7 +4884,6 @@ function showLoginForm(type) {
 
             const mapelSel = document.getElementById('ai-mapel');
             const rombelSel = document.getElementById('ai-rombel');
-            const opsiGambar = document.getElementById('ai-opsi-gambar');
 
             if (mapelSel && db.subjects) {
                 mapelSel.innerHTML = db.subjects.map(s => {
@@ -6296,12 +4894,9 @@ function showLoginForm(type) {
             if (rombelSel && db.rombels) {
                 rombelSel.innerHTML = db.rombels.map(r => `<option value="${r}">${r}</option>`).join('');
             }
-            if (opsiGambar) opsiGambar.value = 'none';
 
             const targetSelectors = document.getElementById('ai-target-selectors');
             if (targetSelectors) targetSelectors.classList.remove('hidden');
-            const aiHint = document.getElementById('ai-open-hint');
-            if (aiHint) aiHint.classList.remove('hidden');
             calculateAiHots();
         }
 
@@ -6326,8 +4921,6 @@ function showLoginForm(type) {
                     updateTeacherAiRombel();
                 }
             }
-            const aiHint = document.getElementById('ai-open-hint');
-            if (aiHint) aiHint.classList.remove('hidden');
         }
 
         function handleAiBlueprintChange(input) {
@@ -6376,15 +4969,6 @@ function showLoginForm(type) {
         }
 
         function calculateAiHots() {
-            const jodohInput = document.getElementById('ai-jml-jodoh');
-            if (jodohInput) {
-                const jodohValue = Number(jodohInput.value) || 0;
-                if (jodohValue > 2) {
-                    alert('1 Soal Menjodohkan sudah memuat 5 (pertanyaan dan jawaban). Anda hanya diperbolehkan mengisi maksimal 2 Soal.');
-                    jodohInput.value = '2';
-                }
-            }
-
             const typeCounts = getAiTypeCounts();
             const total = Object.values(typeCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
             const totalDisplay = document.getElementById('ai-total-display');
@@ -6403,20 +4987,14 @@ function showLoginForm(type) {
         }
 
         async function generateQuestionsWithAi() {
-            const typeCounts = getAiTypeCounts();
-            if (typeCounts.matching > 2) {
-                alert('1 Soal Menjodohkan sudah memuat 5 (pertanyaan dan jawaban). Anda hanya diperbolehkan mengisi maksimal 2 Soal.');
-                return;
-            }
-
             const materi = document.getElementById('ai-materi')?.value.trim();
             const mapel = document.getElementById('ai-mapel')?.value;
             const rombel = document.getElementById('ai-rombel')?.value;
-            const opsiGambar = document.getElementById('ai-opsi-gambar')?.value || 'none';
             const file = document.getElementById('ai-blueprint-file')?.files[0];
             const oldJumlah = document.getElementById('ai-jumlah');
             const oldType = document.getElementById('ai-type');
 
+            const typeCounts = getAiTypeCounts();
             let jumlah = Object.values(typeCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
             let tipe = 'single';
 
@@ -6453,61 +5031,15 @@ function showLoginForm(type) {
             }
 
             try {
-                const headers = { 'Content-Type': 'application/json' };
-                
-                // Add teacher info to headers for API key pooling (Removed role check to support admin-teachers)
-                if (currentSiswa && currentSiswa.id) {
-                    headers['X-Teacher-ID'] = currentSiswa.id;
-                    headers['X-Teacher-Name'] = currentSiswa.name || 'Admin/Guru';
-                }
-                
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({ 
-                        materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar,
-                        teacherId: currentSiswa ? currentSiswa.id : null // Body fallback
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts })
                 });
 
-                const rawResponse = await response.text();
-                let result;
-
-                try {
-                    result = rawResponse ? JSON.parse(rawResponse) : {};
-                } catch (parseErr) {
-                    throw new Error(`AI backend returned non-JSON (${response.status}): ${rawResponse.substring(0, 300)}`);
-                }
-
-                if (!response.ok) {
-                    // Check if this is a special error response that needs API Keys (even if response status is 500)
-                    if (result.redirectToApiKeys || result.allKeysExhausted || result.needsApiKeys || 
-                        isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
-                        // Handle as special API Keys error
-                        await handleAIGenerationError(result);
-                        return;
-                    }
-                    // Otherwise, throw the error
-                    throw new Error(`AI backend error ${response.status}: ${result.error || rawResponse.substring(0, 300)}`);
-                }
+                const result = await response.json();
 
                 if (result.ok) {
-                    if (result?.exhaustedKeys?.length) {
-                        const changed = markLocalTeacherKeysAsExhausted(result.exhaustedKeys);
-                        if (changed) {
-                            // Sync with server to ensure consistency
-                            Promise.all([
-                                syncTeacherAPIKeysFromServer(),
-                                syncGlobalAPIKeysFromServer()
-                            ]).then(() => {
-                                renderTeacherAPIKeys();
-                            });
-                        }
-                    } else {
-                        // Even if no keys exhausted, sync global keys to check their status
-                        syncGlobalAPIKeysFromServer();
-                    }
-
                     const newQuestions = result.questions.map(q => ({
                         ...q,
                         id: Date.now() + Math.random().toString(36).substr(2, 4),
@@ -6515,19 +5047,7 @@ function showLoginForm(type) {
                     }));
 
                     db.questions = [...db.questions, ...newQuestions];
-
-                    let saved = await save();
-                    let retryCount = 0;
-                    while (!saved && retryCount < 3) {
-                        retryCount += 1;
-                        const tryAgain = window.confirm(`Gagal menyimpan soal AI ke database server. Coba lagi? (${retryCount}/3)`);
-                        if (!tryAgain) break;
-                        saved = await save();
-                    }
-
-                    if (!saved) {
-                        throw new Error('Soal AI berhasil dibuat secara lokal, tetapi gagal menyimpan ke database server setelah beberapa percobaan. Silakan periksa koneksi dan coba lagi.');
-                    }
+                    await save();
 
                     alert(`Berhasil membuat ${newQuestions.length} soal baru dengan AI!`);
                     closeModals();
@@ -6535,11 +5055,7 @@ function showLoginForm(type) {
                     if (typeof renderAdminQuestions === 'function') renderAdminQuestions();
                     if (typeof renderTeacherQuestions === 'function') renderTeacherQuestions();
                 } else {
-                    if (isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
-                        await handleAIGenerationError(result);
-                    } else {
-                        alert('Error AI: ' + (result.error || 'Gagal generate soal'));
-                    }
+                    alert('Error AI: ' + (result.error || 'Gagal generate soal'));
                 }
             } catch (err) {
                 console.error('AI Generation Error:', err);
@@ -6789,21 +5305,10 @@ function showLoginForm(type) {
             loading.classList.add('flex');
 
             try {
-                const headers = { 'Content-Type': 'application/json' };
-                
-                // Add teacher info to headers for API key pooling
-                if (currentSiswa && currentSiswa.id) {
-                    headers['X-Teacher-ID'] = currentSiswa.id;
-                    headers['X-Teacher-Name'] = currentSiswa.name || 'Admin/Guru';
-                }
-                
                 const response = await fetch(getApiBaseUrl() + '/api/generate-kisi-kisi', {
                     method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({ 
-                        questions, mapel, rombel,
-                        teacherId: currentSiswa ? currentSiswa.id : null // Body fallback
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ questions, mapel, rombel })
                 });
 
                 const result = await response.json();
@@ -6814,11 +5319,7 @@ function showLoginForm(type) {
                     document.getElementById('kisi-kisi-result').classList.remove('hidden');
                     document.getElementById('kk-count').innerText = questions.length;
                 } else {
-                    if (isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
-                        await handleAIGenerationError(result);
-                    } else {
-                        alert('Error AI: ' + (result.error || 'Gagal generate kisi-kisi'));
-                    }
+                    alert('Error AI: ' + (result.error || 'Gagal generate kisi-kisi'));
                 }
             } catch (err) {
                 console.error('Kisi-kisi Generation Error:', err);
@@ -6996,13 +5497,6 @@ function showLoginForm(type) {
             console.log('App initialized, db has', db.students.length, 'students');
             const typeSel = document.getElementById('q-type');
             if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
-
-            // Hide loading overlay after initialization
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.add('hidden');
-                overlay.classList.remove('flex');
-            }
 
             // Add keyboard support for zoom modal
             document.addEventListener('keydown', function (e) {
