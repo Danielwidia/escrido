@@ -207,33 +207,62 @@ function parseHtmlFormatQuestions(html, metadata = {}) {
     return parseTextFormatQuestions(lines.join('\n'), metadata);
 }
 
+function isOptionLine(line) {
+    if (!line || !line.trim()) return false;
+    return parseOptionLine(line) !== null;
+}
+
+function isAnswerLine(line) {
+    if (!line || !line.trim()) return false;
+    return /\b(?:kunci|jawaban|answer|key|correct|benar)\b[\s:\-\.]*([^\r\n]+)$/i.test(line)
+        || /^[\*\-\s]*(?:kunci|jawaban|answer|key|correct|benar)[\s:\-\.]*([^\r\n]+)$/i.test(line)
+        || /^([A-F])\s*$/i.test(line);
+}
+
+function looksLikeQuestionStart(lines, index) {
+    if (index >= lines.length) return false;
+    const line = lines[index].trim();
+    if (!line) return false;
+    if (/^\d+\./.test(line)) return true;
+    if (/^[A-F][\.\)\:\-\s]/i.test(line)) return false;
+
+    let optionCount = 0;
+    let j = index + 1;
+    let foundAnswer = false;
+    while (j < lines.length && optionCount < 6) {
+        const nextLine = lines[j];
+        if (isOptionLine(nextLine)) {
+            optionCount++;
+            j++;
+            continue;
+        }
+        if (isAnswerLine(nextLine)) {
+            foundAnswer = true;
+            break;
+        }
+        break;
+    }
+    return optionCount >= 2 && foundAnswer;
+}
+
 function parseTextFormatQuestions(rawText, metadata = {}) {
     const questions = [];
     const lines = rawText.replace(/\r\n?/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
     let i = 0;
 
-    // Collect reading passage if present (lines before first numbered question)
     let readingPassage = [];
     while (i < lines.length) {
-        const line = lines[i];
-        // Check if this line starts a question (numbered or not)
-        if (line.match(/^\d+\./) ||
-            line.match(/^[A-F][\.\)\:\-\s]/i) ||
-            line.match(/\b(?:kunci|jawaban|answer|key|correct|benar)\b/i) ||
-            line.match(/^\d+\s*\./)) { // Also check for "1 ." format
+        if (looksLikeQuestionStart(lines, i)) {
             break;
         }
-        // If it's a substantial line (not just whitespace), add to reading passage
-        if (line.length > 5) { // Reduced minimum length for reading text
+        const line = lines[i];
+        if (line.length > 5) {
             readingPassage.push(line);
         }
         i++;
     }
 
-    // Join reading passage if found
     const readingText = readingPassage.length > 0 ? readingPassage.join(' ') : null;
-
-    // Reset i to start parsing questions
     i = readingPassage.length;
 
     while (i < lines.length) {
@@ -245,15 +274,25 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
             i++;
         }
     }
+    return questions;
 }
 
 function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null) {
     let i = startIndex;
-    let questionText = lines[i++];
+    const questionLines = [];
+    while (i < lines.length && !isOptionLine(lines[i]) && !isAnswerLine(lines[i])) {
+        questionLines.push(lines[i]);
+        i++;
+    }
+
+    if (questionLines.length === 0) {
+        return { question: null, nextIndex: i };
+    }
+
+    let questionText = questionLines.join(' ');
     const numMatch = questionText.match(/^\d+\.\s*(.+)$/);
     if (numMatch) questionText = numMatch[1].trim();
 
-    // Prepend reading passage if available
     if (readingText && readingText.trim()) {
         questionText = readingText.trim() + '\n\n' + questionText;
     }
