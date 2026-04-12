@@ -9,18 +9,34 @@ async function parseWordDocument(fileBuffer, metadata = {}) {
         const result = await mammoth.convertToHtml({ buffer: fileBuffer });
         const html = result.value;
         const tables = extractTablesFromHtml(html);
-        
+
         let questions = [];
 
         if (tables.length > 0) {
             questions = convertTableToQuestions(tables[0], metadata);
             if (questions.length === 0) {
-                // Use HTML content instead of raw text for better structure
-                questions = parseHtmlFormatQuestions(html, metadata);
+                // Try both HTML and raw text parsing
+                const htmlQuestions = parseHtmlFormatQuestions(html, metadata);
+                if (htmlQuestions.length === 0) {
+                    // Last resort: try raw text extraction
+                    const textResult = await mammoth.extractRawText({ buffer: fileBuffer });
+                    const textQuestions = parseTextFormatQuestions(textResult.value, metadata);
+                    questions = textQuestions;
+                } else {
+                    questions = htmlQuestions;
+                }
             }
         } else {
-            // Use HTML content instead of raw text for better structure
-            questions = parseHtmlFormatQuestions(html, metadata);
+            // Try HTML parsing first
+            const htmlQuestions = parseHtmlFormatQuestions(html, metadata);
+            if (htmlQuestions.length === 0) {
+                // Fallback to raw text
+                const textResult = await mammoth.extractRawText({ buffer: fileBuffer });
+                const textQuestions = parseTextFormatQuestions(textResult.value, metadata);
+                questions = textQuestions;
+            } else {
+                questions = htmlQuestions;
+            }
         }
 
         return {
@@ -139,15 +155,42 @@ function parseCorrectAnswers(raw, options) {
 }
 
 function parseHtmlFormatQuestions(html, metadata = {}) {
-    // Extract text content from HTML while preserving paragraph structure
-    const textContent = html.replace(/<[^>]+>/g, ' ')
-                           .replace(/&nbsp;/g, ' ')
-                           .replace(/\s+/g, ' ')
-                           .trim();
-    
-    // Split by paragraph-like breaks (double spaces or line breaks)
-    const lines = textContent.split(/\s{2,}|\n/).map(line => line.trim()).filter(Boolean);
-    
+    // Extract text content from HTML while preserving some structure
+    // First, try to extract from paragraph tags
+    const paragraphs = [];
+    const paraRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    let paraMatch;
+    while ((paraMatch = paraRegex.exec(html)) !== null) {
+        const paraContent = cleanHtmlText(paraMatch[1]);
+        if (paraContent.trim()) {
+            paragraphs.push(paraContent.trim());
+        }
+    }
+
+    // If no paragraphs found, try other block elements
+    if (paragraphs.length === 0) {
+        const blockRegex = /<(?:div|h[1-6]|li|td)[^>]*>([\s\S]*?)<\/(?:div|h[1-6]|li|td)>/gi;
+        let blockMatch;
+        while ((blockMatch = blockRegex.exec(html)) !== null) {
+            const blockContent = cleanHtmlText(blockMatch[1]);
+            if (blockContent.trim()) {
+                paragraphs.push(blockContent.trim());
+            }
+        }
+    }
+
+    // If still no content, fall back to general text extraction
+    let lines = [];
+    if (paragraphs.length > 0) {
+        lines = paragraphs;
+    } else {
+        const textContent = html.replace(/<[^>]+>/g, ' ')
+                               .replace(/&nbsp;/g, ' ')
+                               .replace(/\s+/g, ' ')
+                               .trim();
+        lines = textContent.split(/\n/).map(line => line.trim()).filter(Boolean);
+    }
+
     return parseTextFormatQuestions(lines.join('\n'), metadata);
 }
 
@@ -161,8 +204,8 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
     while (i < lines.length) {
         const line = lines[i];
         // Check if this line starts a question (numbered or not)
-        if (line.match(/^\d+\./) || 
-            line.match(/^[A-F][\.\)\:\-\s]/i) || 
+        if (line.match(/^\d+\./) ||
+            line.match(/^[A-F][\.\)\:\-\s]/i) ||
             line.match(/\b(?:kunci|jawaban|answer|key|correct|benar)\b/i) ||
             line.match(/^\d+\s*\./)) { // Also check for "1 ." format
             break;
@@ -189,7 +232,6 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
             i++;
         }
     }
-    return questions;
 }
 
 function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null) {
