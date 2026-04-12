@@ -703,12 +703,64 @@ app.post('/api/generate-ai', async (req, res) => {
         // Clean up JSON response
         text = text.replace(/```json\n?|```/g, '').trim();
         const match = text.match(/\[[\s\S]*\]/);
-        if (!match) {
-            console.error('[/api/generate-ai] AI returned no JSON array. Raw response:', text.substring(0, 200));
-            return res.status(500).json({ error: 'AI tidak mengembalikan data soal yang valid. Coba lagi.' });
-        }
 
-        const parsed = JSON.parse(match[0]);
+        const parsePlainTextToQuestions = (raw, requestedType) => {
+            const lines = raw.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+            if (lines.length === 0) return [];
+
+            const isProbablyTf = requestedType === 'tf' || /benar\/?salah|b\/s|b s|benar salah/i.test(raw);
+            if (!isProbablyTf) return [];
+
+            const statements = [];
+            let questionText = '';
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (/^nomor soal\b/i.test(line)) continue;
+                if (/^(berikut ini|berikut|soal|tentang|mengenai|pilihlah|jawablah)\b/i.test(line)) {
+                    continue;
+                }
+                if (/^pernyataan\s*\d+/i.test(line)) {
+                    if (i + 1 < lines.length) {
+                        const nextLine = lines[i + 1].trim();
+                        if (!/^pernyataan\s*\d+/i.test(nextLine)) {
+                            statements.push(nextLine);
+                            i++;
+                            continue;
+                        }
+                    }
+                    continue;
+                }
+                if (/^(?:benar|salah|true|false|ya|tidak|yes|no)\b/i.test(line)) continue;
+                const numbered = line.replace(/^[0-9]+\.\s*/, '').replace(/^[-*]\s*/, '').trim();
+                statements.push(numbered);
+            }
+
+            if (statements.length === 0) return [];
+
+            return [{
+                type: 'tf',
+                text: questionText,
+                options: statements,
+                correct: statements.map(() => false),
+                mapel,
+                rombel
+            }];
+        };
+
+        let parsed;
+        if (!match) {
+            console.warn('[/api/generate-ai] AI returned no JSON array. Attempting plain text fallback...');
+            const fallback = parsePlainTextToQuestions(text, tipe);
+            if (fallback.length > 0) {
+                parsed = fallback;
+            } else {
+                console.error('[/api/generate-ai] AI returned no JSON array. Raw response:', text.substring(0, 200));
+                return res.status(500).json({ error: 'AI tidak mengembalikan data soal yang valid. Coba lagi.' });
+            }
+        } else {
+            parsed = JSON.parse(match[0]);
+        }
 
         console.log(`[/api/generate-ai] Parsed questions:`, JSON.stringify(parsed, null, 2));
 
@@ -885,7 +937,7 @@ app.post('/api/generate-ai', async (req, res) => {
         const originalCount = normalizedQuestions.length;
         normalizedQuestions = normalizedQuestions.filter(q => {
             if (q.type === 'tf') {
-                return Array.isArray(q.options) && q.options.length >= 3 && Array.isArray(q.correct) && q.correct.length >= 3;
+                return Array.isArray(q.options) && q.options.length >= 1 && Array.isArray(q.correct) && q.correct.length >= 1;
             }
             if (q.type === 'multiple') {
                 return Array.isArray(q.correct) && q.correct.length >= 2 && q.correct.length <= 3;
