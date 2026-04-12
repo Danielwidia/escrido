@@ -15,12 +15,12 @@ async function parseWordDocument(fileBuffer, metadata = {}) {
         if (tables.length > 0) {
             questions = convertTableToQuestions(tables[0], metadata);
             if (questions.length === 0) {
-                const textResult = await mammoth.extractRawText({ buffer: fileBuffer });
-                questions = parseTextFormatQuestions(textResult.value, metadata);
+                // Use HTML content instead of raw text for better structure
+                questions = parseHtmlFormatQuestions(html, metadata);
             }
         } else {
-            const textResult = await mammoth.extractRawText({ buffer: fileBuffer });
-            questions = parseTextFormatQuestions(textResult.value, metadata);
+            // Use HTML content instead of raw text for better structure
+            questions = parseHtmlFormatQuestions(html, metadata);
         }
 
         return {
@@ -138,6 +138,19 @@ function parseCorrectAnswers(raw, options) {
     return indices.size > 0 ? Array.from(indices).sort((a, b) => a - b) : null;
 }
 
+function parseHtmlFormatQuestions(html, metadata = {}) {
+    // Extract text content from HTML while preserving paragraph structure
+    const textContent = html.replace(/<[^>]+>/g, ' ')
+                           .replace(/&nbsp;/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .trim();
+    
+    // Split by paragraph-like breaks (double spaces or line breaks)
+    const lines = textContent.split(/\s{2,}|\n/).map(line => line.trim()).filter(Boolean);
+    
+    return parseTextFormatQuestions(lines.join('\n'), metadata);
+}
+
 function parseTextFormatQuestions(rawText, metadata = {}) {
     const questions = [];
     const lines = rawText.replace(/\r\n?/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
@@ -148,11 +161,14 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
     while (i < lines.length) {
         const line = lines[i];
         // Check if this line starts a question (numbered or not)
-        if (line.match(/^\d+\./) || line.match(/^[A-F][\.\)\:\-]/i) || line.match(/\b(?:kunci|jawaban)\b/i)) {
+        if (line.match(/^\d+\./) || 
+            line.match(/^[A-F][\.\)\:\-\s]/i) || 
+            line.match(/\b(?:kunci|jawaban|answer|key|correct|benar)\b/i) ||
+            line.match(/^\d+\s*\./)) { // Also check for "1 ." format
             break;
         }
         // If it's a substantial line (not just whitespace), add to reading passage
-        if (line.length > 10) { // Minimum length to consider as reading text
+        if (line.length > 5) { // Reduced minimum length for reading text
             readingPassage.push(line);
         }
         i++;
@@ -189,8 +205,24 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
 
     const options = [];
     const optionMap = {};
-    while (i < lines.length && options.length < 10) {
-        const option = parseOptionLine(lines[i]);
+    let correctAnswer = null;
+    
+    // Parse options and answer in one pass
+    while (i < lines.length) {
+        const line = lines[i];
+        
+        // Check for answer key first (more flexible patterns)
+        const answerMatch = line.match(/\b(?:kunci|jawaban|answer|key|correct|benar)\b[\s:\-\.]*([^\r\n]+)$/i) ||
+                           line.match(/^[\*\-\s]*(?:kunci|jawaban|answer|key|correct|benar)[\s:\-\.]*([^\r\n]+)$/i) ||
+                           line.match(/^([A-F])\s*$/i); // Single letter on its own line
+        if (answerMatch) {
+            correctAnswer = answerMatch[1] ? answerMatch[1].trim() : line.trim();
+            i++;
+            break; // Stop parsing options after finding answer
+        }
+        
+        // Try to parse as option
+        const option = parseOptionLine(line);
         if (option) {
             if (option.label) {
                 // If labeled (A, B, C, D), store by label
@@ -201,6 +233,7 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
             }
             i++;
         } else {
+            // If not an option and not an answer, might be part of question or next question
             break;
         }
     }
@@ -217,16 +250,6 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
 
     // Use ordered options, but limit to reasonable number
     const finalOptions = orderedOptions.slice(0, 6);
-
-    let correctAnswer = null;
-    if (i < lines.length) {
-        const line = lines[i];
-        const match = line.match(/\b(?:kunci|jawaban)\b[\s:\-]*([^\r\n]+)$/i);
-        if (match) {
-            correctAnswer = match[1].trim();
-            i++;
-        }
-    }
 
     if (correctAnswer && finalOptions.length > 0) {
         const indices = finalOptions.length >= 2 ? parseCorrectAnswers(correctAnswer, finalOptions) : null;
@@ -252,18 +275,19 @@ function parseOptionLine(line) {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
+    // Remove bullet points first
     const bulletMatch = trimmed.match(/^[\u2022\u2023\u25E6\u2043\u2219\-\*\+]\s*(.+)$/);
     const candidate = bulletMatch ? bulletMatch[1].trim() : trimmed;
 
     // Enhanced ABCD option parsing with more flexible patterns
     const letterMatch = candidate.match(/^([A-F])(?:[\.\)\:\-\s]+)\s*(.+)$/i);
-    if (letterMatch) {
+    if (letterMatch && letterMatch[2].trim()) {
         return { label: letterMatch[1].toUpperCase(), text: letterMatch[2].trim() };
     }
 
     // Support for numbered options that might be used instead of letters
     const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-\s]+)\s*(.+)$/);
-    if (numericMatch) {
+    if (numericMatch && numericMatch[2].trim()) {
         // Convert number to letter (1->A, 2->B, etc.)
         const num = parseInt(numericMatch[1]);
         if (num >= 1 && num <= 6) {
@@ -273,8 +297,8 @@ function parseOptionLine(line) {
         return { label: null, text: numericMatch[2].trim() };
     }
 
-    // Accept pure bullet list items without labels as options too.
-    if (bulletMatch) {
+    // Accept pure bullet list items without labels as options too, but only if substantial
+    if (bulletMatch && candidate.length > 3) {
         return { label: null, text: candidate };
     }
 
