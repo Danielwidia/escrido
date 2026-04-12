@@ -5039,7 +5039,7 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts })
+                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, useJavanese: document.getElementById('ai-use-javanese')?.checked || false })
                 });
 
                 const result = await response.json();

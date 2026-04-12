@@ -635,7 +635,8 @@ app.post('/api/generate-ai', async (req, res) => {
         mapel = '',
         rombel = '',
         typeCounts = {},
-        levelCounts = {}
+        levelCounts = {},
+        useJavanese = false
     } = req.body;
 
     if (!materi) return res.status(400).json({ error: 'Materi is required' });
@@ -686,6 +687,9 @@ app.post('/api/generate-ai', async (req, res) => {
         prompt += `bertipe ${typeDescriptions[tipe] || 'pilihan ganda'} `;
     }
     prompt += `untuk mata pelajaran ${mapel} kelas ${rombel} tentang: ${materi}. `;
+    if (useJavanese) {
+        prompt += 'Gunakan aksara Jawa untuk semua teks soal, opsi jawaban, dan pernyataan. ';
+    }
     if (levelParts.length > 0) {
         prompt += `Sebarkan level soal sebagai ${levelParts.join(', ')}. `;
     }
@@ -729,16 +733,57 @@ app.post('/api/generate-ai', async (req, res) => {
                 if (!Array.isArray(normalized.options)) {
                     normalized.options = [];
                 }
+                
+                // Parse options if they contain answers in parentheses
+                if (normalized.options.length > 0) {
+                    const parsedOptions = [];
+                    const parsedCorrects = [];
+                    for (const opt of normalized.options) {
+                        const match = opt.match(/^(.+?)\s*\((Benar|Salah|True|False|true|false)\)$/i);
+                        if (match) {
+                            parsedOptions.push(match[1].trim());
+                            parsedCorrects.push(match[2].toLowerCase() === 'benar' || match[2].toLowerCase() === 'true');
+                        } else {
+                            parsedOptions.push(opt);
+                            parsedCorrects.push(false); // Default
+                        }
+                    }
+                    normalized.options = parsedOptions;
+                    if (!Array.isArray(normalized.correct) || normalized.correct.length !== parsedCorrects.length) {
+                        normalized.correct = parsedCorrects;
+                    }
+                }
+                
                 // If options is empty but text contains statements, try to parse
                 if (normalized.options.length === 0 && normalized.text && typeof normalized.text === 'string') {
-                    // Try to split text into statements
-                    const statements = normalized.text.split(/\d+\.\s*/).filter(s => s.trim()).map(s => s.trim());
+                    // Try to parse text with patterns like "1. Statement (True/False)" or "1. Statement\n2. Statement"
+                    const lines = normalized.text.split('\n').map(l => l.trim()).filter(l => l);
+                    const statements = [];
+                    const corrects = [];
+                    
+                    for (const line of lines) {
+                        // Match patterns like "1. Statement (Benar)" or "1. Statement (True)"
+                        const match = line.match(/^(\d+)\.\s*(.+?)\s*\((Benar|Salah|True|False|true|false)\)$/i);
+                        if (match) {
+                            statements.push(match[2].trim());
+                            corrects.push(match[3].toLowerCase() === 'benar' || match[3].toLowerCase() === 'true');
+                        } else {
+                            // Fallback: just take the line without number
+                            const noNumber = line.replace(/^\d+\.\s*/, '').trim();
+                            if (noNumber) {
+                                statements.push(noNumber);
+                                corrects.push(false); // Default to false
+                            }
+                        }
+                    }
+                    
                     if (statements.length >= 3) {
                         normalized.options = statements.slice(0, 3);
+                        normalized.correct = corrects.slice(0, 3);
                         normalized.text = ''; // Clear text as it's now in options
                     } else if (statements.length > 0) {
-                        // If less than 3, use what we have
                         normalized.options = statements;
+                        normalized.correct = corrects;
                     }
                 }
                 if (!Array.isArray(normalized.correct)) {
