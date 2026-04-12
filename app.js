@@ -5498,6 +5498,13 @@ function showLoginForm(type) {
             const typeSel = document.getElementById('q-type');
             if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
 
+            // Hide loading overlay after initialization
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+            }
+
             // Add keyboard support for zoom modal
             document.addEventListener('keydown', function (e) {
                 const modal = document.getElementById('image-zoom-modal');
