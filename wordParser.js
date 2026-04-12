@@ -142,8 +142,30 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
     const questions = [];
     const lines = rawText.replace(/\r\n?/g, '\n').split('\n').map(line => line.trim()).filter(Boolean);
     let i = 0;
+
+    // Collect reading passage if present (lines before first numbered question)
+    let readingPassage = [];
     while (i < lines.length) {
-        const questionData = parseSingleTextQuestion(lines, i, metadata);
+        const line = lines[i];
+        // Check if this line starts a question (numbered or not)
+        if (line.match(/^\d+\./) || line.match(/^[A-F][\.\)\:\-]/i) || line.match(/\b(?:kunci|jawaban)\b/i)) {
+            break;
+        }
+        // If it's a substantial line (not just whitespace), add to reading passage
+        if (line.length > 10) { // Minimum length to consider as reading text
+            readingPassage.push(line);
+        }
+        i++;
+    }
+
+    // Join reading passage if found
+    const readingText = readingPassage.length > 0 ? readingPassage.join(' ') : null;
+
+    // Reset i to start parsing questions
+    i = readingPassage.length;
+
+    while (i < lines.length) {
+        const questionData = parseSingleTextQuestion(lines, i, metadata, readingText);
         if (questionData.question) {
             questions.push(questionData.question);
             i = questionData.nextIndex;
@@ -154,22 +176,47 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
     return questions;
 }
 
-function parseSingleTextQuestion(lines, startIndex, metadata) {
+function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null) {
     let i = startIndex;
     let questionText = lines[i++];
     const numMatch = questionText.match(/^\d+\.\s*(.+)$/);
     if (numMatch) questionText = numMatch[1].trim();
 
+    // Prepend reading passage if available
+    if (readingText && readingText.trim()) {
+        questionText = readingText.trim() + '\n\n' + questionText;
+    }
+
     const options = [];
+    const optionMap = {};
     while (i < lines.length && options.length < 10) {
         const option = parseOptionLine(lines[i]);
         if (option) {
-            options.push(option.text);
+            if (option.label) {
+                // If labeled (A, B, C, D), store by label
+                optionMap[option.label] = option.text;
+            } else {
+                // If unlabeled, add to options array
+                options.push(option.text);
+            }
             i++;
         } else {
             break;
         }
     }
+
+    // Convert labeled options to ordered array
+    const orderedOptions = [];
+    for (let letter = 'A'; letter <= 'F'; letter++) {
+        if (optionMap[letter]) {
+            orderedOptions.push(optionMap[letter]);
+        }
+    }
+    // Add any unlabeled options at the end
+    orderedOptions.push(...options);
+
+    // Use ordered options, but limit to reasonable number
+    const finalOptions = orderedOptions.slice(0, 6);
 
     let correctAnswer = null;
     if (i < lines.length) {
@@ -181,8 +228,8 @@ function parseSingleTextQuestion(lines, startIndex, metadata) {
         }
     }
 
-    if (correctAnswer && options.length > 0) {
-        const indices = options.length >= 2 ? parseCorrectAnswers(correctAnswer, options) : null;
+    if (correctAnswer && finalOptions.length > 0) {
+        const indices = finalOptions.length >= 2 ? parseCorrectAnswers(correctAnswer, finalOptions) : null;
         const qObj = {
             text: questionText,
             mapel: metadata.subject || 'General',
@@ -190,7 +237,7 @@ function parseSingleTextQuestion(lines, startIndex, metadata) {
         };
         if (indices) {
             qObj.type = indices.length === 1 ? 'single' : 'multiple';
-            qObj.options = options;
+            qObj.options = finalOptions;
             qObj.correct = indices.length === 1 ? indices[0] : indices;
         } else {
             qObj.type = 'text';
@@ -208,13 +255,21 @@ function parseOptionLine(line) {
     const bulletMatch = trimmed.match(/^[\u2022\u2023\u25E6\u2043\u2219\-\*\+]\s*(.+)$/);
     const candidate = bulletMatch ? bulletMatch[1].trim() : trimmed;
 
-    const letterMatch = candidate.match(/^([A-F])(?:[\.\)\:\-]|\s+)\s*(.+)$/i);
+    // Enhanced ABCD option parsing with more flexible patterns
+    const letterMatch = candidate.match(/^([A-F])(?:[\.\)\:\-\s]+)\s*(.+)$/i);
     if (letterMatch) {
         return { label: letterMatch[1].toUpperCase(), text: letterMatch[2].trim() };
     }
 
-    const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-]|\s+)\s*(.+)$/);
+    // Support for numbered options that might be used instead of letters
+    const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-\s]+)\s*(.+)$/);
     if (numericMatch) {
+        // Convert number to letter (1->A, 2->B, etc.)
+        const num = parseInt(numericMatch[1]);
+        if (num >= 1 && num <= 6) {
+            const letter = String.fromCharCode(64 + num); // 1->A, 2->B, etc.
+            return { label: letter, text: numericMatch[2].trim() };
+        }
         return { label: null, text: numericMatch[2].trim() };
     }
 
