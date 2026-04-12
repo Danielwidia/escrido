@@ -3194,17 +3194,17 @@ function showLoginForm(type) {
                     // remove the key line entirely from content
                     let content = block.replace(/kunci\s*[:\-]?\s*.+/i, '').trim();
 
-                    // split question text and options by detecting letters A.–D.
-                    const parts = content.split(/(?=[A-D]\.\s*)/i);
+                    // split question text and options by detecting letters A.–D. preceded by space or newline
+                    const parts = content.split(/[\s\n]+(?=[A-D][\.\)\:\-\s]\s*)/i);
                     const qText = parts[0].replace(/^[0-9]+\.\s*/, '').trim();
                     const opts = [];
                     for (let i = 1; i < parts.length; i++) {
-                        opts.push(parts[i].replace(/^[A-D]\.\s*/i, '').trim());
+                        opts.push(parts[i].replace(/^[A-D][\.\)\:\-\s]\s*/i, '').trim());
                     }
 
                     // fallback: try splitting by " A. " if not enough opts
                     if (opts.length < 2) {
-                        const alt = content.split(/\s+[A-D]\.\s+/i).slice(1);
+                        const alt = content.split(/\s+(?=[A-D][\.\)\:\-\s])/i).slice(1);
                         if (alt.length >= 2) {
                             opts.length = 0;
                             alt.forEach(a => opts.push(a.trim()));
