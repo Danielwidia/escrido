@@ -385,14 +385,14 @@
                                     Data</label>
                                 <div class="flex gap-2">
                                     <!-- Import Dropdown -->
-                                    <div class="relative group">
-                                        <button
+                                    <div class="relative">
+                                        <button onclick="toggleImportDropdown()"
                                             class="px-3 py-2 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-2">
                                             <i class="fas fa-file-import text-[10px]"></i> Import <i
                                                 class="fas fa-chevron-down text-[7px]"></i>
                                         </button>
-                                        <div
-                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden group-hover:block z-30 animate-fade-in">
+                                        <div id="import-dropdown"
+                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden z-30 animate-fade-in">
                                             <button onclick="openTeacherImportModal()"
                                                 class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-t-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
                                                 <i class="fas fa-file-word text-blue-500"></i> Word (.docx)
@@ -408,14 +408,14 @@
                                         </div>
                                     </div>
                                     <!-- Export Dropdown -->
-                                    <div class="relative group">
-                                        <button
+                                    <div class="relative">
+                                        <button onclick="toggleExportDropdown()"
                                             class="px-3 py-2 bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-2">
                                             <i class="fas fa-file-export text-[10px]"></i> Export <i
                                                 class="fas fa-chevron-down text-[7px]"></i>
                                         </button>
-                                        <div
-                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden group-hover:block z-30 animate-fade-in">
+                                        <div id="export-dropdown"
+                                            class="absolute left-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-100 hidden z-30 animate-fade-in">
                                             <button onclick="exportQuestionsExcel()"
                                                 class="w-full text-left px-4 py-2.5 hover:bg-slate-50 rounded-t-2xl flex items-center gap-2 text-[11px] font-bold text-slate-600 transition-colors">
                                                 <i class="fas fa-file-excel text-emerald-500"></i> Excel (.xlsx)

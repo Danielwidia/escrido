@@ -5039,7 +5039,7 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, useJavanese: document.getElementById('ai-use-javanese')?.checked || false })
+                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts })
                 });
 
                 const result = await response.json();
@@ -5496,6 +5496,23 @@ function showLoginForm(type) {
             document.body.appendChild(warning);
         }
 
+        // Toggle dropdown functions
+        function toggleImportDropdown() {
+            const dropdown = document.getElementById('import-dropdown');
+            if (dropdown) dropdown.classList.toggle('hidden');
+            // Hide export dropdown if open
+            const exportDropdown = document.getElementById('export-dropdown');
+            if (exportDropdown) exportDropdown.classList.add('hidden');
+        }
+
+        function toggleExportDropdown() {
+            const dropdown = document.getElementById('export-dropdown');
+            if (dropdown) dropdown.classList.toggle('hidden');
+            // Hide import dropdown if open
+            const importDropdown = document.getElementById('import-dropdown');
+            if (importDropdown) importDropdown.classList.add('hidden');
+        }
+
         // --- INIT ---
         window.addEventListener('load', async () => {
             // Fallback: Hide loading overlay after 3 seconds regardless
@@ -5512,6 +5529,14 @@ function showLoginForm(type) {
                 console.log('App initialized, db has', db.students.length, 'students');
                 const typeSel = document.getElementById('q-type');
                 if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
+
+                // Close dropdowns when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.relative')) {
+                        document.getElementById('import-dropdown')?.classList.add('hidden');
+                        document.getElementById('export-dropdown')?.classList.add('hidden');
+                    }
+                });
 
                 // Hide loading overlay after initialization
                 const overlay = document.getElementById('loading-overlay');
