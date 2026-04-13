@@ -1697,8 +1697,8 @@ function showLoginForm(type) {
                         <div class="flex items-center justify-center gap-2">
                             <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">${actualIndex + 1}</span>
                             <div class="flex flex-col gap-1">
-                                <button onclick="moveQuestionUp(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                                <button onclick="moveQuestionDown(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
+                                <button type="button" onclick="moveQuestionUp(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                                <button type="button" onclick="moveQuestionDown(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
                             </div>
                         </div>
                     </td>
@@ -1719,13 +1719,13 @@ function showLoginForm(type) {
                         <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold whitespace-nowrap">${typeName}</span>
                     </td>
                     <td class="px-6 py-4 text-center flex gap-1 justify-center">
-                        <button class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" onclick="viewQuestion(${actualIndex})" title="Lihat">
+                        <button type="button" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" onclick="viewQuestion(${actualIndex})" title="Lihat">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button class="p-2 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" onclick="editTeacherQuestion(${actualIndex})" title="Edit">
+                        <button type="button" class="p-2 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" onclick="editTeacherQuestion(${actualIndex})" title="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" onclick="deleteQuestion(${actualIndex})" title="Hapus">
+                        <button type="button" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" onclick="deleteQuestion(${actualIndex})" title="Hapus">
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
@@ -2653,8 +2653,8 @@ function showLoginForm(type) {
                             <div class="flex flex-col gap-1 items-center">
                                 <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">${originalIndex + 1}</span>
                                 <div class="flex gap-1">
-                                    <button onclick="moveQuestionUp(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                                    <button onclick="moveQuestionDown(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
+                                    <button type="button" onclick="moveQuestionUp(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                                    <button type="button" onclick="moveQuestionDown(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -2677,8 +2677,8 @@ function showLoginForm(type) {
                     </td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex items-center justify-center gap-1">
-                            <button onclick="openEditQuestionModal(${originalIndex})" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Edit"><i class="fas fa-edit"></i></button>
-                            <button onclick="deleteQuestion(${originalIndex})" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><i class="fas fa-trash"></i></button>
+                            <button type="button" onclick="openEditQuestionModal(${originalIndex})" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button type="button" onclick="deleteQuestion(${originalIndex})" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><i class="fas fa-trash"></i></button>
                         </div>
                     </td>
                 </tr>
