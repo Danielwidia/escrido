@@ -9,6 +9,8 @@ function showLoginForm(type) {
                 m.classList.remove('flex');
                 m.classList.add('hidden');
             });
+            const aiHint = document.getElementById('ai-open-hint');
+            if (aiHint) aiHint.classList.add('hidden');
             const qText = document.getElementById('q-text');
             if (qText) qText.value = '';
             document.querySelectorAll('.q-opt').forEach(i => i.value = '');
@@ -41,11 +43,104 @@ function showLoginForm(type) {
     
 
 
+        // --- GOOGLE SIGN-IN FOR TEACHERS ---
+        window.googleSignInReady = false;
+        
+        function initGoogleSignIn() {
+            if (window.googleSignInReady || typeof google === 'undefined') return;
+            
+            try {
+                google.accounts.id.initialize({
+                    client_id: '1234567890-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com', // GANTI dengan Google OAuth Client ID Anda
+                    callback: handleGoogleSignInResponse,
+                    auto_select: false
+                });
+                
+                google.accounts.id.renderButton(
+                    document.getElementById('google-signin-btn'),
+                    {
+                        theme: 'outline',
+                        size: 'large',
+                        width: '100%'
+                    }
+                );
+                
+                window.googleSignInReady = true;
+            } catch (e) {
+                console.warn('Google Sign-In not available:', e);
+            }
+        }
+        
+        function handleGoogleSignInResponse(response) {
+            if (!response || !response.credential) {
+                showError('Google Sign-In gagal. Silakan coba lagi.');
+                return;
+            }
+            
+            // Decode JWT token dari Google
+            const credential = response.credential;
+            const base64Url = credential.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            
+            const userData = JSON.parse(jsonPayload);
+            console.log('Google User:', userData);
+            
+            // Cari guru dengan email Google
+            const googleEmail = userData.email;
+            let teacher = db.students.find(x => 
+                x.role === 'teacher' && 
+                (x.googleEmail === googleEmail || x.email === googleEmail)
+            );
+            
+            if (!teacher) {
+                // Auto-create teacher dengan Google account jika belum ada
+                const newTeacherId = `GURU_${googleEmail.split('@')[0].toUpperCase()}`;
+                teacher = {
+                    id: newTeacherId,
+                    name: userData.name,
+                    email: googleEmail,
+                    googleEmail: googleEmail,
+                    password: 'GOOGLE_OAUTH', // Dummy password
+                    role: 'teacher',
+                    subjects: [],
+                    apiKeys: []
+                };
+                db.students.push(teacher);
+                save();
+                console.log('New teacher auto-created from Google:', newTeacherId);
+            }
+            
+            // Login dengan guru account
+            currentSiswa = teacher;
+            saveSession();
+            
+            // Show loading dan redirect
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            document.getElementById('loading-overlay').classList.add('flex');
+            
+            setTimeout(() => {
+                window.location.href = 'guru.html';
+            }, 1500);
+        }
+        
+        // --- GOOGLE SIGN-IN END ---
+        
         const DB_KEY = "EXAM_DORKAS_DATABASE_OFFICIAL";
         const SESSION_KEY = "EXAM_DORKAS_SESSION";
         const REMOTE_SERVER_KEY = "EXAM_DORKAS_REMOTE_SERVER_URL";
         const IDB_DB_NAME = 'DORKAS_EXAM_STORAGE';
         const IDB_STORE = 'store';
+
+        // Markdown Parser Function - Converts *text* to <strong>text</strong>
+        function parseMarkdown(text) {
+            if (typeof text !== 'string') return text;
+            // Replace *text* with <strong>text</strong> (bold)
+            // Uses non-greedy matching to handle multiple bold sections in one text
+            return text.replace(/\*([^\*]+)\*/g, '<strong>$1</strong>');
+        }
 
         // Global Anti-Cheat State
         let isExamActive = false;
@@ -434,6 +529,13 @@ function showLoginForm(type) {
         }
 
         async function init() {
+            // Show loading overlay during initialization
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+
             const loginBtn = document.getElementById('login-btn');
             const loginBtnText = loginBtn ? loginBtn.innerHTML : '';
             if (loginBtn) {
@@ -522,20 +624,22 @@ function showLoginForm(type) {
                 if (stu) { stu.isOnline = true; save(); }
             }
 
-            // Verify user still exists in database and sync with latest data
+            // Verify user still exists in database
             if (currentSiswa) {
-                const updatedUser = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
-                if (!updatedUser) {
-                    console.warn('User from session not found in database or password mismatch, logging out');
+                const dbUser = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
+                if (!dbUser) {
+                    console.warn('User from session not found in database, logging out');
                     clearSession();
                     window.location.href = 'index.html';
                     return;
                 }
-                
-                // CRITICAL: Update session object to latest structure (migrated rombels/subjects)
-                currentSiswa = updatedUser;
-                window.currentSiswa = updatedUser;
-                console.log('Session synchronized with latest database for:', currentSiswa.name);
+
+                // Keep locally added teacher session data in sync with the DB entry
+                if (Array.isArray(currentSiswa.apiKeys)) {
+                    dbUser.apiKeys = currentSiswa.apiKeys;
+                }
+                currentSiswa = dbUser;
+                saveSession();
 
                 const page = window.location.pathname.split('/').pop().split('?')[0];
                 if (currentSiswa.role === 'admin' && page !== 'admin.html') {
@@ -570,6 +674,14 @@ function showLoginForm(type) {
                     const tcLabel = document.getElementById('teacher-info-label');
                     if (tcLabel) tcLabel.innerText = `${currentSiswa.name} | Guru ${formatTeacherSubjects(currentSiswa)}`;
                     if (typeof renderTeacherQuestions === 'function' && teacherDash) renderTeacherQuestions();
+                    
+                    // Sync API keys from server and then render
+                    syncTeacherAPIKeysFromServer().then(() => {
+                        if (typeof renderTeacherAPIKeys === 'function') renderTeacherAPIKeys();
+                    });
+                    
+                    // Load global API keys stats without rendering the full list
+                    loadGlobalAPIKeysStats();
                 }
                 migrateTeacherData();
                 updateStats();
@@ -580,6 +692,12 @@ function showLoginForm(type) {
             if (page !== '' && page !== 'index.html') {
                 window.location.href = 'index.html';
             } else {
+                // Hide loading overlay after initialization
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay) {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }
                 if(typeof showLoginScreen === 'function' && document.getElementById('login-screen')) showLoginScreen();
             }
         }
@@ -747,6 +865,10 @@ function showLoginForm(type) {
                 await saveLocalDb();
             } catch (e) {
                 console.warn('Local persistence failed:', e.message || e);
+            }
+
+            if (currentSiswa) {
+                saveSession();
             }
 
             updateStats();
@@ -919,11 +1041,25 @@ function showLoginForm(type) {
                     currentSiswa = user;
                     // For student updateCompletionCharts is used
                     if (user.role === 'student' && typeof updateCompletionCharts === 'function') updateCompletionCharts();
+                    
+                    // Initialize API keys array if not exists (for teachers)
+                    if (user.role === 'teacher' && !Array.isArray(user.apiKeys)) {
+                        user.apiKeys = [];
+                        save();
+                    }
+                    
                     saveSession();
 
-                    if (user.role === 'admin') window.location.href = 'admin.html';
-                    else if (user.role === 'student') window.location.href = 'siswa.html';
-                    else if (user.role === 'teacher') window.location.href = 'guru.html';
+                    // Show loading overlay
+                    document.getElementById('loading-overlay').classList.remove('hidden');
+                    document.getElementById('loading-overlay').classList.add('flex');
+
+                    // Delay redirect to show loading animation
+                    setTimeout(() => {
+                        if (user.role === 'admin') window.location.href = 'admin.html';
+                        else if (user.role === 'student') window.location.href = 'siswa.html';
+                        else if (user.role === 'teacher') window.location.href = 'guru.html';
+                    }, 1500); // 1.5 seconds delay
                 } else {
                     console.log('Role mismatch - Expected:', window.loginType, 'Actual:', user.role);
                     showError(`Akun ini terdaftar sebagai ${user.role}. Silakan klik menu login yang sesuai.`);
@@ -940,22 +1076,789 @@ function showLoginForm(type) {
         }
 
         // attach login button listener once DOM ready to avoid reference errors
-        document.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('load', () => {
             const btn = document.getElementById('login-btn');
             if (btn) btn.addEventListener('click', handleLogin);
+
+            // Hide loading overlay for index.html after DOM ready
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+            }
         });
 
-        function showError(customMsg) {
-            const err = document.getElementById('login-error');
-            const defaultRoleMsg = window.loginType === 'teacher' ? 'Password default: escrido123' : 'Password default: escrido';
-            err.innerHTML = (customMsg || `ID atau password salah!`) + `<br><span class="text-[10px] opacity-70 mt-1 block tracking-tight">• ${defaultRoleMsg}</span>`;
-            err.classList.remove('hidden');
+        // --- API KEY MANAGEMENT FOR TEACHERS ---
+        function addTeacherAPIKey() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menambahkan API Key');
+                return;
+            }
+            
+            const apiKey = prompt('Masukkan Google Gemini API Key Anda:\n\n(Dapatkan dari: https://aistudio.google.com/app/apikey)');
+            if (!apiKey || apiKey.trim() === '') return;
+            
+            // Show loading state (simulate with a simple message)
+            alert('Memproses...');
+            
+            // Send to server for auto-setup to Vercel
+            fetch(getApiBaseUrl() + '/api/teacher/add-api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId: currentSiswa.id,
+                    apiKey: apiKey.trim()
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.ok) {
+                    alert(data.error || 'Gagal menambahkan API Key');
+                    return;
+                }
+                
+                // Update local state
+                if (!Array.isArray(currentSiswa.apiKeys)) {
+                    currentSiswa.apiKeys = [];
+                }
+
+                const trimmedKey = apiKey.trim();
+                const alreadyExists = currentSiswa.apiKeys.some(entry => {
+                    if (typeof entry === 'string') return entry.trim() === trimmedKey;
+                    if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
+                    return false;
+                });
+
+                if (!alreadyExists) {
+                    currentSiswa.apiKeys.push({
+                        key: trimmedKey,
+                        status: 'active',
+                        addedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        note: ''
+                    });
+                }
+
+                save();
+                renderTeacherAPIKeys();
+                showToast('API Key berhasil ditambahkan!', 'success');
+                
+                // Sync with server to ensure consistency
+                syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys());
+            })
+            .catch(err => {
+                console.error('Error adding API key:', err);
+                alert('Gagal menambahkan API Key: ' + err.message);
+            });
+        }
+        
+        function removeTeacherAPIKey(index) {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menghapus API Key');
+                return;
+            }
+            
+            if (!Array.isArray(currentSiswa.apiKeys) || index < 0 || index >= currentSiswa.apiKeys.length) {
+                alert('API Key tidak valid');
+                return;
+            }
+            
+            if (confirm('Hapus API Key ini? Kuota dari key ini tidak akan digunakan lagi.')) {
+                // Send to server first
+                fetch(getApiBaseUrl() + '/api/teacher/remove-api-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teacherId: currentSiswa.id,
+                        keyIndex: index
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.ok) {
+                        alert(data.error || 'Gagal menghapus API Key dari server');
+                        return;
+                    }
+                    
+                    // Remove from local state
+                    currentSiswa.apiKeys.splice(index, 1);
+                    save();
+                    
+                    // Update display
+                    if (typeof renderTeacherAPIKeys === 'function') {
+                        renderTeacherAPIKeys();
+                    }
+                    
+                    showToast('API Key berhasil dihapus', 'success');
+                    
+                    // Sync with server to ensure consistency
+                    syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys());
+                })
+                .catch(err => {
+                    console.error('Error removing API key:', err);
+                    alert('Gagal menghapus API Key: ' + err.message);
+                });
+            }
+        }
+        
+        function normalizeTeacherApiKeyEntry(entry) {
+            if (!entry) return null;
+            if (typeof entry === 'string') {
+                const trimmed = entry.trim();
+                if (!trimmed) return null;
+                return {
+                    key: trimmed,
+                    status: 'active',
+                    addedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    note: ''
+                };
+            }
+            if (typeof entry === 'object' && entry.key && typeof entry.key === 'string') {
+                const trimmed = entry.key.trim();
+                if (!trimmed) return null;
+                
+                let currentStatus = entry.status === 'exhausted' ? 'exhausted' : 'active';
+                let updatedAtTime = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+                
+                // Auto-revive exhausted personal keys after 60 seconds
+                if (currentStatus === 'exhausted' && (Date.now() - updatedAtTime > 60000)) {
+                    currentStatus = 'active';
+                }
+                
+                return {
+                    ...entry,
+                    key: trimmed,
+                    status: currentStatus,
+                    addedAt: entry.addedAt || entry.createdAt || new Date().toISOString(),
+                    updatedAt: entry.updatedAt || new Date().toISOString(),
+                    note: entry.note || ''
+                };
+            }
+            return null;
         }
 
+        function normalizeTeacherApiKeys() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') return [];
+            if (!Array.isArray(currentSiswa.apiKeys)) currentSiswa.apiKeys = [];
+
+            // Robust filtering for personal keys only
+            const isPersonalKey = (entry) => {
+                if (!entry) return false;
+                // If it's just a string, it's likely a personal key added in early versions
+                if (typeof entry === 'string') return true;
+                
+                // If it's an object, check markers
+                if (typeof entry === 'object') {
+                    if (entry.isGlobal === true) return false;
+                    if (entry.addedAt && entry.addedAt.includes('System')) return false;
+                    // Keep everything else as potentially personal
+                    return true;
+                }
+                return false;
+            };
+
+            const normalized = currentSiswa.apiKeys
+                .filter(isPersonalKey)
+                .map(normalizeTeacherApiKeyEntry)
+                .filter(entry => entry && entry.key && !entry.isGlobal);
+
+            currentSiswa.apiKeys = normalized;
+            return currentSiswa.apiKeys;
+        }
+
+        function getTeacherApiKeyObjects() {
+            return normalizeTeacherApiKeys();
+        }
+
+        function getTeacherActiveApiKeyObjects() {
+            return getTeacherApiKeyObjects().filter(entry => entry.status !== 'exhausted');
+        }
+
+        function markLocalTeacherKeysAsExhausted(keys = []) {
+            if (!Array.isArray(keys) || !currentSiswa || currentSiswa.role !== 'teacher') return false;
+            const apiKeys = getTeacherApiKeyObjects();
+            let changed = false;
+            const now = new Date().toISOString();
+
+            currentSiswa.apiKeys = apiKeys.map(entry => {
+                if (keys.includes(entry.key) && entry.status !== 'exhausted') {
+                    changed = true;
+                    return { ...entry, status: 'exhausted', updatedAt: now, note: 'Terkena 429' };
+                }
+                return entry;
+            });
+
+            if (changed) save();
+            return changed;
+        }
+
+        async function syncTeacherAPIKeysFromServer() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') return;
+            
+            try {
+                const response = await fetch(getApiBaseUrl() + `/api/teacher/api-keys?teacherId=${encodeURIComponent(currentSiswa.id)}`);
+                if (!response.ok) {
+                    console.warn('Failed to sync API keys from server:', response.status);
+                    return;
+                }
+                
+                const result = await response.json();
+                if (result.ok && Array.isArray(result.apiKeys)) {
+                    // Filter out global keys, only keep personal teacher keys strictly
+                    const personalKeys = result.apiKeys.filter(key => 
+                        !key.isGlobal && 
+                        (!key.addedAt || !key.addedAt.includes('System'))
+                    );
+                    // Update local currentSiswa with server data
+                    currentSiswa.apiKeys = personalKeys;
+                    save(); // Save to local storage
+                    console.log('Synced personal API keys from server:', personalKeys.length, 'keys');
+                }
+            } catch (e) {
+                console.warn('Error syncing API keys from server:', e.message);
+            }
+        }
+
+        async function syncGlobalAPIKeysFromServer() {
+            try {
+                // Refresh global API keys list by re-rendering
+                await renderGlobalAPIKeys();
+                console.log('Synced global API keys from server');
+            } catch (e) {
+                console.warn('Error syncing global API keys from server:', e.message);
+            }
+        }
+
+        // --- END API KEY MANAGEMENT ---
+        
+        // --- RENDER API KEYS UI ---
+        function renderTeacherAPIKeys() {
+            const listContainer = document.getElementById('api-keys-list');
+            const countDisplay = document.getElementById('api-keys-count');
+            const statusBadge = document.getElementById('api-keys-status-badge');
+            const filterSelect = document.getElementById('api-keys-filter');
+
+            if (!listContainer) return;
+
+            const apiKeys = getTeacherApiKeyObjects().filter(entry => !entry.isGlobal && (!entry.addedAt || !entry.addedAt.includes('System')));
+            const activeKeys = getTeacherActiveApiKeyObjects().filter(entry => !entry.isGlobal && (!entry.addedAt || !entry.addedAt.includes('System')));
+            
+            console.log('Rendering teacher API keys:', apiKeys.length, 'keys after filtering');
+            console.log('Raw teacher apiKeys:', currentSiswa.apiKeys);
+            const activeCount = activeKeys.length;
+            const totalCount = apiKeys.length;
+
+            if (countDisplay) {
+                countDisplay.textContent = `${activeCount}/${totalCount}`;
+            }
+
+            if (statusBadge) {
+                const exhaustedCount = totalCount - activeCount;
+                let badgeText, badgeClass;
+                
+                if (totalCount === 0) {
+                    badgeText = '<i class="fas fa-exclamation-circle mr-1"></i>Kuota pribadi belum tersedia';
+                    badgeClass = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
+                } else if (activeCount === 0) {
+                    badgeText = '<i class="fas fa-times-circle mr-1"></i>Semua KUOTA Key Habis';
+                    badgeClass = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
+                } else if (exhaustedCount > 0) {
+                    badgeText = `<i class="fas fa-exclamation-triangle mr-1"></i>${activeCount} Aktif, ${exhaustedCount} Habis`;
+                    badgeClass = 'inline-block px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full';
+                } else {
+                    badgeText = '<i class="fas fa-check-circle mr-1"></i>API Keys Pribadi Siap Digunakan';
+                    badgeClass = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
+                }
+                
+                statusBadge.innerHTML = badgeText;
+                statusBadge.className = badgeClass;
+            }
+
+            if (totalCount > 0) {
+                updateApiKeysWarningBanner('', '');
+            }
+            updateApiKeysQuotaNote();
+
+            // Get filter value
+            const filterValue = filterSelect ? filterSelect.value : 'all';
+            let filteredKeys = apiKeys;
+
+            if (filterValue === 'active') {
+                filteredKeys = activeKeys;
+            } else if (filterValue === 'exhausted') {
+                filteredKeys = apiKeys.filter(entry => entry.status === 'exhausted');
+            }
+
+            if (totalCount === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-8 text-slate-400">
+                        <i class="fas fa-inbox text-3xl mb-2 opacity-30"></i>
+                        <p class="text-sm">Belum ada API Key. Tambahkan satu sekarang untuk meningkatkan kuota!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (filteredKeys.length === 0) {
+                let emptyMsg = 'Tidak ada API Key aktif.';
+                if (filterValue === 'active') {
+                    emptyMsg = 'Tidak ada API Key yang aktif saat ini.';
+                } else if (filterValue === 'exhausted') {
+                    emptyMsg = 'Tidak ada API Key yang habis.';
+                }
+                listContainer.innerHTML = `
+                    <div class="text-center py-8 text-slate-400">
+                        <i class="fas fa-search text-3xl mb-2 opacity-30"></i>
+                        <p class="text-sm">${emptyMsg}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listContainer.innerHTML = filteredKeys.map((entry, index) => {
+                const fullKey = entry.key || '';
+                const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
+                const statusLabel = entry.status === 'exhausted' ? '❌ KUOTA KEY HABIS' : '✅ Aktif';
+                const statusClass = entry.status === 'exhausted'
+                    ? 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300'
+                    : 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300';
+
+                // Find actual index in full array for remove function
+                const actualIndex = apiKeys.findIndex(k => k.key === entry.key);
+
+                return `
+                    <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all group">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-key text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-700">Google Gemini API Key</p>
+                                <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
+                                <span class="${statusClass}">${statusLabel}</span>
+                                ${entry.note ? `<p class="text-xs text-slate-500 mt-1">📝 ${entry.note}</p>` : ''}
+                            </div>
+                        </div>
+                        <button onclick="removeTeacherAPIKey(${actualIndex})"
+                            class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100">
+                            <i class="fas fa-trash mr-1"></i>HAPUS
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function updateApiKeysWarningBanner(message, type = 'error') {
+            const banner = document.getElementById('api-keys-warning-banner');
+            if (!banner) return;
+            banner.textContent = message || '';
+            if (!message) {
+                banner.classList.add('hidden');
+                banner.classList.remove('bg-red-50','border-red-200','text-red-700','bg-yellow-50','border-yellow-200','text-yellow-700','bg-green-50','border-green-200','text-green-700');
+                return;
+            }
+            banner.classList.remove('hidden');
+            banner.classList.remove('bg-red-50','border-red-200','text-red-700','bg-yellow-50','border-yellow-200','text-yellow-700','bg-green-50','border-green-200','text-green-700');
+            if (type === 'warning') {
+                banner.classList.add('bg-yellow-50','border-yellow-200','text-yellow-700');
+            } else if (type === 'success') {
+                banner.classList.add('bg-green-50','border-green-200','text-green-700');
+            } else {
+                banner.classList.add('bg-red-50','border-red-200','text-red-700');
+            }
+        }
+
+        function isAIGenerationRequiresApiKey(result) {
+            const message = (result?.error || '').toString();
+            return result?.needsApiKeys || /tidak ada api key|tidak memiliki api key|api key pribadi|dashboard api keys/i.test(message);
+        }
+
+        function isAIGenerationQuotaError(result) {
+            const message = (result?.error || '').toString();
+            return result?.quotaExhausted || /kuota|quota|limit|habis/i.test(message);
+        }
+
+        function updateApiKeysQuotaNote() {
+            const note = document.getElementById('api-keys-quota-note');
+            if (!note) return;
+            const apiKeys = getTeacherApiKeyObjects();
+            const activeKeys = apiKeys.filter(entry => entry.status !== 'exhausted');
+            const exhaustedKeys = apiKeys.filter(entry => entry.status === 'exhausted');
+
+            if (apiKeys.length === 0) {
+                note.textContent = 'Belum ada API Key. Tambahkan satu untuk meningkatkan kuota AI.';
+            } else if (activeKeys.length === 0) {
+                note.textContent = 'Semua API Key Anda sudah habis. Hapus atau ganti key yang bermasalah.';
+            } else if (exhaustedKeys.length > 0) {
+                note.textContent = `${activeKeys.length} aktif dari ${apiKeys.length} key. ${exhaustedKeys.length} key ditandai habis.`;
+            } else {
+                note.textContent = `Jumlah API Key aktif: ${activeKeys.length}. Sisa kuota tidak dapat ditentukan secara pasti oleh penyedia.`;
+            }
+        }
+
+        function updateGlobalApiKeysStats(keys = []) {
+            const countDisplay = document.getElementById('global-api-keys-count');
+            const statusBadge = document.getElementById('global-api-keys-status-badge');
+            
+            if (!Array.isArray(keys)) keys = [];
+            const totalCount = keys.length;
+            const activeCount = keys.filter(k => k.status !== 'exhausted').length;
+            const exhaustedCount = totalCount - activeCount;
+            
+            if (countDisplay) {
+                countDisplay.textContent = `${activeCount}/${totalCount}`;
+            }
+            
+            if (!statusBadge) return;
+
+            if (totalCount === 0) {
+                statusBadge.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Tidak ada key global';
+                statusBadge.className = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
+            } else if (activeCount === 0) {
+                statusBadge.innerHTML = '<i class="fas fa-times-circle mr-1"></i>Semua Global Key Habis';
+                statusBadge.className = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
+            } else if (exhaustedCount > 0) {
+                statusBadge.innerHTML = `<i class="fas fa-exclamation-triangle mr-1"></i>${activeCount} Aktif, ${exhaustedCount} Habis`;
+                statusBadge.className = 'inline-block px-3 py-1 bg-orange-100 text-orange-700 text-xs font-bold rounded-full';
+            } else {
+                statusBadge.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Global Keys Siap';
+                statusBadge.className = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
+            }
+        }
+
+        async function handleAIGenerationError(result) {
+            const message = result?.error || 'Gagal memproses AI. Coba lagi.';
+            if (result?.exhaustedKeys?.length) {
+                const changed = markLocalTeacherKeysAsExhausted(result.exhaustedKeys);
+                if (changed) {
+                    await syncTeacherAPIKeysFromServer();
+                    renderTeacherAPIKeys();
+                }
+            }
+            updateApiKeysWarningBanner(message, 'warning');
+            
+            // Auto redirect to API Keys page if all keys exhausted
+            if (result?.redirectToApiKeys && currentSiswa && currentSiswa.role === 'teacher') {
+                console.log('[AI] Auto-redirecting to API Keys due to all keys exhausted');
+                if (typeof switchTeacherTab === 'function') {
+                    switchTeacherTab('api-keys');
+                }
+                // Show a clear toast notification
+                showToast('Semua API Key habis. Mohon tambahkan API Key baru. Halaman API Keys sudah dibuka untuk Anda.', 'error');
+                return; // Return early to prevent the second toast
+            }
+            
+            if (currentSiswa && currentSiswa.role === 'teacher' && typeof switchTeacherTab === 'function') {
+                switchTeacherTab('api-keys');
+            }
+            showToast(message, 'error');
+        }
+
+        function toggleNewKeyVisibility() {
+            const input = document.getElementById('new-api-key-input');
+            if (!input) return;
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+            } else {
+                input.type = 'password';
+            }
+        }
+
+        async function renderGlobalAPIKeys() {
+            const container = document.getElementById('global-api-keys-list');
+            if (!container) return;
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
+                const result = await response.json();
+
+                if (!result.ok || !Array.isArray(result.globalKeys)) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-slate-400">
+                            <i class="fas fa-exclamation-circle text-3xl mb-2 opacity-30"></i>
+                            <p class="text-sm">Tidak ada global API key yang dikonfigurasi</p>
+                        </div>
+                    `;
+                    updateGlobalApiKeysStats([]);
+                    return;
+                }
+
+                const keys = result.globalKeys;
+                if (keys.length === 0) {
+                    updateGlobalApiKeysStats([]);
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-slate-400">
+                            <i class="fas fa-exclamation-circle text-3xl mb-2 opacity-30"></i>
+                            <p class="text-sm">Tidak ada global API key yang dikonfigurasi</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                updateGlobalApiKeysStats(keys);
+                container.innerHTML = keys.map((entry) => {
+                    const fullKey = entry.key || '';
+                    const displayKey = fullKey.length > 14 ? fullKey.substring(0, 10) + '...' + fullKey.slice(-4) : fullKey;
+                    const providerIcon = entry.provider.includes('Gemini') ? 'fa-google' : 'fa-robot';
+                    let providerColor, statusLabel, statusBadgeClass;
+                    
+                    if (entry.provider.includes('Gemini')) {
+                        providerColor = 'blue';
+                    } else if (entry.provider.includes('OpenAI')) {
+                        providerColor = 'green';
+                    } else {
+                        providerColor = 'purple';
+                    }
+                    
+                    if (entry.status === 'exhausted') {
+                        statusLabel = '❌ KUOTA GLOBAL HABIS';
+                        statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border-2 border-red-300 mt-1';
+                    } else {
+                        statusLabel = '✅ Aktif (Global)';
+                        statusBadgeClass = 'inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border-2 border-green-300 mt-1';
+                    }
+                    
+                    const exhaustedDetail = entry.status === 'exhausted' ? `<p class="text-xs text-red-600 mt-2 font-bold">Kuota habis untuk key ini.</p>` : '';
+                    
+                    return `
+                        <div class="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all ${entry.status === 'exhausted' ? 'opacity-70' : ''}">
+                            <div class="flex items-center gap-3 flex-1">
+                                <div class="w-8 h-8 bg-${providerColor}-100 text-${providerColor}-600 rounded-lg flex items-center justify-center">
+                                    <i class="fas ${providerIcon} text-sm"></i>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-bold text-slate-700">${entry.provider}</p>
+                                    <p class="text-xs text-slate-400 font-mono">${displayKey}</p>
+                                    <span class="${statusBadgeClass}">${statusLabel}</span>
+                                    ${exhaustedDetail}
+                                    ${entry.quotaInfo ? `<p class="text-xs text-slate-500 mt-2"><i class="fas fa-info-circle mr-1"></i>${entry.quotaInfo}</p>` : ''}
+                                    ${entry.note && entry.note !== `Global key #${keys.indexOf(entry) + 1}` ? `<p class="text-xs text-amber-600 mt-1">📝 ${entry.note}</p>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Error loading global API keys:', err);
+                updateGlobalApiKeysStats([]);
+                container.innerHTML = `
+                    <div class="text-center py-8 text-red-400">
+                        <i class="fas fa-exclamation-triangle text-3xl mb-2 opacity-30"></i>
+                        <p class="text-sm">Gagal memuat global API key</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function toggleGlobalAPIKeysList() {
+            const list = document.getElementById('global-api-keys-list');
+            const icon = document.getElementById('global-api-keys-toggle-icon');
+            
+            if (!list || !icon) return;
+            
+            const isHidden = list.classList.contains('hidden');
+            
+            if (isHidden) {
+                list.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+                // Load the list if it's empty (first time opening)
+                if (list.children.length === 0 || list.querySelector('.fa-loader')) {
+                    renderGlobalAPIKeys();
+                }
+            } else {
+                list.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+        
+        // Make function globally accessible
+        window.toggleGlobalAPIKeysList = toggleGlobalAPIKeysList;
+        
+        async function loadGlobalAPIKeysStats() {
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
+                const result = await response.json();
+                
+                if (result.ok && Array.isArray(result.globalKeys)) {
+                    updateGlobalApiKeysStats(result.globalKeys);
+                } else {
+                    updateGlobalApiKeysStats([]);
+                }
+            } catch (err) {
+                console.error('Error loading global API keys stats:', err);
+                updateGlobalApiKeysStats([]);
+            }
+        }
+        
+        function toggleNewKeyVisibility() {
+            const input = document.getElementById('new-api-key-input');
+            if (!input) return;
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+            } else {
+                input.type = 'password';
+            }
+        }
+        
+        function addTeacherAPIKeyForm() {
+            const input = document.getElementById('new-api-key-input');
+            if (!input) {
+                showToast('Form tidak ditemukan', 'error');
+                return;
+            }
+            
+            const apiKey = input.value.trim();
+            if (!apiKey) {
+                showToast('Masukkan API Key terlebih dahulu', 'error');
+                return;
+            }
+            
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menambahkan API Key');
+                return;
+            }
+            
+            // Show loading state
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+            
+            // Send to server for auto-setup to Vercel
+            fetch(getApiBaseUrl() + '/api/teacher/add-api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId: currentSiswa.id,
+                    apiKey: apiKey
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.ok) {
+                    showToast(data.error || 'Gagal menambahkan API Key', 'error');
+                    return;
+                }
+                updateApiKeysWarningBanner('', '');
+                
+                // Update local state
+                if (!Array.isArray(currentSiswa.apiKeys)) {
+                    currentSiswa.apiKeys = [];
+                }
+
+                const trimmedKey = apiKey.trim();
+                const alreadyExists = currentSiswa.apiKeys.some(entry => {
+                    if (typeof entry === 'string') return entry.trim() === trimmedKey;
+                    if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
+                    return false;
+                });
+
+                if (!alreadyExists) {
+                    currentSiswa.apiKeys.push({
+                        key: trimmedKey,
+                        status: 'active',
+                        addedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        note: ''
+                    });
+                }
+
+                save();
+                input.value = '';
+                input.type = 'password';
+                renderTeacherAPIKeys();
+                
+                // Show success with Vercel status
+                const message = data.vercelStatus 
+                    ? `✅ API Key ditambahkan! ${data.vercelStatus}`
+                    : '✅ API Key berhasil ditambahkan!';
+                showToast(message, 'success');
+                
+            })
+            .catch(err => {
+                console.error('API Key Error:', err);
+                showToast('Terjadi kesalahan: ' + err.message, 'error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+        
+        function removeTeacherAPIKey(index) {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menghapus API Key');
+                return;
+            }
+            
+            if (!Array.isArray(currentSiswa.apiKeys) || index < 0 || index >= currentSiswa.apiKeys.length) {
+                alert('API Key tidak valid');
+                return;
+            }
+            
+            if (confirm('Hapus API Key ini?')) {
+                // Show loading
+                const oldRender = renderTeacherAPIKeys;
+                
+                // Call server endpoint
+                fetch(getApiBaseUrl() + '/api/teacher/remove-api-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teacherId: currentSiswa.id,
+                        keyIndex: index
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.ok) {
+                        showToast(data.error || 'Gagal menghapus API Key', 'error');
+                        return;
+                    }
+                    
+                    // Update local state
+                    currentSiswa.apiKeys.splice(index, 1);
+                    save();
+                    renderTeacherAPIKeys();
+                    showToast('API Key berhasil dihapus', 'success');
+                })
+                .catch(err => {
+                    console.error('Remove API Key Error:', err);
+                    showToast('Terjadi kesalahan', 'error');
+                });
+            }
+        }
+        // --- END RENDER API KEYS UI ---
+        
         function logout() {
             isExamActive = false;
             clearSession();
-            window.location.href = 'index.html';
+            // Show loading overlay
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+            // Delay redirect to show loading animation
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 500);
+        }
+
+        function reloadPage() {
+            // Show loading overlay
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+            // Delay reload to show loading animation
+            setTimeout(() => {
+                location.reload();
+            }, 500);
         }
 
         // --- IMPORT SISWA (NEW FEATURE) ---
@@ -1185,7 +2088,12 @@ function showLoginForm(type) {
             window.storedImages = [];
             document.getElementById('q-opts-container').innerHTML = '<input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi A"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi B"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi C"><input type="text" class="q-opt w-full p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Opsi D">';
             document.getElementById('q-tf-container').innerHTML = '<div class="tf-row flex items-center gap-2"><input type="text" class="tf-statement flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pernyataan"><select class="tf-correct p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Benar/Salah--</option><option value="true">Benar</option><option value="false">Salah</option></select><button type="button" onclick="removeTfRow(this)" class="text-red-500">&times;</button></div><button type="button" onclick="addTfRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pernyataan</button>';
-            document.getElementById('q-matching-container').innerHTML = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan (Kiri)</label><div id="q-matching-questions" class="space-y-2"><div class="matching-q-row flex items-center gap-2"><input type="text" class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pertanyaan 1"><button type="button" onclick="removeMatchingQRow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pertanyaan</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban (Kanan)</label><div id="q-matching-answers" class="space-y-2"><div class="matching-a-row flex items-center gap-2"><input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban 1"><button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah Jawaban</button></div></div>';
+            document.getElementById('q-matching-container').innerHTML = '<div class="grid grid-cols-3 gap-4"><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pertanyaan (Kiri)</label><div id="q-matching-questions" class="space-y-2"><div class="matching-q-row flex items-center gap-2"><input type="text" class="matching-question flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Pertanyaan 1"><button type="button" onclick="removeMatchingQRow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingQRow()" class="mt-2 text-sm text-sky-600">+ Tambah Pertanyaan</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Jawaban (Kanan)</label><div id="q-matching-answers" class="space-y-2"><div class="matching-a-row flex items-center gap-2"><input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban 1" oninput="updateMatchingCorrects()"><button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button></div></div><button type="button" onclick="addMatchingARow()" class="mt-2 text-sm text-sky-600">+ Tambah Jawaban</button></div><div><label class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block">Pasangan Benar</label><div id="q-matching-corrects" class="space-y-2"><div class="matching-c-row"><select class="matching-correct flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none"><option value="">--Pilih--</option></select></div></div></div></div>';
+            // Add 4 more rows to make 5 total
+            for (let i = 0; i < 4; i++) {
+                addMatchingQRow();
+                addMatchingARow();
+            }
             document.getElementById('save-question-btn').textContent = 'SIMPAN SOAL';
             window.isTeacherMode = true;
             editQuestionIndex = null;
@@ -1252,7 +2160,7 @@ function showLoginForm(type) {
             if (type === 'multiple') {
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
                 const corr = activeCorrectMultiple.slice();
-                if (corr.length < 2 || corr.length > 3) return alert('Pilih 2-3 jawaban benar untuk soal pilihan ganda kompleks!');
+                if (corr.length === 0) return alert('Pilih minimal satu jawaban benar!');
                 record.options = options;
                 record.correct = corr;
             } else if (type === 'text') {
@@ -1261,7 +2169,7 @@ function showLoginForm(type) {
                 record.correct = ans;
             } else if (type === 'tf') {
                 const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length === 0) return alert('Tambahkan minimal satu pernyataan!');
+                if (rows.length < 3) return alert('Tambahkan minimal 3 pernyataan!');
                 const stmts = [];
                 const corrs = [];
                 for (const r of rows) {
@@ -1276,13 +2184,15 @@ function showLoginForm(type) {
             } else if (type === 'matching') {
                 const qRows = Array.from(document.querySelectorAll('#q-matching-questions .matching-question'));
                 const aRows = Array.from(document.querySelectorAll('#q-matching-answers .matching-answer'));
+                const cRows = Array.from(document.querySelectorAll('#q-matching-corrects .matching-correct'));
                 const questions = qRows.map(inp => inp.value.trim()).filter(v => v);
                 const answers = aRows.map(inp => inp.value.trim()).filter(v => v);
-                if (questions.length === 0 || answers.length === 0) return alert('Tambahkan minimal satu pertanyaan dan satu jawaban!');
-                if (questions.length !== answers.length) return alert('Jumlah pertanyaan dan jawaban harus sama!');
+                const corrects = cRows.map(sel => sel.value.trim()).filter(v => v);
+                if (questions.length !== 5 || answers.length !== 5) return alert('Soal menjodohkan harus terdiri dari tepat 5 pertanyaan dan 5 jawaban!');
+                if (corrects.length !== 5 || corrects.some(c => !answers.includes(c))) return alert('Setiap pertanyaan harus memiliki pasangan jawaban yang valid!');
                 record.questions = questions;
                 record.answers = answers;
-                record.correct = answers.slice(); // correct is the answers in order				
+                record.correct = corrects; // correct is array of correct answers for each question				
             } else {
                 // single choice
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
@@ -1302,27 +2212,19 @@ function showLoginForm(type) {
             alert('Soal berhasil disimpan!');
         }
         function editTeacherQuestion(index) {
-            try {
-                if (index < 0 || index >= db.questions.length) {
-                    alert('Soal tidak ditemukan!');
-                    return;
-                }
-                window.isTeacherMode = true;
-                openEditQuestionModal(index);
-
-                // Override modal title and button text for teacher view
-                const titleEl = document.getElementById('question-modal-title');
-                const btnEl = document.getElementById('save-question-btn');
-                const rombelEl = document.getElementById('q-rombel');
-                if (titleEl) titleEl.textContent = 'Edit Soal';
-                if (btnEl) btnEl.textContent = 'PERBARUI SOAL';
-
-                // Disable rombel edit for teachers as it should remain consistent
-                if (rombelEl) rombelEl.disabled = true;
-            } catch (error) {
-                console.error('Error in editTeacherQuestion:', error);
-                alert('Terjadi kesalahan saat membuka edit soal: ' + error.message);
+            if (index < 0 || index >= db.questions.length) {
+                alert('Soal tidak ditemukan!');
+                return;
             }
+            window.isTeacherMode = true;
+            openEditQuestionModal(index);
+
+            // Override modal title and button text for teacher view
+            document.getElementById('question-modal-title').textContent = 'Edit Soal';
+            document.getElementById('save-question-btn').textContent = 'PERBARUI SOAL';
+
+            // Disable rombel edit for teachers as it should remain consistent
+            document.getElementById('q-rombel').disabled = true;
         }
 
         function viewQuestion(index) {
@@ -1333,21 +2235,10 @@ function showLoginForm(type) {
             const q = db.questions[index];
             let msg = `Soal: ${q.text}\n\nType: ${q.type}\nMapel: ${q.mapel}\nRombel: ${q.rombel}\n\n`;
             if (q.type === 'single' || q.type === 'multiple') {
-                msg += `Opsi: ${Array.isArray(q.options) ? q.options.join(', ') : ''}\n`;
-                if (Array.isArray(q.correct)) {
-                    msg += `Kunci: ${q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(', ')}`;
-                } else {
-                    msg += `Kunci: ${['A', 'B', 'C', 'D'][q.correct]}`;
-                }
+                msg += `Opsi: ${q.options.join(', ')}\n`;
+                msg += `Kunci: ${Array.isArray(q.correct) ? q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(',') : ['A', 'B', 'C', 'D'][q.correct]}`;
             } else if (q.type === 'tf') {
-                msg += Array.isArray(q.options) ? q.options.map((s, i) => `${s}: ${Array.isArray(q.correct) && q.correct[i] ? 'Benar' : 'Salah'}`).join('\n') : '';
-            } else if (q.type === 'matching') {
-                const questions = Array.isArray(q.questions) ? q.questions : [];
-                const answers = Array.isArray(q.answers) ? q.answers : [];
-                msg += 'Pasangan:\n';
-                questions.forEach((question, i) => {
-                    msg += `${question} ⇔ ${answers[i] || '-'}\n`;
-                });
+                msg += q.options.map((s, i) => `${s}: ${q.correct[i] ? 'Benar' : 'Salah'}`).join('\n');
             } else {
                 msg += `Kunci: ${q.correct}`;
             }
@@ -1380,6 +2271,16 @@ function showLoginForm(type) {
                 // begin polling server for new results if in teacher results tab
                 if (teacherResultsPollInterval) clearInterval(teacherResultsPollInterval);
                 teacherResultsPollInterval = setInterval(fetchAndMerge, 5000);
+            } else if (tab === 'api-keys') {
+                // Sync API keys from server before rendering for real-time status
+                syncTeacherAPIKeysFromServer().then(() => {
+                    renderTeacherAPIKeys();
+                });
+                renderGlobalAPIKeys();
+                if (teacherResultsPollInterval) {
+                    clearInterval(teacherResultsPollInterval);
+                    teacherResultsPollInterval = null;
+                }
             } else {
                 if (teacherResultsPollInterval) {
                     clearInterval(teacherResultsPollInterval);
@@ -1647,20 +2548,11 @@ function showLoginForm(type) {
                 const qSubject = q.mapel;
                 if (!qSubject) return false;
                 const qSubjectName = typeof qSubject === 'string' ? qSubject : qSubject.name || qSubject;
-                
-                const tSubjects = teacherSubjectNames(currentSiswa);
-                if (!tSubjects.includes(qSubjectName)) return false;
-                
+                if (!teacherSubjectNames(currentSiswa).includes(qSubjectName)) return false;
                 const allowed = teacherAllowedRombels(currentSiswa, qSubjectName);
-                
-                // Use robust comparison (trim and string conversion) to avoid mismatch
-                const qRombel = String(q.rombel || '').trim();
-                const isAllowed = allowed.some(a => String(a).trim() === qRombel);
-                
-                if (!isAllowed) return false;
+                if (!allowed.includes(q.rombel)) return false;
                 return true;
             });
-
 
             if (selectedSubject) {
                 list = list.filter(q => {
@@ -1711,13 +2603,13 @@ function showLoginForm(type) {
                         <div class="flex items-center justify-center gap-2">
                             <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">${actualIndex + 1}</span>
                             <div class="flex flex-col gap-1">
-                                <button type="button" onclick="moveQuestionUp(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                                <button type="button" onclick="moveQuestionDown(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
+                                <button onclick="moveQuestionUp(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                                <button onclick="moveQuestionDown(${actualIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${actualIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${actualIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
                             </div>
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
+                        <div class="line-clamp-2 break-words font-medium text-slate-800 text-sm leading-relaxed">${q.text}</div>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -1727,19 +2619,19 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <span style="word-wrap: break-word; white-space: pre-wrap; max-width: none; font-weight: bold; color: #0369a1; font-size: 0.875rem;">${corrText}</span>
+                        <span class="font-bold text-sky-600 text-sm break-words">${corrText}</span>
                     </td>
                     <td class="px-6 py-4">
                         <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold whitespace-nowrap">${typeName}</span>
                     </td>
                     <td class="px-6 py-4 text-center flex gap-1 justify-center">
-                        <button type="button" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" onclick="viewQuestion(${actualIndex})" title="Lihat">
+                        <button class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" onclick="viewQuestion(${actualIndex})" title="Lihat">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button type="button" class="p-2 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" onclick="editTeacherQuestion(${actualIndex})" title="Edit">
+                        <button class="p-2 text-amber-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" onclick="editTeacherQuestion(${actualIndex})" title="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button type="button" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" onclick="deleteQuestion(${actualIndex})" title="Hapus">
+                        <button class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" onclick="deleteQuestion(${actualIndex})" title="Hapus">
                             <i class="fas fa-trash"></i>
                         </button>
                     </td>
@@ -2127,11 +3019,20 @@ function showLoginForm(type) {
             `;
 
             container.appendChild(row);
+            addMatchingCRow();
         }
 
         function removeMatchingQRow(btn) {
             const row = btn.closest('.matching-q-row');
-            if (row) row.remove();
+            if (row) {
+                const index = Array.from(row.parentNode.children).indexOf(row);
+                row.remove();
+                // Remove corresponding correct row
+                const correctContainer = document.getElementById('q-matching-corrects');
+                if (correctContainer && correctContainer.children[index]) {
+                    correctContainer.children[index].remove();
+                }
+            }
         }
 
         function addMatchingARow() {
@@ -2141,16 +3042,51 @@ function showLoginForm(type) {
             const row = document.createElement('div');
             row.className = 'matching-a-row flex items-center gap-2';
             row.innerHTML = `
-                <input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban ${container.children.length + 1}">
+                <input type="text" class="matching-answer flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none" placeholder="Jawaban ${container.children.length + 1}" oninput="updateMatchingCorrects()">
                 <button type="button" onclick="removeMatchingARow(this)" class="text-red-500">&times;</button>
             `;
 
             container.appendChild(row);
+            updateMatchingCorrects();
         }
 
         function removeMatchingARow(btn) {
             const row = btn.closest('.matching-a-row');
             if (row) row.remove();
+            updateMatchingCorrects();
+        }
+
+        function addMatchingCRow() {
+            const container = document.getElementById('q-matching-corrects');
+            if (!container) return;
+
+            const row = document.createElement('div');
+            row.className = 'matching-c-row';
+            row.innerHTML = `
+                <select class="matching-correct flex-1 p-3 bg-slate-50 rounded-xl text-sm border-none">
+                    <option value="">--Pilih--</option>
+                </select>
+            `;
+
+            container.appendChild(row);
+            updateMatchingCorrects();
+        }
+
+        function removeMatchingCRow(btn) {
+            const row = btn.closest('.matching-c-row');
+            if (row) row.remove();
+        }
+
+        function updateMatchingCorrects() {
+            const answers = Array.from(document.querySelectorAll('.matching-answer')).map(inp => inp.value.trim()).filter(v => v);
+            const corrects = document.querySelectorAll('.matching-correct');
+            corrects.forEach(sel => {
+                const currentValue = sel.value;
+                sel.innerHTML = '<option value="">--Pilih--</option>' + answers.map(ans => `<option value="${ans}">${ans}</option>`).join('');
+                if (currentValue && answers.includes(currentValue)) {
+                    sel.value = currentValue;
+                }
+            });
         }
 
         function onQuestionTypeChange() {
@@ -2266,6 +3202,7 @@ function showLoginForm(type) {
                     if (typeof addTfRow === 'function') {
                         addTfRow();
                         addTfRow();
+                        addTfRow();
                     }
                 }
 
@@ -2353,34 +3290,44 @@ function showLoginForm(type) {
             document.getElementById('q-type').value = q.type || 'single';
             onQuestionTypeChange();
             if (q.type === 'tf') {
+                // clear existing rows then populate
                 const tfCont = document.getElementById('q-tf-container');
-                if (tfCont) {
-                    tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
-                    (q.options || []).forEach(() => addTfRow());
-                    document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
-                        const inp = row.querySelector('.tf-statement');
-                        const sel = row.querySelector('.tf-correct');
-                        if (inp) inp.value = q.options[i] || '';
-                        if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
-                    });
-                }
+                tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
+                (q.options || []).forEach((stmt, i) => {
+                    addTfRow();
+                });
+                // now fill values
+                document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
+                    const inp = row.querySelector('.tf-statement');
+                    const sel = row.querySelector('.tf-correct');
+                    if (inp) inp.value = q.options[i] || '';
+                    if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
+                });
             } else if (q.type === 'matching') {
+                // clear existing rows then populate
                 const qCont = document.getElementById('q-matching-questions');
                 const aCont = document.getElementById('q-matching-answers');
-                if (qCont && aCont) {
-                    qCont.innerHTML = '';
-                    aCont.innerHTML = '';
-                    const questions = Array.isArray(q.questions) && q.questions.length ? q.questions : [''];
-                    const answers = Array.isArray(q.answers) && q.answers.length ? q.answers : [''];
-                    questions.forEach(() => addMatchingQRow());
-                    answers.forEach(() => addMatchingARow());
-                    document.querySelectorAll('#q-matching-questions .matching-question').forEach((inp, i) => {
-                        if (inp) inp.value = questions[i] || '';
-                    });
-                    document.querySelectorAll('#q-matching-answers .matching-answer').forEach((inp, i) => {
-                        if (inp) inp.value = answers[i] || '';
-                    });
-                }
+                const cCont = document.getElementById('q-matching-corrects');
+                qCont.querySelectorAll('.matching-q-row').forEach(r => r.remove());
+                aCont.querySelectorAll('.matching-a-row').forEach(r => r.remove());
+                cCont.querySelectorAll('.matching-c-row').forEach(r => r.remove());
+                (q.questions || []).forEach((quest, i) => {
+                    addMatchingQRow();
+                });
+                (q.answers || []).forEach((ans, i) => {
+                    addMatchingARow();
+                });
+                // fill values
+                document.querySelectorAll('#q-matching-questions .matching-question').forEach((inp, i) => {
+                    if (inp) inp.value = q.questions[i] || '';
+                });
+                document.querySelectorAll('#q-matching-answers .matching-answer').forEach((inp, i) => {
+                    if (inp) inp.value = q.answers[i] || '';
+                });
+                updateMatchingCorrects();
+                document.querySelectorAll('#q-matching-corrects .matching-correct').forEach((sel, i) => {
+                    if (sel && q.correct && Array.isArray(q.correct)) sel.value = q.correct[i] || '';
+                });
             } else {
                 const opts = document.querySelectorAll('.q-opt');
                 (q.options || []).forEach((opt, i) => { if (opts[i]) opts[i].value = opt; });
@@ -2534,11 +3481,6 @@ function showLoginForm(type) {
                 if (answerTextContainer) answerTextContainer.classList.remove('hidden');
             } else if (type === 'tf') {
                 if (tfContainer) tfContainer.classList.remove('hidden');
-                // Ensure at least 3 statements for TF questions
-                const existingRows = tfContainer.querySelectorAll('.tf-row').length;
-                for (let i = existingRows; i < 3; i++) {
-                    addTfRow();
-                }
             } else if (type === 'matching') {
                 if (matchingContainer) matchingContainer.classList.remove('hidden');
                 if (qText) qText.classList.add('hidden');
@@ -2564,7 +3506,7 @@ function showLoginForm(type) {
             if (type === 'multiple') {
                 if (options.some(o => !o)) return alert("Lengkapi semua pilihan!");
                 const corr = activeCorrectMultiple.slice();
-                if (corr.length < 2 || corr.length > 3) return alert('Pilih 2-3 jawaban benar untuk soal pilihan ganda kompleks!');
+                if (corr.length === 0) return alert('Pilih minimal satu jawaban benar!');
                 record.options = options;
                 record.correct = corr;
             } else if (type === 'text') {
@@ -2573,7 +3515,7 @@ function showLoginForm(type) {
                 record.correct = ans;
             } else if (type === 'tf') {
                 const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length < 3) return alert('Soal Benar/Salah harus memiliki minimal 3 pernyataan!');
+                if (rows.length < 3) return alert('Tambahkan minimal 3 pernyataan!');
                 const stmts = [];
                 const corrs = [];
                 for (const r of rows) {
@@ -2615,11 +3557,20 @@ function showLoginForm(type) {
         }
 
         function renderAdminQuestions() {
-            const fR = document.getElementById('filter-rombel').value;
-            const fM = document.getElementById('filter-mapel').value;
-            const searchTerm = document.getElementById('search-questions').value.toLowerCase();
+            const filterRombel = document.getElementById('filter-rombel');
+            const filterMapel = document.getElementById('filter-mapel');
+            const searchQuestions = document.getElementById('search-questions');
             const tbody = document.getElementById('questions-table-body');
             const selectAllCheckbox = document.getElementById('admin-select-all-checkbox');
+
+            if (!filterRombel || !filterMapel || !searchQuestions || !tbody) {
+                console.warn('renderAdminQuestions: Required DOM elements not found, skipping render');
+                return;
+            }
+
+            const fR = filterRombel.value;
+            const fM = filterMapel.value;
+            const searchTerm = searchQuestions.value.toLowerCase();
 
             let filtered = db.questions.filter(q => (fR === 'ALL' || q.rombel === fR) && (fM === 'ALL' || q.mapel === fM));
 
@@ -2629,10 +3580,15 @@ function showLoginForm(type) {
             }
 
             // Update statistics
-            document.getElementById('total-questions').textContent = db.questions.length;
-            document.getElementById('filtered-questions').textContent = filtered.length;
-            document.getElementById('total-count').textContent = db.questions.length;
-            document.getElementById('filtered-count').textContent = filtered.length;
+            const totalQuestionsEl = document.getElementById('total-questions');
+            const filteredQuestionsEl = document.getElementById('filtered-questions');
+            const totalCountEl = document.getElementById('total-count');
+            const filteredCountEl = document.getElementById('filtered-count');
+
+            if (totalQuestionsEl) totalQuestionsEl.textContent = db.questions.length;
+            if (filteredQuestionsEl) filteredQuestionsEl.textContent = filtered.length;
+            if (totalCountEl) totalCountEl.textContent = db.questions.length;
+            if (filteredCountEl) filteredCountEl.textContent = filtered.length;
 
             const allSelected = filtered.length > 0 && filtered.every(q => selectedAdminQuestions.has(q));
             if (selectAllCheckbox) selectAllCheckbox.checked = allSelected;
@@ -2667,14 +3623,14 @@ function showLoginForm(type) {
                             <div class="flex flex-col gap-1 items-center">
                                 <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">${originalIndex + 1}</span>
                                 <div class="flex gap-1">
-                                    <button type="button" onclick="moveQuestionUp(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                                    <button type="button" onclick="moveQuestionDown(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
+                                    <button onclick="moveQuestionUp(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                                    <button onclick="moveQuestionDown(${originalIndex})" class="text-slate-400 hover:text-slate-600 text-xs p-1 rounded hover:bg-slate-100 transition-colors ${originalIndex === db.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${originalIndex === db.questions.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
                                 </div>
                             </div>
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
+                        <p class="font-medium text-slate-800 text-sm leading-relaxed line-clamp-2 break-words">${q.text}</p>
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -2684,15 +3640,15 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <span style="word-wrap: break-word; white-space: pre-wrap; max-width: none; font-weight: bold; color: #0369a1; font-size: 0.875rem;">${corrText}</span>
+                        <span class="font-bold text-sky-600 text-sm break-words">${corrText}</span>
                     </td>
                     <td class="px-6 py-4">
                         <span class="inline-flex items-center justify-center px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold whitespace-nowrap">${typeName}</span>
                     </td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex items-center justify-center gap-1">
-                            <button type="button" onclick="openEditQuestionModal(${originalIndex})" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Edit"><i class="fas fa-edit"></i></button>
-                            <button type="button" onclick="deleteQuestion(${originalIndex})" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><i class="fas fa-trash"></i></button>
+                            <button onclick="openEditQuestionModal(${originalIndex})" class="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button onclick="deleteQuestion(${originalIndex})" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><i class="fas fa-trash"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -2719,8 +3675,8 @@ function showLoginForm(type) {
                 db.questions.splice(idx, 1);
                 save();
                 if (window.isTeacherMode || (currentSiswa && currentSiswa.role === 'teacher')) {
-                    if (typeof renderTeacherQuestions === 'function') renderTeacherQuestions();
-                } else if (typeof renderAdminQuestions === 'function') {
+                    renderTeacherQuestions();
+                } else {
                     renderAdminQuestions();
                 }
             }
@@ -3242,17 +4198,17 @@ function showLoginForm(type) {
                     // remove the key line entirely from content
                     let content = block.replace(/kunci\s*[:\-]?\s*.+/i, '').trim();
 
-                    // split question text and options by detecting letters A.–D. preceded by space or newline
-                    const parts = content.split(/[\s\n]+(?=[A-D][\.\)\:\-\s]\s*)/i);
+                    // split question text and options by detecting letters A.–D.
+                    const parts = content.split(/(?=[A-D]\.\s*)/i);
                     const qText = parts[0].replace(/^[0-9]+\.\s*/, '').trim();
                     const opts = [];
                     for (let i = 1; i < parts.length; i++) {
-                        opts.push(parts[i].replace(/^[A-D][\.\)\:\-\s]\s*/i, '').trim());
+                        opts.push(parts[i].replace(/^[A-D]\.\s*/i, '').trim());
                     }
 
                     // fallback: try splitting by " A. " if not enough opts
                     if (opts.length < 2) {
-                        const alt = content.split(/\s+(?=[A-D][\.\)\:\-\s])/i).slice(1);
+                        const alt = content.split(/\s+[A-D]\.\s+/i).slice(1);
                         if (alt.length >= 2) {
                             opts.length = 0;
                             alt.forEach(a => opts.push(a.trim()));
@@ -3311,7 +4267,7 @@ function showLoginForm(type) {
                         db = parsed;
                         save();
                         alert('Restore berhasil. Halaman akan dimuat ulang.');
-                        location.reload();
+                        reloadPage();
                     } else {
                         alert('Format file tidak valid.');
                     }
@@ -3752,7 +4708,7 @@ function showLoginForm(type) {
                         <span class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center text-sm font-bold">${i + 1}</span>
                         <h4 class="font-bold text-slate-800 text-lg">Soal</h4>
                     </div>
-                    <div class="text-slate-800 mb-4 leading-relaxed">${q.text}</div>
+                    <div class="text-slate-800 mb-4 leading-relaxed">${parseMarkdown(q.text)}</div>
                     <p class="text-xs text-slate-500 mb-2"><strong>Jenis:</strong> ${qType === 'single' ? 'Pilihan ganda' : qType === 'multiple' ? 'Pilihan ganda (Kompleks)' : qType === 'text' ? 'Esai' : qType === 'tf' ? 'Benar / Salah' : escapeHtml(qType)}</p>`;
 
                 if (q.images && Array.isArray(q.images) && q.images.length > 0) {
@@ -3805,7 +4761,7 @@ function showLoginForm(type) {
                             icon = '';
                         }
 
-                        content += `<div class="${className}">${icon}<span class="font-bold">${String.fromCharCode(65 + optIdx)}.</span> ${opt}</div>`;
+                        content += `<div class="${className}">${icon}<span class="font-bold">${String.fromCharCode(65 + optIdx)}.</span> ${parseMarkdown(opt)}</div>`;
                     });
                     content += '</div>';
                 } else if (qType === 'text') {
@@ -3844,7 +4800,7 @@ function showLoginForm(type) {
                         content += `<div class="${className}">
                             ${icon}
                             <div class="flex justify-between items-start">
-                                <span class="flex-1">${opt}</span>
+                                <span class="flex-1">${parseMarkdown(opt)}</span>
                                 <div class="text-right ml-4">
                                     <div class="text-xs text-slate-500 mb-1">Siswa: <span class="font-bold">${studentText}</span></div>
                                     <div class="text-xs text-slate-500">Kunci: <span class="font-bold">${correctText}</span></div>
@@ -4258,7 +5214,7 @@ function showLoginForm(type) {
             const q = examData.questions[idx];
             document.getElementById('curr-q-num').innerText = idx + 1;
             document.getElementById('total-q-num').innerText = examData.questions.length;
-            document.getElementById('exam-q-text').innerHTML = q.text;
+            document.getElementById('exam-q-text').innerHTML = parseMarkdown(q.text);
             // refresh progress display (including type)
             updateProgress();
 
@@ -4300,7 +5256,7 @@ function showLoginForm(type) {
                         <input type="checkbox" class="mr-3 w-5 h-5"
                             onchange="toggleAnswer(${i})" ${checked} />
                         <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
-                        <span class="flex-1 text-sm md:text-base">${opt}</span>
+                        <span class="flex-1 text-sm md:text-base">${parseMarkdown(opt)}</span>
                     </label>`;
                 }).join('');
             } else if (q.type === 'text') {
@@ -4314,7 +5270,7 @@ function showLoginForm(type) {
                     const val = ansArr[j];
                     return `
                     <div class="flex items-center w-full p-4 md:p-5 rounded-2xl border-2 transition-all ${val === true ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : ''}">
-                        <span class="flex-1 text-sm md:text-base">${stmt}</span>
+                        <span class="flex-1 text-sm md:text-base">${parseMarkdown(stmt)}</span>
                         <div class="flex gap-2">
                             <button onclick="setAnswerTF(${j}, true)" class="px-3 py-1 rounded ${val === true ? 'bg-sky-600 text-white' : 'bg-slate-100'}">Benar</button>
                             <button onclick="setAnswerTF(${j}, false)" class="px-3 py-1 rounded ${val === false ? 'bg-sky-600 text-white' : 'bg-slate-100'}">Salah</button>
@@ -4348,7 +5304,7 @@ function showLoginForm(type) {
                                 ${shuffledAnswers.map((ans, ai) => `
                                     <div class="matching-legend-item">
                                         <span class="matching-legend-label">${String.fromCharCode(65 + ai)}.</span>
-                                        <span>${ans}</span>
+                                        <span>${parseMarkdown(ans)}</span>
                                     </div>
                                 `).join('')}
                             </div>
@@ -4366,7 +5322,7 @@ function showLoginForm(type) {
                                 <div class="matching-item-card ${selected[origQi] != null ? 'answered' : ''}">
                                     <div class="flex items-center gap-3 flex-1">
                                         <div class="w-7 h-7 bg-slate-100 text-slate-600 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0">${displayIdx + 1}</div>
-                                        <div class="matching-question-text">${quest}</div>
+                                        <div class="matching-question-text">${parseMarkdown(quest)}</div>
                                     </div>
                                     <div class="w-full sm:w-64 md:w-80 flex-shrink-0">
                                         <select onchange="setMatchingAnswer(${origQi}, this.value)" class="matching-select">
@@ -4389,7 +5345,7 @@ function showLoginForm(type) {
                 optionHtml = q.options.map((opt, i) => `
                     <button onclick="setAnswer(${i})" class="w-full p-4 md:p-5 text-left rounded-2xl border-2 transition-all ${examData.answers[idx] === i ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : 'border-slate-50 hover:bg-slate-50 text-slate-600'}">
                         <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
-                        <span class="text-sm md:text-base">${opt}</span>
+                        <span class="text-sm md:text-base">${parseMarkdown(opt)}</span>
                     </button>
                 `).join('');
             }
@@ -4698,6 +5654,8 @@ function showLoginForm(type) {
             // This matches the requirement: "skor 1 soal dibagi pernyataan
             // yang dijawab dengan benar" (and similarly for multiple choice).
             // The debug logs below print the intermediate counts.
+            // Jika ada soal menjodohkan, beri bobot lebih tinggi untuk nilai menjodohkan
+            let hasMatching = examData.questions.some(q => q.type === 'matching');
             // count answers at the granularity of TF statements
             let totalItems = 0;
             examData.questions.forEach((q, i) => {
@@ -4736,11 +5694,12 @@ function showLoginForm(type) {
 
                     // SAFETY: Ensure both prompt questions and correct answers exist
                     if (Array.isArray(q.questions) && Array.isArray(q.correct)) {
+                        const weight = hasMatching ? 2 : 1; // Jika ada soal menjodohkan, beri bobot 2 untuk nilai lebih tinggi
                         q.questions.forEach((_, qi) => {
-                            totalItems++;
+                            totalItems += weight;
                             const selectedIdx = ansArr[qi];
                             if (selectedIdx != null && shuffled[selectedIdx] === q.correct[qi]) {
-                                correctCount++;
+                                correctCount += weight;
                             }
                         });
                     } else {
@@ -4937,6 +5896,7 @@ function showLoginForm(type) {
 
             const mapelSel = document.getElementById('ai-mapel');
             const rombelSel = document.getElementById('ai-rombel');
+            const opsiGambar = document.getElementById('ai-opsi-gambar');
 
             if (mapelSel && db.subjects) {
                 mapelSel.innerHTML = db.subjects.map(s => {
@@ -4947,9 +5907,12 @@ function showLoginForm(type) {
             if (rombelSel && db.rombels) {
                 rombelSel.innerHTML = db.rombels.map(r => `<option value="${r}">${r}</option>`).join('');
             }
+            if (opsiGambar) opsiGambar.value = 'none';
 
             const targetSelectors = document.getElementById('ai-target-selectors');
             if (targetSelectors) targetSelectors.classList.remove('hidden');
+            const aiHint = document.getElementById('ai-open-hint');
+            if (aiHint) aiHint.classList.remove('hidden');
             calculateAiHots();
         }
 
@@ -4974,6 +5937,8 @@ function showLoginForm(type) {
                     updateTeacherAiRombel();
                 }
             }
+            const aiHint = document.getElementById('ai-open-hint');
+            if (aiHint) aiHint.classList.remove('hidden');
         }
 
         function handleAiBlueprintChange(input) {
@@ -5022,6 +5987,15 @@ function showLoginForm(type) {
         }
 
         function calculateAiHots() {
+            const jodohInput = document.getElementById('ai-jml-jodoh');
+            if (jodohInput) {
+                const jodohValue = Number(jodohInput.value) || 0;
+                if (jodohValue > 2) {
+                    alert('1 Soal Menjodohkan sudah memuat 5 (pertanyaan dan jawaban). Anda hanya diperbolehkan mengisi maksimal 2 Soal.');
+                    jodohInput.value = '2';
+                }
+            }
+
             const typeCounts = getAiTypeCounts();
             const total = Object.values(typeCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
             const totalDisplay = document.getElementById('ai-total-display');
@@ -5040,14 +6014,20 @@ function showLoginForm(type) {
         }
 
         async function generateQuestionsWithAi() {
+            const typeCounts = getAiTypeCounts();
+            if (typeCounts.matching > 2) {
+                alert('1 Soal Menjodohkan sudah memuat 5 (pertanyaan dan jawaban). Anda hanya diperbolehkan mengisi maksimal 2 Soal.');
+                return;
+            }
+
             const materi = document.getElementById('ai-materi')?.value.trim();
             const mapel = document.getElementById('ai-mapel')?.value;
             const rombel = document.getElementById('ai-rombel')?.value;
+            const opsiGambar = document.getElementById('ai-opsi-gambar')?.value || 'none';
             const file = document.getElementById('ai-blueprint-file')?.files[0];
             const oldJumlah = document.getElementById('ai-jumlah');
             const oldType = document.getElementById('ai-type');
 
-            const typeCounts = getAiTypeCounts();
             let jumlah = Object.values(typeCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
             let tipe = 'single';
 
@@ -5084,15 +6064,58 @@ function showLoginForm(type) {
             }
 
             try {
+                const headers = { 'Content-Type': 'application/json' };
+                
+                // Add teacher info to headers for API key pooling
+                if (currentSiswa && currentSiswa.role === 'teacher') {
+                    headers['X-Teacher-ID'] = currentSiswa.id;
+                    headers['X-Teacher-Name'] = currentSiswa.name;
+                }
+                
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts })
+                    headers: headers,
+                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar })
                 });
 
-                const result = await response.json();
+                const rawResponse = await response.text();
+                let result;
+
+                try {
+                    result = rawResponse ? JSON.parse(rawResponse) : {};
+                } catch (parseErr) {
+                    throw new Error(`AI backend returned non-JSON (${response.status}): ${rawResponse.substring(0, 300)}`);
+                }
+
+                if (!response.ok) {
+                    // Check if this is a special error response that needs API Keys (even if response status is 500)
+                    if (result.redirectToApiKeys || result.allKeysExhausted || result.needsApiKeys || 
+                        isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
+                        // Handle as special API Keys error
+                        await handleAIGenerationError(result);
+                        return;
+                    }
+                    // Otherwise, throw the error
+                    throw new Error(`AI backend error ${response.status}: ${result.error || rawResponse.substring(0, 300)}`);
+                }
 
                 if (result.ok) {
+                    if (result?.exhaustedKeys?.length) {
+                        const changed = markLocalTeacherKeysAsExhausted(result.exhaustedKeys);
+                        if (changed) {
+                            // Sync with server to ensure consistency
+                            Promise.all([
+                                syncTeacherAPIKeysFromServer(),
+                                syncGlobalAPIKeysFromServer()
+                            ]).then(() => {
+                                renderTeacherAPIKeys();
+                            });
+                        }
+                    } else {
+                        // Even if no keys exhausted, sync global keys to check their status
+                        syncGlobalAPIKeysFromServer();
+                    }
+
                     const newQuestions = result.questions.map(q => ({
                         ...q,
                         id: Date.now() + Math.random().toString(36).substr(2, 4),
@@ -5108,7 +6131,11 @@ function showLoginForm(type) {
                     if (typeof renderAdminQuestions === 'function') renderAdminQuestions();
                     if (typeof renderTeacherQuestions === 'function') renderTeacherQuestions();
                 } else {
-                    alert('Error AI: ' + (result.error || 'Gagal generate soal'));
+                    if (isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
+                        await handleAIGenerationError(result);
+                    } else {
+                        alert('Error AI: ' + (result.error || 'Gagal generate soal'));
+                    }
                 }
             } catch (err) {
                 console.error('AI Generation Error:', err);
@@ -5358,9 +6385,17 @@ function showLoginForm(type) {
             loading.classList.add('flex');
 
             try {
+                const headers = { 'Content-Type': 'application/json' };
+                
+                // Add teacher info to headers for API key pooling
+                if (currentSiswa && currentSiswa.role === 'teacher') {
+                    headers['X-Teacher-ID'] = currentSiswa.id;
+                    headers['X-Teacher-Name'] = currentSiswa.name;
+                }
+                
                 const response = await fetch(getApiBaseUrl() + '/api/generate-kisi-kisi', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({ questions, mapel, rombel })
                 });
 
@@ -5372,7 +6407,11 @@ function showLoginForm(type) {
                     document.getElementById('kisi-kisi-result').classList.remove('hidden');
                     document.getElementById('kk-count').innerText = questions.length;
                 } else {
-                    alert('Error AI: ' + (result.error || 'Gagal generate kisi-kisi'));
+                    if (isAIGenerationRequiresApiKey(result) || isAIGenerationQuotaError(result)) {
+                        await handleAIGenerationError(result);
+                    } else {
+                        alert('Error AI: ' + (result.error || 'Gagal generate kisi-kisi'));
+                    }
                 }
             } catch (err) {
                 console.error('Kisi-kisi Generation Error:', err);
@@ -5544,72 +6583,18 @@ function showLoginForm(type) {
             document.body.appendChild(warning);
         }
 
-        // Toggle dropdown functions
-        function toggleImportDropdown() {
-            const dropdown = document.getElementById('import-dropdown');
-            if (dropdown) dropdown.classList.toggle('hidden');
-            // Hide export dropdown if open
-            const exportDropdown = document.getElementById('export-dropdown');
-            if (exportDropdown) exportDropdown.classList.add('hidden');
-        }
-
-        function toggleExportDropdown() {
-            const dropdown = document.getElementById('export-dropdown');
-            if (dropdown) dropdown.classList.toggle('hidden');
-            // Hide import dropdown if open
-            const importDropdown = document.getElementById('import-dropdown');
-            if (importDropdown) importDropdown.classList.add('hidden');
-        }
-
         // --- INIT ---
         window.addEventListener('load', async () => {
-            // Fallback: Hide loading overlay after 3 seconds regardless
-            setTimeout(() => {
-                const overlay = document.getElementById('loading-overlay');
-                if (overlay && !overlay.classList.contains('hidden')) {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                }
-            }, 3000);
+            await init();
+            console.log('App initialized, db has', db.students.length, 'students');
+            const typeSel = document.getElementById('q-type');
+            if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
 
-            try {
-                await init();
-                console.log('App initialized, db has', db.students.length, 'students');
-                const typeSel = document.getElementById('q-type');
-                if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
-
-                // Close import/export dropdowns when clicking outside their controls
-                document.addEventListener('click', (e) => {
-                    const importDropdown = document.getElementById('import-dropdown');
-                    const exportDropdown = document.getElementById('export-dropdown');
-                    
-                    if (!importDropdown || !exportDropdown) return;
-
-                    const clickedImportToggle = e.target.closest('[onclick="toggleImportDropdown()"]');
-                    const clickedExportToggle = e.target.closest('[onclick="toggleExportDropdown()"]');
-                    const clickedImportDropdown = e.target.closest('#import-dropdown');
-                    const clickedExportDropdown = e.target.closest('#export-dropdown');
-
-                    if (!clickedImportToggle && !clickedExportToggle && !clickedImportDropdown && !clickedExportDropdown) {
-                        importDropdown.classList.add('hidden');
-                        exportDropdown.classList.add('hidden');
-                    }
-                });
-
-                // Hide loading overlay after initialization
-                const overlay = document.getElementById('loading-overlay');
-                if (overlay) {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                }
-            } catch (error) {
-                console.error('Initialization error:', error);
-                // Hide loading overlay even if init fails
-                const overlay = document.getElementById('loading-overlay');
-                if (overlay) {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                }
+            // Hide loading overlay after initialization
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
             }
 
             // Add keyboard support for zoom modal
