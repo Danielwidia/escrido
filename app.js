@@ -569,6 +569,9 @@ function showLoginForm(type) {
                     if (teacherDash) teacherDash.classList.remove('hidden');
                     const tcLabel = document.getElementById('teacher-info-label');
                     if (tcLabel) tcLabel.innerText = `${currentSiswa.name} | Guru ${formatTeacherSubjects(currentSiswa)}`;
+                    // Clear search input on initial load
+                    const searchInput = document.getElementById('teacher-search-questions');
+                    if (searchInput) searchInput.value = '';
                     if (typeof renderTeacherQuestions === 'function' && teacherDash) renderTeacherQuestions();
                 }
                 migrateTeacherData();
@@ -1386,6 +1389,9 @@ function showLoginForm(type) {
                     teacherResultsPollInterval = null;
                 }
                 if (tab === 'bank-soal') {
+                    // Clear search input to prevent browser autocomplete from persisting values
+                    const searchInput = document.getElementById('teacher-search-questions');
+                    if (searchInput) searchInput.value = '';
                     renderTeacherQuestions();
                 }
             }
