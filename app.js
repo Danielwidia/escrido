@@ -1297,19 +1297,27 @@ function showLoginForm(type) {
             alert('Soal berhasil disimpan!');
         }
         function editTeacherQuestion(index) {
-            if (index < 0 || index >= db.questions.length) {
-                alert('Soal tidak ditemukan!');
-                return;
+            try {
+                if (index < 0 || index >= db.questions.length) {
+                    alert('Soal tidak ditemukan!');
+                    return;
+                }
+                window.isTeacherMode = true;
+                openEditQuestionModal(index);
+
+                // Override modal title and button text for teacher view
+                const titleEl = document.getElementById('question-modal-title');
+                const btnEl = document.getElementById('save-question-btn');
+                const rombelEl = document.getElementById('q-rombel');
+                if (titleEl) titleEl.textContent = 'Edit Soal';
+                if (btnEl) btnEl.textContent = 'PERBARUI SOAL';
+
+                // Disable rombel edit for teachers as it should remain consistent
+                if (rombelEl) rombelEl.disabled = true;
+            } catch (error) {
+                console.error('Error in editTeacherQuestion:', error);
+                alert('Terjadi kesalahan saat membuka edit soal: ' + error.message);
             }
-            window.isTeacherMode = true;
-            openEditQuestionModal(index);
-
-            // Override modal title and button text for teacher view
-            document.getElementById('question-modal-title').textContent = 'Edit Soal';
-            document.getElementById('save-question-btn').textContent = 'PERBARUI SOAL';
-
-            // Disable rombel edit for teachers as it should remain consistent
-            document.getElementById('q-rombel').disabled = true;
         }
 
         function viewQuestion(index) {
@@ -1320,10 +1328,21 @@ function showLoginForm(type) {
             const q = db.questions[index];
             let msg = `Soal: ${q.text}\n\nType: ${q.type}\nMapel: ${q.mapel}\nRombel: ${q.rombel}\n\n`;
             if (q.type === 'single' || q.type === 'multiple') {
-                msg += `Opsi: ${q.options.join(', ')}\n`;
-                msg += `Kunci: ${Array.isArray(q.correct) ? q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(',') : ['A', 'B', 'C', 'D'][q.correct]}`;
+                msg += `Opsi: ${Array.isArray(q.options) ? q.options.join(', ') : ''}\n`;
+                if (Array.isArray(q.correct)) {
+                    msg += `Kunci: ${q.correct.map(i => ['A', 'B', 'C', 'D'][i]).join(', ')}`;
+                } else {
+                    msg += `Kunci: ${['A', 'B', 'C', 'D'][q.correct]}`;
+                }
             } else if (q.type === 'tf') {
-                msg += q.options.map((s, i) => `${s}: ${q.correct[i] ? 'Benar' : 'Salah'}`).join('\n');
+                msg += Array.isArray(q.options) ? q.options.map((s, i) => `${s}: ${Array.isArray(q.correct) && q.correct[i] ? 'Benar' : 'Salah'}`).join('\n') : '';
+            } else if (q.type === 'matching') {
+                const questions = Array.isArray(q.questions) ? q.questions : [];
+                const answers = Array.isArray(q.answers) ? q.answers : [];
+                msg += 'Pasangan:\n';
+                questions.forEach((question, i) => {
+                    msg += `${question} ⇔ ${answers[i] || '-'}\n`;
+                });
             } else {
                 msg += `Kunci: ${q.correct}`;
             }
@@ -2320,19 +2339,34 @@ function showLoginForm(type) {
             document.getElementById('q-type').value = q.type || 'single';
             onQuestionTypeChange();
             if (q.type === 'tf') {
-                // clear existing rows then populate
                 const tfCont = document.getElementById('q-tf-container');
-                tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
-                (q.options || []).forEach((stmt, i) => {
-                    addTfRow();
-                });
-                // now fill values
-                document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
-                    const inp = row.querySelector('.tf-statement');
-                    const sel = row.querySelector('.tf-correct');
-                    if (inp) inp.value = q.options[i] || '';
-                    if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
-                });
+                if (tfCont) {
+                    tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
+                    (q.options || []).forEach(() => addTfRow());
+                    document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
+                        const inp = row.querySelector('.tf-statement');
+                        const sel = row.querySelector('.tf-correct');
+                        if (inp) inp.value = q.options[i] || '';
+                        if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
+                    });
+                }
+            } else if (q.type === 'matching') {
+                const qCont = document.getElementById('q-matching-questions');
+                const aCont = document.getElementById('q-matching-answers');
+                if (qCont && aCont) {
+                    qCont.innerHTML = '';
+                    aCont.innerHTML = '';
+                    const questions = Array.isArray(q.questions) && q.questions.length ? q.questions : [''];
+                    const answers = Array.isArray(q.answers) && q.answers.length ? q.answers : [''];
+                    questions.forEach(() => addMatchingQRow());
+                    answers.forEach(() => addMatchingARow());
+                    document.querySelectorAll('#q-matching-questions .matching-question').forEach((inp, i) => {
+                        if (inp) inp.value = questions[i] || '';
+                    });
+                    document.querySelectorAll('#q-matching-answers .matching-answer').forEach((inp, i) => {
+                        if (inp) inp.value = answers[i] || '';
+                    });
+                }
             } else {
                 const opts = document.querySelectorAll('.q-opt');
                 (q.options || []).forEach((opt, i) => { if (opts[i]) opts[i].value = opt; });
@@ -2671,8 +2705,8 @@ function showLoginForm(type) {
                 db.questions.splice(idx, 1);
                 save();
                 if (window.isTeacherMode || (currentSiswa && currentSiswa.role === 'teacher')) {
-                    renderTeacherQuestions();
-                } else {
+                    if (typeof renderTeacherQuestions === 'function') renderTeacherQuestions();
+                } else if (typeof renderAdminQuestions === 'function') {
                     renderAdminQuestions();
                 }
             }
