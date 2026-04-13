@@ -5718,8 +5718,68 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
                 const result = await response.json();
                 console.log('Global API keys loaded:', result);
+                if (result.ok && result.globalKeys && result.globalKeys.length > 0) {
+                    updateGlobalApiKeysStats(result.globalKeys);
+                }
             } catch (err) {
                 console.error('Error loading global API keys:', err);
+            }
+        }
+
+        function toggleGlobalAPIKeysList() {
+            const list = document.getElementById('global-api-keys-list');
+            const icon = document.getElementById('global-api-keys-toggle-icon');
+            
+            if (!list || !icon) return;
+            
+            const isHidden = list.classList.contains('hidden');
+            
+            if (isHidden) {
+                list.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+                // Load the list if it's empty (first time opening)
+                if (list.children.length === 0 || list.querySelector('.fa-loader')) {
+                    renderGlobalAPIKeys();
+                }
+            } else {
+                list.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Make function globally accessible
+        window.toggleGlobalAPIKeysList = toggleGlobalAPIKeysList;
+
+        function updateApiKeysQuotaNote() {
+            const note = document.getElementById('api-keys-quota-note');
+            if (!note) return;
+            // Minimal implementation - updates quota note display
+            note.textContent = 'Sisa kuota tidak dapat ditentukan secara pasti oleh Google Gemini.';
+        }
+
+        function updateGlobalApiKeysStats(keys = []) {
+            const countDisplay = document.getElementById('global-api-keys-count');
+            const statusBadge = document.getElementById('global-api-keys-status-badge');
+            
+            if (!Array.isArray(keys)) keys = [];
+            const totalCount = keys.length;
+            const activeCount = keys.filter(k => k.status !== 'exhausted').length;
+            
+            if (countDisplay) {
+                countDisplay.textContent = `${activeCount}/${totalCount}`;
+            }
+            
+            if (!statusBadge) return;
+
+            if (totalCount === 0) {
+                statusBadge.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Tidak ada key global';
+                statusBadge.className = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
+            } else if (activeCount === 0) {
+                statusBadge.innerHTML = '<i class="fas fa-times-circle mr-1"></i>Semua Global Key Habis';
+                statusBadge.className = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
+            } else {
+                statusBadge.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Global Keys Siap';
+                statusBadge.className = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
             }
         }
 
