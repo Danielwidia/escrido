@@ -5564,9 +5564,14 @@ function showLoginForm(type) {
                 const typeSel = document.getElementById('q-type');
                 if (typeSel) typeSel.addEventListener('change', onQuestionTypeChange);
 
-                // Close dropdowns when clicking outside
+                // Close import/export dropdowns when clicking outside their controls
                 document.addEventListener('click', (e) => {
-                    if (!e.target.closest('.relative')) {
+                    const clickedImportToggle = e.target.closest('[onclick="toggleImportDropdown()"]');
+                    const clickedExportToggle = e.target.closest('[onclick="toggleExportDropdown()"]');
+                    const clickedImportDropdown = e.target.closest('#import-dropdown');
+                    const clickedExportDropdown = e.target.closest('#export-dropdown');
+
+                    if (!clickedImportToggle && !clickedExportToggle && !clickedImportDropdown && !clickedExportDropdown) {
                         document.getElementById('import-dropdown')?.classList.add('hidden');
                         document.getElementById('export-dropdown')?.classList.add('hidden');
                     }
