@@ -522,15 +522,20 @@ function showLoginForm(type) {
                 if (stu) { stu.isOnline = true; save(); }
             }
 
-            // Verify user still exists in database
+            // Verify user still exists in database and sync with latest data
             if (currentSiswa) {
-                const userExists = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
-                if (!userExists) {
-                    console.warn('User from session not found in database, logging out');
+                const updatedUser = db.students.find(x => x.id === currentSiswa.id && x.password === currentSiswa.password);
+                if (!updatedUser) {
+                    console.warn('User from session not found in database or password mismatch, logging out');
                     clearSession();
                     window.location.href = 'index.html';
                     return;
                 }
+                
+                // CRITICAL: Update session object to latest structure (migrated rombels/subjects)
+                currentSiswa = updatedUser;
+                window.currentSiswa = updatedUser;
+                console.log('Session synchronized with latest database for:', currentSiswa.name);
 
                 const page = window.location.pathname.split('/').pop().split('?')[0];
                 if (currentSiswa.role === 'admin' && page !== 'admin.html') {
@@ -1642,11 +1647,20 @@ function showLoginForm(type) {
                 const qSubject = q.mapel;
                 if (!qSubject) return false;
                 const qSubjectName = typeof qSubject === 'string' ? qSubject : qSubject.name || qSubject;
-                if (!teacherSubjectNames(currentSiswa).includes(qSubjectName)) return false;
+                
+                const tSubjects = teacherSubjectNames(currentSiswa);
+                if (!tSubjects.includes(qSubjectName)) return false;
+                
                 const allowed = teacherAllowedRombels(currentSiswa, qSubjectName);
-                if (!allowed.includes(q.rombel)) return false;
+                
+                // Use robust comparison (trim and string conversion) to avoid mismatch
+                const qRombel = String(q.rombel || '').trim();
+                const isAllowed = allowed.some(a => String(a).trim() === qRombel);
+                
+                if (!isAllowed) return false;
                 return true;
             });
+
 
             if (selectedSubject) {
                 list = list.filter(q => {
