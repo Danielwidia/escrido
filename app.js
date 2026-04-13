@@ -5561,6 +5561,170 @@ function showLoginForm(type) {
             if (importDropdown) importDropdown.classList.add('hidden');
         }
 
+        // --- API KEY MANAGEMENT FUNCTIONS ---
+        async function syncTeacherAPIKeysFromServer() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') return;
+            
+            try {
+                const response = await fetch(getApiBaseUrl() + `/api/teacher/api-keys?teacherId=${encodeURIComponent(currentSiswa.id)}`);
+                if (!response.ok) {
+                    console.warn('Failed to sync API keys from server:', response.status);
+                    return;
+                }
+                
+                const result = await response.json();
+                if (result.ok && Array.isArray(result.apiKeys)) {
+                    // Filter out global keys, only keep personal teacher keys strictly
+                    const personalKeys = result.apiKeys.filter(key => 
+                        !key.isGlobal && 
+                        (!key.addedAt || !key.addedAt.includes('System'))
+                    );
+                    // Update local currentSiswa with server data
+                    currentSiswa.apiKeys = personalKeys;
+                    save(); // Save to local storage
+                    console.log('Synced personal API keys from server:', personalKeys.length, 'keys');
+                }
+            } catch (e) {
+                console.warn('Error syncing API keys from server:', e.message);
+            }
+        }
+
+        async function syncGlobalAPIKeysFromServer() {
+            try {
+                // Refresh global API keys list by re-rendering
+                if (typeof renderGlobalAPIKeys === 'function') {
+                    await renderGlobalAPIKeys();
+                }
+                console.log('Synced global API keys from server');
+            } catch (e) {
+                console.warn('Error syncing global API keys from server:', e.message);
+            }
+        }
+
+        function addTeacherAPIKeyForm() {
+            const input = document.getElementById('new-api-key-input');
+            if (!input) {
+                showToast('Form tidak ditemukan', 'error');
+                return;
+            }
+            
+            const apiKey = input.value.trim();
+            if (!apiKey) {
+                showToast('Masukkan API Key terlebih dahulu', 'error');
+                return;
+            }
+            
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menambahkan API Key');
+                return;
+            }
+            
+            // Show loading state
+            const btn = event.target;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+            
+            // Send to server for auto-setup to Vercel
+            fetch(getApiBaseUrl() + '/api/teacher/add-api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId: currentSiswa.id,
+                    apiKey: apiKey
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.ok) {
+                    showToast(data.error || 'Gagal menambahkan API Key', 'error');
+                    return;
+                }
+                if (typeof updateApiKeysWarningBanner === 'function') {
+                    updateApiKeysWarningBanner('', '');
+                }
+                
+                // Update local state
+                if (!Array.isArray(currentSiswa.apiKeys)) {
+                    currentSiswa.apiKeys = [];
+                }
+
+                const trimmedKey = apiKey.trim();
+                const alreadyExists = currentSiswa.apiKeys.some(entry => {
+                    if (typeof entry === 'string') return entry.trim() === trimmedKey;
+                    if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
+                    return false;
+                });
+
+                if (!alreadyExists) {
+                    currentSiswa.apiKeys.push({
+                        key: trimmedKey,
+                        status: 'active',
+                        addedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        note: ''
+                    });
+                }
+
+                save();
+                input.value = '';
+                input.type = 'password';
+                if (typeof renderTeacherAPIKeys === 'function') {
+                    renderTeacherAPIKeys();
+                }
+                
+                // Show success with Vercel status
+                const message = data.vercelStatus 
+                    ? `✅ API Key ditambahkan! ${data.vercelStatus}`
+                    : '✅ API Key berhasil ditambahkan!';
+                showToast(message, 'success');
+                
+            })
+            .catch(err => {
+                console.error('API Key Error:', err);
+                showToast('Terjadi kesalahan: ' + err.message, 'error');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        }
+
+        // Stub helper functions for API key management
+        function updateApiKeysWarningBanner(message, type = 'error') {
+            const banner = document.getElementById('api-keys-warning-banner');
+            if (!banner) return;
+            banner.textContent = message || '';
+            if (!message) {
+                banner.classList.add('hidden');
+                return;
+            }
+            banner.classList.remove('hidden');
+        }
+
+        function renderTeacherAPIKeys() {
+            const listContainer = document.getElementById('api-keys-list');
+            if (!listContainer) return;
+            console.log('renderTeacherAPIKeys called');
+            // Minimal implementation - just update the display if needed
+        }
+
+        async function renderGlobalAPIKeys() {
+            const container = document.getElementById('global-api-keys-list');
+            if (!container) return;
+            console.log('renderGlobalAPIKeys called');
+            // Minimal implementation - if needed, fetch and render global API keys
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/teacher/global-api-keys');
+                const result = await response.json();
+                console.log('Global API keys loaded:', result);
+            } catch (err) {
+                console.error('Error loading global API keys:', err);
+            }
+        }
+
+        // --- END API KEY MANAGEMENT FUNCTIONS ---
+
         // --- INIT ---
         window.addEventListener('load', async () => {
             // Fallback: Hide loading overlay after 3 seconds regardless
