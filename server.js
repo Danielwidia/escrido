@@ -1163,6 +1163,212 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
     }
 });
 
+// ─── Helper: Normalize Teacher API Keys ───────────────────────────────────────
+function normalizeTeacherApiKeyEntry(entry) {
+    if (!entry) return null;
+    if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (!trimmed) return null;
+        return {
+            key: trimmed,
+            status: 'active',
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            note: ''
+        };
+    }
+    if (typeof entry === 'object' && entry.key && typeof entry.key === 'string') {
+        const trimmed = entry.key.trim();
+        if (!trimmed) return null;
+        
+        let currentStatus = entry.status === 'exhausted' ? 'exhausted' : 'active';
+        let updatedAtTime = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
+        
+        // Auto-revive exhausted personal keys after 60 seconds
+        if (currentStatus === 'exhausted' && (Date.now() - updatedAtTime > 60000)) {
+            currentStatus = 'active';
+        }
+        
+        return {
+            ...entry,
+            key: trimmed,
+            status: currentStatus,
+            addedAt: entry.addedAt || entry.createdAt || new Date().toISOString(),
+            updatedAt: entry.updatedAt || new Date().toISOString(),
+            note: entry.note || ''
+        };
+    }
+    return null;
+}
+
+function normalizeTeacherApiKeysArray(apiKeys = []) {
+    return apiKeys
+        .map(normalizeTeacherApiKeyEntry)
+        .filter(entry => {
+            if (!entry || !entry.key) return false;
+            // Strict filter for personal keys only
+            if (entry.isGlobal === true) return false;
+            if (entry.addedAt && entry.addedAt.includes('System')) return false;
+            return true;
+        });
+}
+
+// ─── API: Teacher API Keys (Get) ──────────────────────────────────────────
+app.get('/api/teacher/api-keys', async (req, res) => {
+    const { teacherId } = req.query;
+    
+    if (!teacherId) {
+        return res.status(400).json({ error: 'teacherId diperlukan' });
+    }
+    
+    try {
+        const db = await readDB();
+        
+        // Find teacher
+        const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
+        if (!teacher) {
+            return res.status(404).json({ error: 'Guru tidak ditemukan' });
+        }
+        
+        // Normalize API keys only
+        const normalizedKeys = normalizeTeacherApiKeysArray(teacher.apiKeys || []);
+
+        // Update teacher record if normalization changed anything
+        if (normalizedKeys.length !== (teacher.apiKeys || []).length || 
+            (teacher.apiKeys || []).some(k => typeof k === 'string' || (typeof k === 'object' && !('status' in k)))) {
+            teacher.apiKeys = normalizedKeys;
+            await writeDB(db);
+        }
+        
+        return res.json({
+            ok: true,
+            apiKeys: normalizedKeys,
+            teacher: teacher.name
+        });
+        
+    } catch (err) {
+        console.error('[TEACHER GET KEYS ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal mengambil API Keys: ' + err.message });
+    }
+});
+
+// ─── API: Get Global API Keys ─────────────────────────────────────────────
+app.get('/api/teacher/global-api-keys', async (req, res) => {
+    try {
+        const globalKeys = [];
+        const db = await readDB();
+        if (!db.globalAPIKeysStatus) {
+            db.globalAPIKeysStatus = {};
+        }
+
+        // Get Gemini keys from environment
+        const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
+        
+        geminiKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+            
+            globalKeys.push({
+                key: key,
+                provider: 'Google Gemini',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted' 
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'Gemini: 15 requests/min (free tier), unlimited dengan billing'
+            });
+        });
+
+        // Get OpenAI keys from environment
+        const openaiRaw = process.env.OPENAI_API_KEY || '';
+        const openaiKeys = openaiRaw.split(',').map(k => k.trim()).filter(k => k);
+        
+        openaiKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+            
+            globalKeys.push({
+                key: key,
+                provider: 'OpenAI (ChatGPT)',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'OpenAI: Rate limits sesuai plan (Standard: 3,500 RPM / 200,000 TPM)'
+            });
+        });
+
+        const openrouterRaw = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || process.env.OPEN_ROUTER_KEY || '';
+        const openrouterKeys = openrouterRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        openrouterKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+            
+            globalKeys.push({
+                key: key,
+                provider: 'OpenRouter',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'OpenRouter: Rate limits sesuai plan penyedia'
+            });
+        });
+
+        // Get DeepSeek keys from environment
+        const deepseekRaw = process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '';
+        const deepseekKeys = deepseekRaw.split(',').map(k => k.trim()).filter(k => k);
+
+        deepseekKeys.forEach((key, idx) => {
+            const keyHash = key.substring(key.length - 10);
+            const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
+            
+            globalKeys.push({
+                key: key,
+                provider: 'DeepSeek',
+                status: statusEntry.status,
+                addedAt: 'System / Environment',
+                updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
+                note: statusEntry.note || `Global key #${idx + 1}`,
+                isGlobal: true,
+                quotaInfo: statusEntry.status === 'exhausted'
+                    ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
+                    : 'DeepSeek: Rate limits sesuai plan (Free tier tersedia)'
+            });
+        });
+
+        const exhaustedCount = globalKeys.filter(k => k.status === 'exhausted').length;
+        const activeCount = globalKeys.length - exhaustedCount;
+
+        return res.json({
+            ok: true,
+            globalKeys: globalKeys,
+            totalCount: globalKeys.length,
+            activeCount: activeCount,
+            exhaustedCount: exhaustedCount,
+            geminiCount: geminiKeys.length,
+            openaiCount: openaiKeys.length,
+            openrouterCount: openrouterKeys.length,
+            deepseekCount: deepseekKeys.length,
+            fallbackNote: 'Global key digunakan sebagai fallback jika personal key tidak tersedia atau kuota habis'
+        });
+    } catch (err) {
+        console.error('[GET GLOBAL KEYS ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal mengambil daftar global key: ' + err.message });
+    }
+});
+
 // ─── API: IPs ─────────────────────────────────────────────────────────────────
 app.get('/api/ips', (req, res) => {
     const { networkInterfaces } = require('os');
