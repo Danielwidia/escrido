@@ -1351,7 +1351,7 @@ function showLoginForm(type) {
 
         // Switch between teacher dashboard tabs
         function switchTeacherTab(tab) {
-            const tabs = ['bank-soal', 'hasil-ujian'];
+            const tabs = ['bank-soal', 'hasil-ujian', 'api-keys'];
             tabs.forEach(t => {
                 const tabDiv = document.getElementById(`teacher-tab-${t}`);
                 const tabBtn = document.getElementById(`tab-${t}`);
@@ -5566,14 +5566,19 @@ function showLoginForm(type) {
 
                 // Close import/export dropdowns when clicking outside their controls
                 document.addEventListener('click', (e) => {
+                    const importDropdown = document.getElementById('import-dropdown');
+                    const exportDropdown = document.getElementById('export-dropdown');
+                    
+                    if (!importDropdown || !exportDropdown) return;
+
                     const clickedImportToggle = e.target.closest('[onclick="toggleImportDropdown()"]');
                     const clickedExportToggle = e.target.closest('[onclick="toggleExportDropdown()"]');
                     const clickedImportDropdown = e.target.closest('#import-dropdown');
                     const clickedExportDropdown = e.target.closest('#export-dropdown');
 
                     if (!clickedImportToggle && !clickedExportToggle && !clickedImportDropdown && !clickedExportDropdown) {
-                        document.getElementById('import-dropdown')?.classList.add('hidden');
-                        document.getElementById('export-dropdown')?.classList.add('hidden');
+                        importDropdown.classList.add('hidden');
+                        exportDropdown.classList.add('hidden');
                     }
                 });
 
