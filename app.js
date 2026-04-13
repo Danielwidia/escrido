@@ -569,9 +569,11 @@ function showLoginForm(type) {
                     if (teacherDash) teacherDash.classList.remove('hidden');
                     const tcLabel = document.getElementById('teacher-info-label');
                     if (tcLabel) tcLabel.innerText = `${currentSiswa.name} | Guru ${formatTeacherSubjects(currentSiswa)}`;
-                    // Clear search input on initial load
+                    // Clear search input and API key input on initial load
                     const searchInput = document.getElementById('teacher-search-questions');
                     if (searchInput) searchInput.value = '';
+                    const apiKeyInput = document.getElementById('new-api-key-input');
+                    if (apiKeyInput) apiKeyInput.value = '';
                     if (typeof renderTeacherQuestions === 'function' && teacherDash) renderTeacherQuestions();
                 }
                 migrateTeacherData();
@@ -1383,6 +1385,8 @@ function showLoginForm(type) {
                 // begin polling server for new results if in teacher results tab
                 if (teacherResultsPollInterval) clearInterval(teacherResultsPollInterval);
                 teacherResultsPollInterval = setInterval(fetchAndMerge, 5000);
+                // Stop API keys polling if it was running
+                stopRealtimeStatsPolling();
             } else {
                 if (teacherResultsPollInterval) {
                     clearInterval(teacherResultsPollInterval);
@@ -1393,6 +1397,15 @@ function showLoginForm(type) {
                     const searchInput = document.getElementById('teacher-search-questions');
                     if (searchInput) searchInput.value = '';
                     renderTeacherQuestions();
+                    // Stop API keys polling if it was running
+                    stopRealtimeStatsPolling();
+                } else if (tab === 'api-keys') {
+                    // Clear API key input to prevent browser autocomplete from persisting values
+                    const apiKeyInput = document.getElementById('new-api-key-input');
+                    if (apiKeyInput) apiKeyInput.value = '';
+                    renderTeacherAPIKeys();
+                    // Start real-time API keys stats polling
+                    startRealtimeStatsPolling();
                 }
             }
         }
@@ -5607,6 +5620,111 @@ function showLoginForm(type) {
             }
         }
 
+        // ─── Real-time API Keys Stats Polling ─────────────────────────────
+        let apiKeysStatsPollingInterval = null;
+        const STATS_POLLING_INTERVAL = 3000; // 3 detik
+
+        async function startRealtimeStatsPolling() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') return;
+            
+            // Clear existing interval jika ada
+            if (apiKeysStatsPollingInterval) {
+                clearInterval(apiKeysStatsPollingInterval);
+            }
+            
+            // Poll immediately
+            await updateRealtimeStats();
+            
+            // Then set interval for continuous polling
+            apiKeysStatsPollingInterval = setInterval(updateRealtimeStats, STATS_POLLING_INTERVAL);
+        }
+
+        function stopRealtimeStatsPolling() {
+            if (apiKeysStatsPollingInterval) {
+                clearInterval(apiKeysStatsPollingInterval);
+                apiKeysStatsPollingInterval = null;
+            }
+        }
+
+        async function updateRealtimeStats() {
+            if (!currentSiswa || currentSiswa.role !== 'teacher') return;
+            
+            try {
+                const response = await fetch(getApiBaseUrl() + `/api/teacher/realtime-stats?teacherId=${encodeURIComponent(currentSiswa.id)}`);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (!data.ok) return;
+                
+                // Update teacher API keys stats
+                if (data.teacherKeys) {
+                    const keyCountEl = document.getElementById('api-keys-count');
+                    if (keyCountEl) {
+                        keyCountEl.textContent = `${data.teacherKeys.active}/${data.teacherKeys.total}`;
+                        keyCountEl.classList.add('animate-pulse-brief');
+                        setTimeout(() => keyCountEl.classList.remove('animate-pulse-brief'), 300);
+                    }
+                }
+                
+                // Update global API keys stats
+                if (data.globalKeys) {
+                    const globalKeyCountEl = document.getElementById('global-api-keys-count');
+                    if (globalKeyCountEl) {
+                        globalKeyCountEl.textContent = `${data.globalKeys.active}/${data.globalKeys.total}`;
+                        globalKeyCountEl.classList.add('animate-pulse-brief');
+                        setTimeout(() => globalKeyCountEl.classList.remove('animate-pulse-brief'), 300);
+                    }
+                }
+                
+                // Update last updated timestamp
+                const timestamp = new Date(data.timestamp);
+                const lastUpdatedEl = document.getElementById('api-keys-last-updated');
+                if (lastUpdatedEl && data.timestamp) {
+                    const timeStr = timestamp.toLocaleTimeString('id-ID');
+                    lastUpdatedEl.textContent = `Update terakhir: ${timeStr}`;
+                    lastUpdatedEl.classList.add('opacity-50');
+                }
+                
+                // Update status badges
+                updateAPIKeysStatusBadges(data.teacherKeys, data.globalKeys);
+                
+            } catch (err) {
+                console.warn('Error updating real-time stats:', err.message);
+            }
+        }
+
+        function updateAPIKeysStatusBadges(teacherKeys, globalKeys) {
+            // Update teacher keys status
+            const statusBadge = document.getElementById('api-keys-status-badge');
+            if (statusBadge && teacherKeys) {
+                if (teacherKeys.total === 0) {
+                    statusBadge.innerHTML = '<i class="fas fa-info-circle mr-1"></i>Belum ada API Key pribadi';
+                    statusBadge.className = 'inline-block px-3 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full';
+                } else if (teacherKeys.active === 0) {
+                    statusBadge.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Semua API Key habis kuota';
+                    statusBadge.className = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
+                } else {
+                    statusBadge.innerHTML = '<i class="fas fa-check-circle mr-1"></i>API Keys Siap Digunakan';
+                    statusBadge.className = 'inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full';
+                }
+            }
+            
+            // Update global keys status
+            const globalStatusBadge = document.getElementById('global-api-keys-status-badge');
+            if (globalStatusBadge && globalKeys) {
+                if (globalKeys.total === 0) {
+                    globalStatusBadge.innerHTML = '<i class="fas fa-times-circle mr-1"></i>Tidak ada key global';
+                    globalStatusBadge.className = 'inline-block px-3 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full';
+                } else if (globalKeys.active === 0) {
+                    globalStatusBadge.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Semua global key habis';
+                    globalStatusBadge.className = 'inline-block px-3 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full';
+                } else {
+                    globalStatusBadge.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Global keys aktif';
+                    globalStatusBadge.className = 'inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full';
+                }
+            }
+        }
+
         function addTeacherAPIKeyForm() {
             const input = document.getElementById('new-api-key-input');
             if (!input) {
@@ -5679,6 +5797,9 @@ function showLoginForm(type) {
                     renderTeacherAPIKeys();
                 }
                 
+                // Update real-time stats immediately
+                updateRealtimeStats();
+                
                 // Show success with Vercel status
                 const message = data.vercelStatus 
                     ? `✅ API Key ditambahkan! ${data.vercelStatus}`
@@ -5695,6 +5816,56 @@ function showLoginForm(type) {
                 btn.innerHTML = originalText;
             });
         }
+
+        function removeTeacherAPIKey(index) {
+            if (!confirm('Apakah Anda yakin ingin menghapus API Key ini?')) {
+                return;
+            }
+            
+            if (!currentSiswa || currentSiswa.role !== 'teacher') {
+                alert('Hanya guru yang dapat menghapus API Key');
+                return;
+            }
+            
+            fetch(getApiBaseUrl() + '/api/teacher/remove-api-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherId: currentSiswa.id,
+                    keyIndex: index
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.ok) {
+                    showToast(data.error || 'Gagal menghapus API Key', 'error');
+                    return;
+                }
+                
+                // Remove from local state
+                if (Array.isArray(currentSiswa.apiKeys)) {
+                    currentSiswa.apiKeys.splice(index, 1);
+                }
+                
+                save();
+                
+                if (typeof renderTeacherAPIKeys === 'function') {
+                    renderTeacherAPIKeys();
+                }
+                
+                // Update real-time stats immediately
+                updateRealtimeStats();
+                
+                showToast('✅ API Key berhasil dihapus!', 'success');
+            })
+            .catch(err => {
+                console.error('Remove API Key Error:', err);
+                showToast('Terjadi kesalahan: ' + err.message, 'error');
+            });
+        }
+
+        // Make function globally accessible
+        window.removeTeacherAPIKey = removeTeacherAPIKey;
 
         // Stub helper functions for API key management
         function updateApiKeysWarningBanner(message, type = 'error') {

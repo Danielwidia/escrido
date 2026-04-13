@@ -337,3 +337,17 @@ body {
 .animate-spin {
     animation: spin 1s linear infinite;
 }
+
+/* Real-time Stats Pulse */
+@keyframes pulse-brief {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.animate-pulse-brief {
+    animation: pulse-brief 0.3s ease-in-out;
+}

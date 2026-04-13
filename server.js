@@ -70,6 +70,26 @@ const DEFAULT_DB = {
     timeLimits: {}
 };
 
+// ─── Real-time State Manager untuk API Keys ────────────────────────────────────
+const realtimeState = {
+    lastUpdated: {}, // { teacherId: timestamp }
+    apiKeyChanges: {}, // { teacherId: { count, status, timestamp } }
+    globalKeyChanges: { timestamp: null, count: 0, status: {} }
+};
+
+function updateRealtimeState(type, teacherId = null) {
+    const now = new Date().toISOString();
+    if (type === 'teacher-key' && teacherId) {
+        realtimeState.lastUpdated[teacherId] = now;
+        if (!realtimeState.apiKeyChanges[teacherId]) {
+            realtimeState.apiKeyChanges[teacherId] = { count: 0, status: {}, timestamp: now };
+        }
+        realtimeState.apiKeyChanges[teacherId].timestamp = now;
+    } else if (type === 'global-key') {
+        realtimeState.globalKeyChanges.timestamp = now;
+    }
+}
+
 // ─── Merge helpers ────────────────────────────────────────────────────────────
 function mergeResults(existing = [], incoming = []) {
     const map = new Map();
@@ -1213,6 +1233,115 @@ function normalizeTeacherApiKeysArray(apiKeys = []) {
         });
 }
 
+// ─── API: Teacher Add API Key ──────────────────────────────────────────────
+app.post('/api/teacher/add-api-key', async (req, res) => {
+    const { teacherId, apiKey } = req.body;
+    
+    if (!teacherId || !apiKey) {
+        return res.status(400).json({ error: 'teacherId dan apiKey diperlukan' });
+    }
+    
+    try {
+        const db = await readDB();
+        
+        // Find teacher
+        const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
+        if (!teacher) {
+            return res.status(404).json({ error: 'Guru tidak ditemukan' });
+        }
+        
+        // Validate API key format (basic check)
+        if (apiKey.trim().length < 10) {
+            return res.status(400).json({ error: 'API Key tidak valid' });
+        }
+        
+        // Initialize apiKeys array if not exists
+        if (!Array.isArray(teacher.apiKeys)) {
+            teacher.apiKeys = [];
+        }
+
+        // Check if key already exists (support legacy strings and normalized objects)
+        const trimmedKey = apiKey.trim();
+        if (teacher.apiKeys.some(entry => {
+            if (typeof entry === 'string') return entry.trim() === trimmedKey;
+            if (typeof entry === 'object' && entry.key) return entry.key.trim() === trimmedKey;
+            return false;
+        })) {
+            return res.status(409).json({ error: 'API Key ini sudah ada di database' });
+        }
+
+        // Add API key to teacher
+        teacher.apiKeys.push({
+            key: trimmedKey,
+            status: 'active',
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            note: ''
+        });
+        
+        // Save to database
+        await writeDB(db);
+        console.log(`[TEACHER] API key added untuk guru: ${teacher.name}`);
+        
+        // Update realtime state
+        updateRealtimeState('teacher-key', teacherId);
+        
+        return res.json({
+            ok: true,
+            message: 'API Key berhasil ditambahkan',
+            teacher: teacher.name,
+            keyCount: teacher.apiKeys.length
+        });
+        
+    } catch (err) {
+        console.error('[TEACHER API KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menambahkan API Key: ' + err.message });
+    }
+});
+
+// ─── API: Teacher Remove API Key ───────────────────────────────────────────
+app.post('/api/teacher/remove-api-key', async (req, res) => {
+    const { teacherId, keyIndex } = req.body;
+    
+    if (!teacherId || keyIndex === undefined) {
+        return res.status(400).json({ error: 'teacherId dan keyIndex diperlukan' });
+    }
+    
+    try {
+        const db = await readDB();
+        
+        const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
+        if (!teacher || !Array.isArray(teacher.apiKeys)) {
+            return res.status(404).json({ error: 'Guru atau API Key tidak ditemukan' });
+        }
+        
+        if (keyIndex < 0 || keyIndex >= teacher.apiKeys.length) {
+            return res.status(400).json({ error: 'Index API Key tidak valid' });
+        }
+        
+        // Remove API key
+        const removedKey = teacher.apiKeys.splice(keyIndex, 1)[0];
+        
+        // Save to database
+        await writeDB(db);
+        console.log(`[TEACHER] API key removed untuk guru: ${teacher.name}`);
+        
+        // Update realtime state
+        updateRealtimeState('teacher-key', teacherId);
+        
+        return res.json({
+            ok: true,
+            message: 'API Key berhasil dihapus',
+            teacher: teacher.name,
+            keyCount: teacher.apiKeys.length
+        });
+        
+    } catch (err) {
+        console.error('[TEACHER REMOVE KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menghapus API Key: ' + err.message });
+    }
+});
+
 // ─── API: Teacher API Keys (Get) ──────────────────────────────────────────
 app.get('/api/teacher/api-keys', async (req, res) => {
     const { teacherId } = req.query;
@@ -1378,6 +1507,63 @@ app.get('/api/ips', (req, res) => {
         for (const iface of ifaces)
             if (iface.family === 'IPv4' && !iface.internal) ips.push(iface.address);
     res.json(ips);
+});
+
+// ─── API: Real-time API Keys Stats (untuk polling) ─────────────────────────────
+app.get('/api/teacher/realtime-stats', async (req, res) => {
+    try {
+        const { teacherId } = req.query;
+        
+        if (!teacherId) {
+            return res.status(400).json({ error: 'teacherId diperlukan' });
+        }
+        
+        const db = await readDB();
+        const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
+        
+        if (!teacher) {
+            return res.status(404).json({ error: 'Guru tidak ditemukan' });
+        }
+        
+        const normalizedKeys = normalizeTeacherApiKeysArray(teacher.apiKeys || []);
+        const activeCount = normalizedKeys.filter(k => k.status !== 'exhausted').length;
+        const totalCount = normalizedKeys.length;
+        
+        // Get global stats
+        const globalKeys = [];
+        const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
+        const openaiRaw = process.env.OPENAI_API_KEY || '';
+        const openaiKeys = openaiRaw.split(',').map(k => k.trim()).filter(k => k);
+        
+        if (!db.globalAPIKeysStatus) db.globalAPIKeysStatus = {};
+        
+        const globalActive = [...geminiKeys, ...openaiKeys].filter(k => {
+            const hash = k.substring(k.length - 10);
+            const status = db.globalAPIKeysStatus[hash];
+            return !status || status.status !== 'exhausted';
+        }).length;
+        
+        const globalTotal = geminiKeys.length + openaiKeys.length;
+        
+        return res.json({
+            ok: true,
+            timestamp: new Date().toISOString(),
+            teacherKeys: {
+                active: activeCount,
+                total: totalCount,
+                lastUpdated: realtimeState.lastUpdated[teacherId] || null
+            },
+            globalKeys: {
+                active: globalActive,
+                total: globalTotal,
+                lastUpdated: realtimeState.globalKeyChanges.timestamp || null
+            }
+        });
+    } catch (err) {
+        console.error('[REALTIME STATS ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal mengambil real-time stats: ' + err.message });
+    }
 });
 
 // ─── Catch-all ────────────────────────────────────────────────────────────────

@@ -607,6 +607,7 @@
                                             <div class="flex gap-2">
                                                 <div class="flex-1 relative">
                                                     <input type="password" id="new-api-key-input" 
+                                                        autocomplete="off"
                                                         class="w-full px-4 py-3 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-sky-500 text-sm font-mono"
                                                         placeholder="sk_live_... atau AIza...">
                                                     <button type="button" 
@@ -630,7 +631,13 @@
 
                             <!-- Stats -->
                             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-                                <h3 class="text-sm font-black text-slate-800 mb-4 uppercase">Statistik</h3>
+                                <h3 class="text-sm font-black text-slate-800 mb-4 uppercase flex items-center justify-between">
+                                    <span>Statistik Real-Time</span>
+                                    <span class="flex items-center gap-1">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                        <span class="text-[10px] font-bold text-green-600 uppercase">LIVE</span>
+                                    </span>
+                                </h3>
                                 <div class="space-y-3">
                                     <div>
                                         <p class="text-xs text-slate-400 mb-1">API Keys Aktif / Total</p>
@@ -653,8 +660,14 @@
                                             <i class="fas fa-exclamation-circle mr-1"></i>Tidak ada key global
                                         </div>
                                     </div>
+                                    <div class="h-px bg-slate-100"></div>
                                     <div>
-                                        <p id="api-keys-quota-note" class="text-xs text-slate-500 leading-relaxed">Sisa kuota tidak dapat ditentukan secara pasti oleh Google Gemini.</p>
+                                        <p id="api-keys-last-updated" class="text-xs text-slate-500 leading-relaxed">
+                                            <i class="fas fa-clock mr-1"></i>Update terakhir: -
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p id="api-keys-quota-note" class="text-xs text-slate-500 leading-relaxed">Sinkronisasi otomatis setiap 3 detik</p>
                                     </div>
                                 </div>
                             </div>
