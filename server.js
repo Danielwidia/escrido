@@ -851,10 +851,11 @@ app.post('/api/generate-ai', async (req, res) => {
             const parseBooleanAnswer = value => {
                 if (typeof value === 'boolean') return value;
                 if (typeof value === 'number') return value === 1;
-                if (typeof value !== 'string') return false;
-                const clean = value.toString().trim().toLowerCase();
-                if (['benar', 'true', 't', 'ya', 'yes', '1'].includes(clean)) return true;
-                if (['salah', 'false', 'f', 'tidak', 'no', '0'].includes(clean)) return false;
+                if (value === null || value === undefined) return false;
+                
+                const clean = value.toString().trim().toLowerCase().replace(/[\(\)\[\]\.]/g, '');
+                if (['benar', 'true', 't', 'ya', 'yes', '1', 'correct', 'right', 'b'].includes(clean)) return true;
+                if (['salah', 'false', 'f', 'tidak', 'no', '0', 'incorrect', 'wrong', 's'].includes(clean)) return false;
                 return false;
             };
 
@@ -882,19 +883,24 @@ app.post('/api/generate-ai', async (req, res) => {
                     return [];
                 };
 
-                const parseStatementsFromText = text => {
+                const parseStatementsFromText = (textStr, originalCorrect) => {
                     const statements = [];
                     const corrects = [];
-                    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+                    const lines = textStr.split(/\r?\n/).map(l => l.trim()).filter(l => l);
                     for (const line of lines) {
                         // Regex improved to strip "Pernyataan: " prefixes and similar noise
-                        const match = line.match(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)?\s*)(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\))?\s*$/i);
+                        const match = line.match(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)?\s*)(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S)\))?\s*$/i);
                         if (match) {
                             const stmt = match[1].trim();
-                            const answer = match[2] || match[3] || '';
-                            if (stmt && !/^(benar atau salah|pilihlah|berikut ini|instruksi)/i.test(stmt)) {
+                            const answerRaw = match[2] || match[3] || '';
+                            if (stmt && !/^(benar atau salah|pilihlah|berikut ini|instruksi|tentukan)/i.test(stmt)) {
                                 statements.push(stmt);
-                                corrects.push(parseBooleanAnswer(answer));
+                                // If answer is present in text, use it. Otherwise, use existing correct if available.
+                                if (answerRaw) {
+                                    corrects.push(parseBooleanAnswer(answerRaw));
+                                } else {
+                                    corrects.push(null); // Mark as unknown for now
+                                }
                             }
                         }
                     }
@@ -941,20 +947,41 @@ app.post('/api/generate-ai', async (req, res) => {
                 const optionsAreGeneric = normalized.options.length === 0 || (normalized.options.length > 0 && normalized.options.every(isGenericOption));
 
                 if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
-                    const { statements, corrects } = parseStatementsFromText(normalized.text);
+                    const { statements, corrects } = parseStatementsFromText(normalized.text, normalized.correct);
                     if (statements.length > 0) {
                         normalized.options = statements;
-                        normalized.correct = corrects;
+                        
+                        // Intelligent Correct Mapping
+                        const finalCorrects = [];
+                        const originalHasArray = Array.isArray(normalized.correct);
+                        const originalValue = normalized.correct;
+
+                        for (let i = 0; i < statements.length; i++) {
+                            if (corrects[i] !== null) {
+                                // Use answer found in text line
+                                finalCorrects.push(corrects[i]);
+                            } else if (originalHasArray && originalValue.length > i) {
+                                // Use answer from original correct array
+                                finalCorrects.push(parseBooleanAnswer(originalValue[i]));
+                            } else if (!originalHasArray && statements.length === 1 && originalValue !== undefined && originalValue !== null) {
+                                // Use original single correct value for single statement
+                                finalCorrects.push(parseBooleanAnswer(originalValue));
+                            } else {
+                                finalCorrects.push(false); // Default
+                            }
+                        }
+                        normalized.correct = finalCorrects;
                         normalized.text = defaultTfInstruction;
-                    } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi')) {
+                    } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi') && !normalized.text.toLowerCase().includes('tentukan')) {
                         // Move text to options if it looks like a single statement and not an instruction
-                        // even if it's currently a single long sentence without "Pernyataan:" prefix
                         const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
                         if (cleanStmt.length > 10) {
                             normalized.options = [cleanStmt];
                             normalized.text = defaultTfInstruction;
                             if (!Array.isArray(normalized.correct) || normalized.correct.length === 0) {
-                                normalized.correct = [false]; // Default to false if unknown
+                                // Try using a single string correct value if it exists
+                                const singleCorrect = Array.isArray(normalized.correct) ? normalized.correct[0] : normalized.correct;
+                                normalized.correct = [parseBooleanAnswer(singleCorrect !== undefined ? singleCorrect : false)];
                             }
                         }
                     }

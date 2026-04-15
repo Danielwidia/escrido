@@ -4279,7 +4279,6 @@ function showLoginForm(type) {
                 if (q.type === 'multiple') return [];
                 if (q.type === 'text') return '';
                 if (q.type === 'matching') return [];
-                if (q.type === 'tf') return [];
                 return null; // default single-choice
             });
             const ragu = normalizedQuestions.map(_ => false);
@@ -4308,24 +4307,6 @@ function showLoginForm(type) {
         function showQuestion(idx) {
             examData.currentIdx = idx;
             const q = examData.questions[idx];
-
-            // SELF-HEALING for students: If tf question has statement trapped in text
-            if (q.type === 'tf') {
-                const textLower = (q.text || '').toLowerCase();
-                const looksLikeInstruction = textLower.includes('pilihlah') || textLower.includes('tentukan') || textLower.includes('berikut ini') || textLower.includes('instruksi');
-                const isGeneric = (opt) => {
-                    if (!opt || String(opt).trim() === '') return true;
-                    const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
-                    return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
-                };
-                const optionsAreGeneric = !q.options || q.options.length === 0 || q.options.every(isGeneric);
-
-                if (q.text && q.text.length > 25 && !looksLikeInstruction && optionsAreGeneric) {
-                    q.options = [q.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim()];
-                    q.text = "Tentukan apakah pernyataan berikut Benar atau Salah:";
-                }
-            }
-
             document.getElementById('curr-q-num').innerText = idx + 1;
             document.getElementById('total-q-num').innerText = examData.questions.length;
             document.getElementById('exam-q-text').innerHTML = q.text;
@@ -4363,16 +4344,22 @@ function showLoginForm(type) {
             let optionHtml = '';
             if (q.type === 'multiple') {
                 // render checkboxes for multiple-choice
-                optionHtml = q.options.map((opt, i) => {
-                    const checked = (examData.answers[idx] || []).includes(i) ? 'checked' : '';
-                    return `
+                optionHtml = q.options
+                    .map((opt, i) => ({ opt, i }))
+                    .filter(item => item.opt && item.opt.trim() !== '')
+                    .map((item, displayIdx) => {
+                        const { opt, i } = item;
+                        const checked = (examData.answers[idx] || []).includes(i) ? 'checked' : '';
+                        const label = String.fromCharCode(65 + displayIdx);
+                        return `
                     <label class="flex items-center w-full p-4 md:p-5 rounded-2xl border-2 transition-all ${checked ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : 'border-slate-50 hover:bg-slate-50 text-slate-600'}">
                         <input type="checkbox" class="mr-3 w-5 h-5"
                             onchange="toggleAnswer(${i})" ${checked} />
-                        <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
+                        <span class="inline-block w-8 font-bold">${label}.</span>
                         <span class="flex-1 text-sm md:text-base">${opt}</span>
                     </label>`;
-                }).join('');
+                    }).join('');
+
             } else if (q.type === 'text') {
                 const value = examData.answers[idx] || '';
                 optionHtml = `
@@ -4456,12 +4443,19 @@ function showLoginForm(type) {
                 `;
             } else {
                 // default single-choice
-                optionHtml = q.options.map((opt, i) => `
+                optionHtml = q.options
+                    .map((opt, i) => ({ opt, i }))
+                    .filter(item => item.opt && item.opt.trim() !== '')
+                    .map((item, displayIdx) => {
+                        const { opt, i } = item;
+                        const label = String.fromCharCode(65 + displayIdx);
+                        return `
                     <button onclick="setAnswer(${i})" class="w-full p-4 md:p-5 text-left rounded-2xl border-2 transition-all ${examData.answers[idx] === i ? 'border-sky-600 bg-sky-50 text-sky-700 font-bold' : 'border-slate-50 hover:bg-slate-50 text-slate-600'}">
-                        <span class="inline-block w-8 font-bold">${['A', 'B', 'C', 'D'][i]}.</span>
+                        <span class="inline-block w-8 font-bold">${label}.</span>
                         <span class="text-sm md:text-base">${opt}</span>
-                    </button>
-                `).join('');
+                    </button>`;
+                    }).join('');
+
             }
             document.getElementById('exam-options').innerHTML = optionHtml;
 

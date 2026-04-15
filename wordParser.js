@@ -437,8 +437,12 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
     // Add any unlabeled options at the end
     orderedOptions.push(...options);
 
-    // Use ordered options, but limit to reasonable number
-    const finalOptions = orderedOptions.slice(0, 6);
+    // Use ordered options, but limit to reasonable number, and filter empty ones
+    const finalOptions = orderedOptions
+        .map(opt => opt ? opt.trim() : '')
+        .filter(opt => opt.length > 0)
+        .slice(0, 6);
+
 
     // Heuristic: If we found no explicit options, the user might not have labeled them at all
     // and they were sucked into the question text. The last 2-5 short lines are likely options.
