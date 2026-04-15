@@ -416,13 +416,24 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
         }
     }
 
-    // Convert labeled options to ordered array
+    // Convert labeled options to ordered array (Check A-F and 1-6)
     const orderedOptions = [];
-    for (let letter = 'A'; letter <= 'F'; letter++) {
+    // First, try to find options labeled A-F
+    for (let letter = 'A'; letter <= 'F'; letter = String.fromCharCode(letter.charCodeAt(0) + 1)) {
         if (optionMap[letter]) {
             orderedOptions.push(optionMap[letter]);
         }
     }
+    
+    // If empty, the options might be numbered (1, 2, 3...) starting from 2 (since 1 was the question)
+    if (orderedOptions.length === 0) {
+        for (let num = 1; num <= 10; num++) {
+            if (optionMap[num.toString()]) {
+                orderedOptions.push(optionMap[num.toString()]);
+            }
+        }
+    }
+
     // Add any unlabeled options at the end
     orderedOptions.push(...options);
 
