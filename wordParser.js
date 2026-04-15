@@ -142,14 +142,15 @@ function extractTablesFromHtml(html) {
 }
 
 function cleanHtmlText(html) {
-    let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                  .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    let text = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+                  .replace(/<\/(p|div|li|h[1-6]|td|tr|table|ul|ol)>/gi, '\n')
+                  .replace(/<br[^>]*>/gi, '\n')
                   .replace(/<[^>]+>/g, ' ')
                   .replace(/&nbsp;/g, ' ')
                   .replace(/&lt;/g, '<')
                   .replace(/&gt;/g, '>')
                   .replace(/&amp;/g, '&');
-    return text.replace(/\s+/g, ' ').trim();
+    return text.replace(/[ \t]+/g, ' ').trim();
 }
 
 function convertTableToQuestions(table, metadata = {}) {
