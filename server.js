@@ -842,17 +842,27 @@ app.post('/api/generate-ai', async (req, res) => {
             if (!normalized.mapel) normalized.mapel = mapel;
             if (!normalized.rombel) normalized.rombel = rombel;
 
+            // HELPERS
+            const isGenericOption = opt => /^(benar|salah|true|false|ya|tidak|ok|yes|no)$/i.test(String(opt).trim());
+            const parseBooleanAnswer = value => {
+                if (typeof value === 'boolean') return value;
+                if (typeof value === 'number') return value === 1;
+                if (typeof value !== 'string') return false;
+                const clean = value.toString().trim().toLowerCase();
+                if (['benar', 'true', 't', 'ya', 'yes', '1'].includes(clean)) return true;
+                if (['salah', 'false', 'f', 'tidak', 'no', '0'].includes(clean)) return false;
+                return false;
+            };
+
+            // AUTO-DETECT TF: If it's single choice but options are just Benar/Salah
+            if (normalized.type !== 'tf' && Array.isArray(normalized.options) && normalized.options.length > 0 && normalized.options.length <= 2) {
+                if (normalized.options.every(isGenericOption)) {
+                    normalized.type = 'tf';
+                }
+            }
+
             // Normalize TF questions
             if (normalized.type === 'tf') {
-                const parseBooleanAnswer = value => {
-                    if (typeof value === 'boolean') return value;
-                    if (typeof value === 'number') return value === 1;
-                    if (typeof value !== 'string') return false;
-                    const clean = value.toString().trim().toLowerCase();
-                    if (['benar', 'true', 't', 'ya', 'yes', '1'].includes(clean)) return true;
-                    if (['salah', 'false', 'f', 'tidak', 'no', '0'].includes(clean)) return false;
-                    return false;
-                };
 
                 const normalizeOptionList = raw => {
                     if (Array.isArray(raw)) {
@@ -924,7 +934,6 @@ app.post('/api/generate-ai', async (req, res) => {
 
                 // If options are empty or need stronger parsing, try text field
                 const defaultTfInstruction = 'Tentukan apakah pernyataan berikut Benar atau Salah:';
-                const isGenericOption = opt => /^(benar|salah|true|false|ya|tidak|ok|yes|no)$/i.test(String(opt).trim());
                 const optionsAreGeneric = normalized.options.length === 0 || (normalized.options.length > 0 && normalized.options.every(isGenericOption));
 
                 if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
