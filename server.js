@@ -925,10 +925,10 @@ app.post('/api/generate-ai', async (req, res) => {
                     }
                 }
 
-                // If options already exist, clean them up (remove "Pernyataan:" prefixes)
+                // If options already exist, clean them up (remove "Pernyataan:" and numeric prefixes)
                 if (Array.isArray(normalized.options)) {
                     normalized.options = normalized.options.map(opt => 
-                        typeof opt === 'string' ? opt.replace(/^pernyataan\s*\d*\s*[:\-–]\s*/i, '').trim() : opt
+                        typeof opt === 'string' ? opt.replace(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)\s+)/i, '').trim() : opt
                     );
                 }
 
@@ -942,9 +942,8 @@ app.post('/api/generate-ai', async (req, res) => {
                         normalized.options = statements;
                         normalized.correct = corrects;
                         normalized.text = defaultTfInstruction;
-                    } else if (normalized.text.length > 10 && (!normalized.text.includes(':') || /^pernyataan\s*:/i.test(normalized.text)) && !normalized.text.toLowerCase().includes('pilihlah')) {
+                    } else if (normalized.text.length > 10 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini')) {
                         // Move text to options if it looks like a single statement and not an instruction
-                        // Also handle "Pernyataan: [text]" cases even if it contains a colon
                         const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
                         if (cleanStmt.length > 5) {
                             normalized.options = [cleanStmt];

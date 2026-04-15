@@ -1736,7 +1736,12 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
+                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;" class="font-bold mb-1">${q.text}</div>
+                        ${q.type === 'tf' && Array.isArray(q.options) && q.options.length > 0 ? `
+                            <div class="mt-2 pl-3 border-l-2 border-sky-200 space-y-1">
+                                ${q.options.map((opt, idx) => `<div class="text-xs text-slate-600"><span class="font-bold text-sky-600 mr-1">${idx + 1}.</span> ${opt}</div>`).join('')}
+                            </div>
+                        ` : ''}
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
@@ -2697,7 +2702,12 @@ function showLoginForm(type) {
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;">${q.text}</div>
+                        <div style="word-wrap: break-word; white-space: pre-wrap; max-width: none;" class="font-bold mb-1">${q.text}</div>
+                        ${q.type === 'tf' && Array.isArray(q.options) && q.options.length > 0 ? `
+                            <div class="mt-2 pl-3 border-l-2 border-sky-200 space-y-1">
+                                ${q.options.map((opt, idx) => `<div class="text-xs text-slate-600"><span class="font-bold text-sky-600 mr-1">${idx + 1}.</span> ${opt}</div>`).join('')}
+                            </div>
+                        ` : ''}
                         ${(q.images && Array.isArray(q.images) && q.images.length > 0) ? `<div class="flex items-center gap-1 mt-1"><i class="fas fa-images text-xs text-sky-500"></i><span class="text-xs text-sky-600">${q.images.length} gambar</span></div>` : (q.image ? '<div class="flex items-center gap-1 mt-1"><i class="fas fa-image text-xs text-slate-400"></i><span class="text-xs text-slate-500">1 gambar</span></div>' : '')}
                     </td>
                     <td class="px-6 py-4">
