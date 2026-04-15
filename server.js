@@ -935,7 +935,7 @@ app.post('/api/generate-ai', async (req, res) => {
         single: 'pilihan ganda biasa (1 jawaban benar)',
         multiple: 'pilihan ganda kompleks (2-3 jawaban benar dari 4 opsi ABCD)',
         text: 'isian / uraian singkat',
-        tf: 'benar/salah ( 3 pernyataan per soal)',
+        tf: 'benar/salah (default 3 pernyataan per soal, minimal 1 pernyataan)',
         matching: 'menjodohkan'
     };
 
@@ -965,7 +965,7 @@ app.post('/api/generate-ai', async (req, res) => {
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
-    prompt += 'SANGAT PENTING untuk soal benar/salah (type: "tf"): Field "text" HANYA berisi instruksi (misal: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan SEMUA pernyataan yang akan dinilai WAJIB masuk ke array "options". Field "correct" berisi array boolean (true/false) sesuai urutan pernyataan di options. Contoh: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2"],"correct":[true,false]}. JANGAN meletakkan pernyataan di dalam field "text".';
+    prompt += 'SANGAT PENTING untuk soal benar/salah (type: "tf"): Field "text" HANYA berisi instruksi (misal: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan SEMUA pernyataan yang akan dinilai WAJIB masuk ke array "options". Secara default buat 3 pernyataan per soal, namun 1 atau 2 pernyataan juga diperbolehkan. Field "correct" berisi array boolean (true/false) sesuai urutan pernyataan di options. Contoh 3 pernyataan: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. Contoh 1 pernyataan: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1"],"correct":[true]}. JANGAN meletakkan pernyataan di dalam field "text".';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
