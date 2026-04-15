@@ -762,7 +762,7 @@ app.post('/api/generate-ai', async (req, res) => {
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
-    prompt += 'Untuk soal benar/salah (type: "tf"), letakkan instruksi umum di "text" (contoh: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan letakkan daftar pernyataan yang akan dinilai di "options". Upayakan minimal 3 pernyataan (1 juga diperbolehkan). Field "correct" berisi array boolean yang sesuai dengan urutan pernyataan di options, contoh: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2"],"correct":[true,false]}. ';
+    prompt += 'SANGAT PENTING untuk soal benar/salah (type: "tf"): Field "text" HANYA berisi instruksi (misal: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan SEMUA pernyataan yang akan dinilai WAJIB masuk ke array "options". Field "correct" berisi array boolean (true/false) sesuai urutan pernyataan di options. Contoh: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2"],"correct":[true,false]}. JANGAN meletakkan pernyataan di dalam field "text".';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
@@ -873,11 +873,12 @@ app.post('/api/generate-ai', async (req, res) => {
                     const corrects = [];
                     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
                     for (const line of lines) {
-                        const match = line.match(/^(?:\d+\.|\-|\*)?\s*(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\))?\s*$/i);
+                        // Regex improved to strip "Pernyataan: " prefixes and similar noise
+                        const match = line.match(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)?\s*)(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\))?\s*$/i);
                         if (match) {
                             const stmt = match[1].trim();
                             const answer = match[2] || match[3] || '';
-                            if (stmt) {
+                            if (stmt && !/^(benar atau salah|pilihlah|berikut ini|instruksi)/i.test(stmt)) {
                                 statements.push(stmt);
                                 corrects.push(parseBooleanAnswer(answer));
                             }
@@ -925,10 +926,14 @@ app.post('/api/generate-ai', async (req, res) => {
                         normalized.options = statements;
                         normalized.correct = corrects;
                         normalized.text = defaultTfInstruction;
-                    } else if (normalized.text.length > 15 && !normalized.text.includes(':') && !normalized.text.toLowerCase().includes('pilihlah')) {
+                    } else if (normalized.text.length > 10 && (!normalized.text.includes(':') || /^pernyataan\s*:/i.test(normalized.text)) && !normalized.text.toLowerCase().includes('pilihlah')) {
                         // Move text to options if it looks like a single statement and not an instruction
-                        normalized.options = [normalized.text];
-                        normalized.text = defaultTfInstruction;
+                        // Also handle "Pernyataan: [text]" cases even if it contains a colon
+                        const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
+                        if (cleanStmt.length > 5) {
+                            normalized.options = [cleanStmt];
+                            normalized.text = defaultTfInstruction;
+                        }
                     }
                 }
 
