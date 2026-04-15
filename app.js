@@ -2375,11 +2375,15 @@ function showLoginForm(type) {
                 const tfCont = document.getElementById('q-tf-container');
                 if (tfCont) {
                     tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());
-                    (q.options || []).forEach(() => addTfRow());
+                    // Ensure at least 3 rows if empty, otherwise use existing options
+                    const optionCount = (Array.isArray(q.options) && q.options.length > 0) ? q.options.length : 3;
+                    for (let i = 0; i < optionCount; i++) {
+                        addTfRow();
+                    }
                     document.querySelectorAll('#q-tf-container .tf-row').forEach((row, i) => {
                         const inp = row.querySelector('.tf-statement');
                         const sel = row.querySelector('.tf-correct');
-                        if (inp) inp.value = q.options[i] || '';
+                        if (inp) inp.value = (q.options && q.options[i]) || '';
                         if (sel) sel.value = (q.correct && Array.isArray(q.correct) ? String(q.correct[i]) : '');
                     });
                 }

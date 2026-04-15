@@ -915,10 +915,17 @@ app.post('/api/generate-ai', async (req, res) => {
                     }
                 }
 
+                // If options already exist, clean them up (remove "Pernyataan:" prefixes)
+                if (Array.isArray(normalized.options)) {
+                    normalized.options = normalized.options.map(opt => 
+                        typeof opt === 'string' ? opt.replace(/^pernyataan\s*\d*\s*[:\-–]\s*/i, '').trim() : opt
+                    );
+                }
+
                 // If options are empty or need stronger parsing, try text field
                 const defaultTfInstruction = 'Tentukan apakah pernyataan berikut Benar atau Salah:';
                 const isGenericOption = opt => /^(benar|salah|true|false|ya|tidak|ok|yes|no)$/i.test(String(opt).trim());
-                const optionsAreGeneric = normalized.options.length > 0 && normalized.options.every(isGenericOption);
+                const optionsAreGeneric = normalized.options.length === 0 || (normalized.options.length > 0 && normalized.options.every(isGenericOption));
 
                 if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
                     const { statements, corrects } = parseStatementsFromText(normalized.text);
