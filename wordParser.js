@@ -412,18 +412,6 @@ function parseOptionLine(line) {
         return { label: letterMatch[1].toUpperCase(), text: letterMatch[2].trim() };
     }
 
-    // Support for numbered options that might be used instead of letters
-    const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-\s]+)\s*(.+)$/);
-    if (numericMatch && numericMatch[2].trim()) {
-        // Convert number to letter (1->A, 2->B, etc.)
-        const num = parseInt(numericMatch[1]);
-        if (num >= 1 && num <= 6) {
-            const letter = String.fromCharCode(64 + num); // 1->A, 2->B, etc.
-            return { label: letter, text: numericMatch[2].trim() };
-        }
-        return { label: null, text: numericMatch[2].trim() };
-    }
-
     // Accept pure bullet list items without labels as options too, but only if substantial
     if (bulletMatch && candidate.length > 3) {
         return { label: null, text: candidate };
