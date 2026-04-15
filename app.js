@@ -2619,7 +2619,7 @@ function showLoginForm(type) {
                 record.correct = ans;
             } else if (type === 'tf') {
                 const rows = Array.from(document.querySelectorAll('#q-tf-container .tf-row'));
-                if (rows.length < 3) return alert('Soal Benar/Salah harus memiliki minimal 3 pernyataan!');
+                if (rows.length < 1) return alert('Soal Benar/Salah harus memiliki minimal 1 pernyataan!');
                 const stmts = [];
                 const corrs = [];
                 for (const r of rows) {
