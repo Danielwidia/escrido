@@ -217,42 +217,26 @@ function parseCorrectAnswers(raw, options) {
 }
 
 function parseHtmlFormatQuestions(html, metadata = {}) {
-    // Extract text content from HTML while preserving some structure
-    // First, try to extract from paragraph tags
-    const paragraphs = [];
-    const paraRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-    let paraMatch;
-    while ((paraMatch = paraRegex.exec(html)) !== null) {
-        const paraContent = cleanHtmlText(paraMatch[1]);
-        if (paraContent.trim()) {
-            paragraphs.push(paraContent.trim());
-        }
-    }
-
-    // If no paragraphs found, try other block elements
-    if (paragraphs.length === 0) {
-        const blockRegex = /<(?:div|h[1-6]|li|td)[^>]*>([\s\S]*?)<\/(?:div|h[1-6]|li|td)>/gi;
-        let blockMatch;
-        while ((blockMatch = blockRegex.exec(html)) !== null) {
-            const blockContent = cleanHtmlText(blockMatch[1]);
-            if (blockContent.trim()) {
-                paragraphs.push(blockContent.trim());
-            }
-        }
-    }
-
-    // If still no content, fall back to general text extraction
-    let lines = [];
-    if (paragraphs.length > 0) {
-        lines = paragraphs;
-    } else {
-        const textContent = html.replace(/<[^>]+>/g, ' ')
-                               .replace(/&nbsp;/g, ' ')
-                               .replace(/\s+/g, ' ')
-                               .trim();
-        lines = textContent.split(/\n/).map(line => line.trim()).filter(Boolean);
-    }
-
+    // First remove scripts/styles just in case
+    let clean = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '');
+    
+    // Replace closing tags of block elements and <br> with newlines
+    clean = clean.replace(/<\/(p|div|li|h[1-6]|td|tr|table|ul|ol)>/gi, '\n')
+                 .replace(/<br[^>]*>/gi, '\n');
+             
+    // Clean all remaining HTML tags
+    clean = clean.replace(/<[^>]+>/g, ' ')
+                 .replace(/&nbsp;/g, ' ')
+                 .replace(/&lt;/g, '<')
+                 .replace(/&gt;/g, '>')
+                 .replace(/&amp;/g, '&');
+                 
+    // Replace multiple spaces with single space, but preserve newlines
+    clean = clean.replace(/[ \t]+/g, ' ').trim();
+    
+    // Extract lines
+    const lines = clean.split('\n').map(line => line.trim()).filter(Boolean);
+    
     return parseTextFormatQuestions(lines.join('\n'), metadata);
 }
 
