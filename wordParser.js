@@ -7,7 +7,8 @@ const fs = require('fs');
 async function parseWordDocument(fileBuffer, metadata = {}) {
     try {
         const result = await mammoth.convertToHtml({ buffer: fileBuffer });
-        const html = result.value;
+        let html = result.value;
+        html = prepareListHtml(html);
         const tables = extractTablesFromHtml(html);
 
         let questions = [];
@@ -66,6 +67,54 @@ async function parseWordDocument(fileBuffer, metadata = {}) {
             questions: []
         };
     }
+}
+
+function prepareListHtml(html) {
+    let listStack = [];
+    let counters = [];
+    
+    // Inject numbering formats into lists
+    let newHtml = html.replace(/<\/?(?:ol|ul|li)[^>]*>/gi, function(match) {
+        const tag = match.toLowerCase();
+        if (tag.startsWith('<ol')) {
+            listStack.push('ol');
+            counters.push(0);
+            return match;
+        } else if (tag.startsWith('<ul')) {
+            listStack.push('ul');
+            counters.push(0);
+            return match;
+        } else if (tag.startsWith('</ol') || tag.startsWith('</ul')) {
+            listStack.pop();
+            counters.pop();
+            return match;
+        } else if (tag.startsWith('<li')) {
+            let result = match;
+            if (listStack.length > 0) {
+                let type = listStack[listStack.length - 1];
+                let level = listStack.length;
+                
+                if (type === 'ol') {
+                    let idx = counters[counters.length - 1]++;
+                    if (level === 1) {
+                        result += `${idx + 1}. `;
+                    } else {
+                        let letter = String.fromCharCode(65 + (idx % 26));
+                        result += `${letter}. `;
+                    }
+                } else if (type === 'ul') {
+                    result += `• `;
+                }
+            }
+            return result;
+        }
+        return match;
+    });
+
+    // Move injected markers INSIDE the first <p> tag of the <li> if it exists
+    newHtml = newHtml.replace(/(<li[^>]*>)(\d+\.\s|[A-Z]\.\s|•\s)\s*(<p[^>]*>)/gi, '$1$3$2');
+    
+    return newHtml;
 }
 
 function extractTablesFromHtml(html) {
