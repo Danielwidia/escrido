@@ -176,11 +176,45 @@ function convertTableToQuestions(table, metadata = {}) {
 }
 
 function parseQuestionRow(question, options, correctAnswersRaw, metadata) {
-    if (!question || options.length < 1 || !correctAnswersRaw) return null;
-    const correctIndices = parseCorrectAnswers(correctAnswersRaw, options);
+    if (!question || !correctAnswersRaw) return null;
+    
+    let finalOptions = [...options];
+    let finalQuestion = question.trim();
+
+    // If no explicit options columns were found, they might be merged in the question cell.
+    if (finalOptions.length === 0) {
+        const lines = finalQuestion.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 2) {
+            const possibleOptions = [];
+            let splitIndex = lines.length;
+            for (let j = 1; j <= Math.min(6, lines.length - 1); j++) {
+                const line = lines[lines.length - j];
+                // Check if it looks like an option (A. B. C.)
+                const isExplicitOpt = /^([A-F]|\d+)(?:[\.\)\:\-\s]+)\s*(.+)$/i.test(line);
+                if (isExplicitOpt || line.length < 150) {
+                    splitIndex = lines.length - j;
+                } else {
+                    break;
+                }
+            }
+            if (lines.length - splitIndex >= 2) {
+                finalOptions = lines.splice(splitIndex);
+                finalQuestion = lines.join('\n');
+            }
+        }
+    }
+
+    if (finalOptions.length === 0) {
+        return {
+            text: finalQuestion, type: 'text', correct: correctAnswersRaw.trim(),
+            mapel: metadata.subject || 'General', rombel: metadata.class || ''
+        };
+    }
+
+    const correctIndices = parseCorrectAnswers(correctAnswersRaw, finalOptions);
     if (correctIndices === null) {
         return {
-            text: question.trim(), type: 'text', correct: correctAnswersRaw.trim(),
+            text: finalQuestion, type: 'text', correct: correctAnswersRaw.trim(),
             mapel: metadata.subject || 'General', rombel: metadata.class || ''
         };
     }
@@ -394,6 +428,30 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
     // Use ordered options, but limit to reasonable number
     const finalOptions = orderedOptions.slice(0, 6);
 
+    // Heuristic: If we found no explicit options, the user might not have labeled them at all
+    // and they were sucked into the question text. The last 2-5 short lines are likely options.
+    if (finalOptions.length === 0 && questionLines.length > 2) {
+        let splitIndex = questionLines.length;
+        for (let j = 1; j <= Math.min(6, questionLines.length - 1); j++) {
+            const l = questionLines[questionLines.length - j];
+            if (l.length < 150) {
+                splitIndex = questionLines.length - j;
+            } else {
+                break;
+            }
+        }
+        if (questionLines.length - splitIndex >= 2) {
+            const extracted = questionLines.splice(splitIndex);
+            finalOptions.push(...extracted);
+            
+            // Reconstruct the question string from remaining lines
+            questionText = questionLines.join('\n');
+            if (readingText && readingText.trim()) {
+                questionText = readingText.trim() + '\n\n' + questionText;
+            }
+        }
+    }
+
     // Default answer key to first option if not found, preserving the imported question
     if (!correctAnswer) {
         correctAnswer = 'A';
@@ -416,7 +474,18 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
         }
         return { question: qObj, nextIndex: i };
     }
-    return { question: null, nextIndex: i };
+    
+    // If still no options, save it as a text question instead of dropping it entirely
+    return { 
+        question: {
+            text: questionText,
+            type: 'text',
+            correct: correctAnswer,
+            mapel: metadata.subject || 'General',
+            rombel: metadata.class || ''
+        }, 
+        nextIndex: i 
+    };
 }
 
 function parseOptionLine(line) {
