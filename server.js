@@ -193,6 +193,209 @@ function normalizeQuestionType(type = '') {
     return 'single';
 }
 
+/**
+ * Robustly normalizes an AI-generated question into the standard format used by the bank soal.
+ * This includes statement extraction for TF, answer key mapping, and property verification.
+ */
+function fullNormalizeQuestion(q, mapel, rombel) {
+    const normalized = { ...q };
+
+    // Ensure mapel and rombel are set
+    if (!normalized.mapel) normalized.mapel = mapel;
+    if (!normalized.rombel) normalized.rombel = rombel;
+    
+    // Normalize type string
+    normalized.type = normalizeQuestionType(normalized.type || 'single');
+
+    // HELPERS
+    const isGenericOption = opt => {
+        if (!opt || String(opt).trim() === '') return true;
+        const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
+        return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
+    };
+    
+    const parseBooleanAnswer = value => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value === 1;
+        if (value === null || value === undefined) return false;
+        const clean = value.toString().trim().toLowerCase().replace(/[\(\)\[\]\.]/g, '');
+        if (['benar', 'true', 't', 'ya', 'yes', '1', 'correct', 'right', 'b', 'betul', 'ok'].includes(clean)) return true;
+        if (['salah', 'false', 'f', 'tidak', 'no', '0', 'incorrect', 'wrong', 's'].includes(clean)) return false;
+        return false;
+    };
+
+    // AUTO-DETECT TF: If it's single choice but options are just Benar/Salah
+    if (normalized.type !== 'tf' && Array.isArray(normalized.options) && normalized.options.length > 0 && normalized.options.length <= 2) {
+        if (normalized.options.every(isGenericOption)) {
+            normalized.type = 'tf';
+        }
+    }
+
+    // Normalize TF (True/False) questions
+    if (normalized.type === 'tf') {
+        const normalizeOptionList = raw => {
+            if (Array.isArray(raw)) {
+                return raw.flatMap(item => {
+                    if (typeof item === 'string') return item.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
+                    if (typeof item === 'boolean') return [item ? "Benar" : "Salah"];
+                    return [];
+                }).map(s => s.trim()).filter(Boolean);
+            }
+            if (typeof raw === 'string') {
+                return raw.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
+            }
+            return [];
+        };
+
+        const parseStatementsFromText = (textStr) => {
+            const statements = [];
+            const corrects = [];
+            const lines = textStr.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+            for (const line of lines) {
+                const match = line.match(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)?\s*)(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S|Betul)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S|Betul)\))?\s*$/i);
+                if (match) {
+                    const stmt = match[1].trim();
+                    const answerRaw = match[2] || match[3] || '';
+                    if (stmt && !/^(benar atau salah|pilihlah|berikut ini|instruksi|tentukan)/i.test(stmt)) {
+                        statements.push(stmt);
+                        corrects.push(answerRaw ? parseBooleanAnswer(answerRaw) : null);
+                    }
+                }
+            }
+            return { statements, corrects };
+        };
+
+        normalized.options = normalizeOptionList(normalized.options);
+
+        if (normalized.options.length === 1 && /\r?\n/.test(normalized.options[0])) {
+            normalized.options = normalized.options[0].split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
+        }
+
+        // Detect embedded answers in options
+        if (normalized.options.length > 0) {
+            const parsedOptions = [];
+            const parsedCorrects = [];
+            for (const opt of normalized.options) {
+                const match = opt.match(/^(.+?)\s*(?:[\-:–]\s*|\()?(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|Betul)\)?$/i);
+                if (match) {
+                    parsedOptions.push(match[1].trim());
+                    parsedCorrects.push(parseBooleanAnswer(match[2] || match[3]));
+                } else {
+                    parsedOptions.push(opt);
+                    // Preservation logic: use original correct if available
+                    let fallback = false;
+                    if (Array.isArray(normalized.correct) && normalized.correct.length > parsedOptions.length - 1) {
+                        fallback = parseBooleanAnswer(normalized.correct[parsedOptions.length - 1]);
+                    } else if (!Array.isArray(normalized.correct) && normalized.correct !== undefined && normalized.correct !== null) {
+                        if (parsedOptions.length === 1) fallback = parseBooleanAnswer(normalized.correct);
+                    }
+                    parsedCorrects.push(fallback);
+                }
+            }
+            normalized.options = parsedOptions;
+            
+            // Only overwrite if we found actual embedded answers or if original is missing/invalid
+            const foundEmbedded = parsedCorrects.some((_, idx) => {
+                const originalOpt = Array.isArray(q.options) ? q.options[idx] : null;
+                if (typeof originalOpt !== 'string') return false;
+                return /(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|Betul)\)?$/i.test(originalOpt);
+            });
+
+            if (foundEmbedded || !Array.isArray(normalized.correct) || normalized.correct.length !== parsedCorrects.length) {
+                normalized.correct = parsedCorrects;
+            }
+        }
+
+        // Clean up statements
+        if (Array.isArray(normalized.options)) {
+            normalized.options = normalized.options.map(opt => 
+                typeof opt === 'string' ? opt.replace(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)\s+)/i, '').trim() : opt
+            );
+        }
+
+        const defaultTfInstruction = 'Tentukan apakah pernyataan berikut Benar atau Salah:';
+        const optionsAreGeneric = normalized.options.length === 0 || (normalized.options.length > 0 && normalized.options.every(isGenericOption));
+
+        if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
+            const { statements, corrects } = parseStatementsFromText(normalized.text);
+            if (statements.length > 0) {
+                normalized.options = statements;
+                const finalCorrects = [];
+                const originalHasArray = Array.isArray(normalized.correct);
+                const originalValue = normalized.correct;
+                for (let i = 0; i < statements.length; i++) {
+                    if (corrects[i] !== null) finalCorrects.push(corrects[i]);
+                    else if (originalHasArray && originalValue.length > i) finalCorrects.push(parseBooleanAnswer(originalValue[i]));
+                    else if (!originalHasArray && originalValue !== undefined && originalValue !== null) {
+                        if (i === 0) finalCorrects.push(parseBooleanAnswer(originalValue));
+                        else finalCorrects.push(false);
+                    }
+                    else finalCorrects.push(false);
+                }
+                normalized.correct = finalCorrects;
+                normalized.text = defaultTfInstruction;
+            } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi') && !normalized.text.toLowerCase().includes('tentukan')) {
+                const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
+                if (cleanStmt.length > 10) {
+                    normalized.options = [cleanStmt];
+                    normalized.text = defaultTfInstruction;
+                    const singleCorrect = Array.isArray(normalized.correct) ? normalized.correct[0] : normalized.correct;
+                    normalized.correct = [parseBooleanAnswer(singleCorrect !== undefined ? singleCorrect : false)];
+                }
+            }
+        }
+
+        if (!normalized.text || normalized.text.trim() === '' || isGenericOption(normalized.text)) {
+            normalized.text = defaultTfInstruction;
+        }
+
+        if (!Array.isArray(normalized.correct)) {
+            const scalarVal = (normalized.correct !== undefined && normalized.correct !== null) ? parseBooleanAnswer(normalized.correct) : false;
+            normalized.correct = normalized.options.map((_, i) => i === 0 ? scalarVal : false);
+        } else if (normalized.correct.length !== normalized.options.length) {
+            const correctLength = normalized.correct.length;
+            const optionsLength = normalized.options.length;
+            if (optionsLength > 0) {
+                if (correctLength < optionsLength) {
+                    normalized.correct = [...normalized.correct, ...Array(optionsLength - correctLength).fill(false)];
+                } else {
+                    normalized.correct = normalized.correct.slice(0, optionsLength);
+                }
+            }
+        }
+        normalized.correct = normalized.correct.map(parseBooleanAnswer);
+    }
+
+    // Normalize Multiple Choice
+    if (normalized.type === 'multiple') {
+        if (!Array.isArray(normalized.options) || normalized.options.length !== 4) normalized.options = ['A', 'B', 'C', 'D'];
+        if (!Array.isArray(normalized.correct)) normalized.correct = [normalized.correct];
+        if (normalized.correct.length < 2) {
+            const available = [0,1,2,3].filter(i => !normalized.correct.includes(i));
+            while (normalized.correct.length < 2 && available.length > 0) normalized.correct.push(available.splice(Math.floor(Math.random() * available.length), 1)[0]);
+        } else if (normalized.correct.length > 3) normalized.correct = normalized.correct.slice(0, 3);
+        normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c <= 3);
+    }
+
+    // Normalize Matching
+    if (normalized.type === 'matching') {
+        if (!Array.isArray(normalized.questions)) normalized.questions = [];
+        if (!Array.isArray(normalized.answers)) normalized.answers = [];
+        if (!Array.isArray(normalized.correct)) normalized.correct = normalized.questions.slice(0, Math.min(normalized.questions.length, normalized.answers.length));
+        else if (normalized.correct.length !== normalized.questions.length) {
+            const qLen = normalized.questions.length;
+            if (normalized.correct.length < qLen) normalized.correct = [...normalized.correct, ...Array(qLen - normalized.correct.length).fill(normalized.answers[0] || '')];
+            else normalized.correct = normalized.correct.slice(0, qLen);
+        }
+        normalized.correct = normalized.correct.map(c => String(c));
+    }
+
+    if (!normalized.images) normalized.images = [];
+    if (!normalized.text) normalized.text = '';
+
+    return normalized;
+}
+
 // ─── Data Layer (Supabase Native + Fallback) ──────────────────────────────────
 async function readDB() {
     if (USE_SUPABASE) {
@@ -835,239 +1038,7 @@ app.post('/api/generate-ai', async (req, res) => {
         console.log(`[/api/generate-ai] Parsed questions:`, JSON.stringify(parsed, null, 2));
 
         // Normalize question formats
-        let normalizedQuestions = parsed.map(q => {
-            const normalized = { ...q };
-
-            // Ensure mapel and rombel are set
-            if (!normalized.mapel) normalized.mapel = mapel;
-            if (!normalized.rombel) normalized.rombel = rombel;
-
-            // HELPERS
-            const isGenericOption = opt => {
-                if (!opt || String(opt).trim() === '') return true;
-                const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
-                return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
-            };
-            const parseBooleanAnswer = value => {
-                if (typeof value === 'boolean') return value;
-                if (typeof value === 'number') return value === 1;
-                if (value === null || value === undefined) return false;
-                
-                const clean = value.toString().trim().toLowerCase().replace(/[\(\)\[\]\.]/g, '');
-                if (['benar', 'true', 't', 'ya', 'yes', '1', 'correct', 'right', 'b'].includes(clean)) return true;
-                if (['salah', 'false', 'f', 'tidak', 'no', '0', 'incorrect', 'wrong', 's'].includes(clean)) return false;
-                return false;
-            };
-
-            // AUTO-DETECT TF: If it's single choice but options are just Benar/Salah
-            if (normalized.type !== 'tf' && Array.isArray(normalized.options) && normalized.options.length > 0 && normalized.options.length <= 2) {
-                if (normalized.options.every(isGenericOption)) {
-                    normalized.type = 'tf';
-                }
-            }
-
-            // Normalize TF questions
-            if (normalized.type === 'tf') {
-
-                const normalizeOptionList = raw => {
-                    if (Array.isArray(raw)) {
-                        return raw.flatMap(item => {
-                            if (typeof item !== 'string') return [];
-                            const parts = item.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
-                            return parts;
-                        }).map(s => s.trim()).filter(Boolean);
-                    }
-                    if (typeof raw === 'string') {
-                        return raw.split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
-                    }
-                    return [];
-                };
-
-                const parseStatementsFromText = (textStr, originalCorrect) => {
-                    const statements = [];
-                    const corrects = [];
-                    const lines = textStr.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-                    for (const line of lines) {
-                        // Regex improved to strip "Pernyataan: " prefixes and similar noise
-                        const match = line.match(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)?\s*)(.+?)\s*(?:[\-:–]\s*(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S)|\((Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No|B|S)\))?\s*$/i);
-                        if (match) {
-                            const stmt = match[1].trim();
-                            const answerRaw = match[2] || match[3] || '';
-                            if (stmt && !/^(benar atau salah|pilihlah|berikut ini|instruksi|tentukan)/i.test(stmt)) {
-                                statements.push(stmt);
-                                // If answer is present in text, use it. Otherwise, use existing correct if available.
-                                if (answerRaw) {
-                                    corrects.push(parseBooleanAnswer(answerRaw));
-                                } else {
-                                    corrects.push(null); // Mark as unknown for now
-                                }
-                            }
-                        }
-                    }
-                    return { statements, corrects };
-                };
-
-                normalized.options = normalizeOptionList(normalized.options);
-
-                // If options were provided as an array containing a single multiline string,
-                // flatten that single item into separate statements.
-                if (normalized.options.length === 1 && /\r?\n/.test(normalized.options[0])) {
-                    normalized.options = normalized.options[0].split(/\r?\n|;/).map(s => s.trim()).filter(Boolean);
-                }
-
-                // Detect statements and answers embedded in options if present
-                if (normalized.options.length > 0) {
-                    const parsedOptions = [];
-                    const parsedCorrects = [];
-                    for (const opt of normalized.options) {
-                        const match = opt.match(/^(.+?)\s*(?:[\-:–]\s*|\()?(Benar|Salah|True|False|T|F|Ya|Tidak|Yes|No)\)?$/i);
-                        if (match) {
-                            parsedOptions.push(match[1].trim());
-                            parsedCorrects.push(parseBooleanAnswer(match[2] || match[3]));
-                        } else {
-                            parsedOptions.push(opt);
-                            parsedCorrects.push(false);
-                        }
-                    }
-                    normalized.options = parsedOptions;
-                    if (!Array.isArray(normalized.correct) || normalized.correct.length !== parsedCorrects.length) {
-                        normalized.correct = parsedCorrects;
-                    }
-                }
-
-                // If options already exist, clean them up (remove "Pernyataan:" and numeric prefixes)
-                if (Array.isArray(normalized.options)) {
-                    normalized.options = normalized.options.map(opt => 
-                        typeof opt === 'string' ? opt.replace(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)\s+)/i, '').trim() : opt
-                    );
-                }
-
-                // If options are empty or need stronger parsing, try text field
-                const defaultTfInstruction = 'Tentukan apakah pernyataan berikut Benar atau Salah:';
-                const optionsAreGeneric = normalized.options.length === 0 || (normalized.options.length > 0 && normalized.options.every(isGenericOption));
-
-                if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
-                    const { statements, corrects } = parseStatementsFromText(normalized.text, normalized.correct);
-                    if (statements.length > 0) {
-                        normalized.options = statements;
-                        
-                        // Intelligent Correct Mapping
-                        const finalCorrects = [];
-                        const originalHasArray = Array.isArray(normalized.correct);
-                        const originalValue = normalized.correct;
-
-                        for (let i = 0; i < statements.length; i++) {
-                            if (corrects[i] !== null) {
-                                // Use answer found in text line
-                                finalCorrects.push(corrects[i]);
-                            } else if (originalHasArray && originalValue.length > i) {
-                                // Use answer from original correct array
-                                finalCorrects.push(parseBooleanAnswer(originalValue[i]));
-                            } else if (!originalHasArray && statements.length === 1 && originalValue !== undefined && originalValue !== null) {
-                                // Use original single correct value for single statement
-                                finalCorrects.push(parseBooleanAnswer(originalValue));
-                            } else {
-                                finalCorrects.push(false); // Default
-                            }
-                        }
-                        normalized.correct = finalCorrects;
-                        normalized.text = defaultTfInstruction;
-                    } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi') && !normalized.text.toLowerCase().includes('tentukan')) {
-                        // Move text to options if it looks like a single statement and not an instruction
-                        const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
-                        if (cleanStmt.length > 10) {
-                            normalized.options = [cleanStmt];
-                            normalized.text = defaultTfInstruction;
-                            if (!Array.isArray(normalized.correct) || normalized.correct.length === 0) {
-                                // Try using a single string correct value if it exists
-                                const singleCorrect = Array.isArray(normalized.correct) ? normalized.correct[0] : normalized.correct;
-                                normalized.correct = [parseBooleanAnswer(singleCorrect !== undefined ? singleCorrect : false)];
-                            }
-                        }
-                    }
-                }
-
-                if (!normalized.text || normalized.text.trim() === '' || isGenericOption(normalized.text)) {
-                    normalized.text = defaultTfInstruction;
-                }
-
-                if (!Array.isArray(normalized.correct)) {
-                    normalized.correct = normalized.options.map(() => false);
-                } else if (normalized.correct.length !== normalized.options.length) {
-                    const correctLength = normalized.correct.length;
-                    const optionsLength = normalized.options.length;
-                    if (optionsLength === 0) {
-                         // Fallback if somehow options are empty but correct has items
-                    } else if (correctLength < optionsLength) {
-                        normalized.correct = [
-                            ...normalized.correct,
-                            ...Array(optionsLength - correctLength).fill(false)
-                        ];
-                    } else if (correctLength > optionsLength) {
-                        normalized.correct = normalized.correct.slice(0, optionsLength);
-                    }
-                }
-
-                normalized.correct = normalized.correct.map(parseBooleanAnswer);
-            }
-
-            // Normalize multiple choice questions
-            if (normalized.type === 'multiple') {
-                // Ensure 4 options A,B,C,D
-                if (!Array.isArray(normalized.options) || normalized.options.length !== 4) {
-                    normalized.options = ['A', 'B', 'C', 'D'];
-                }
-                if (!Array.isArray(normalized.correct)) {
-                    normalized.correct = [normalized.correct]; // Convert single to array
-                }
-                // Ensure 2-3 correct answers
-                if (normalized.correct.length < 2) {
-                    // Add more correct answers if less than 2
-                    const available = [0,1,2,3].filter(i => !normalized.correct.includes(i));
-                    while (normalized.correct.length < 2 && available.length > 0) {
-                        const idx = available.splice(Math.floor(Math.random() * available.length), 1)[0];
-                        normalized.correct.push(idx);
-                    }
-                } else if (normalized.correct.length > 3) {
-                    // Limit to 3 correct answers
-                    normalized.correct = normalized.correct.slice(0, 3);
-                }
-                // Ensure all are numbers 0-3
-                normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c <= 3);
-            }
-
-            // Normalize matching questions
-            if (normalized.type === 'matching') {
-                if (!Array.isArray(normalized.questions)) {
-                    normalized.questions = [];
-                }
-                if (!Array.isArray(normalized.answers)) {
-                    normalized.answers = [];
-                }
-                if (!Array.isArray(normalized.correct)) {
-                    // Default: match first questions to first answers
-                    normalized.correct = normalized.questions.slice(0, Math.min(normalized.questions.length, normalized.answers.length));
-                } else if (normalized.correct.length !== normalized.questions.length) {
-                    // Adjust correct array length
-                    const questionsLength = normalized.questions.length;
-                    if (normalized.correct.length < questionsLength) {
-                        // Pad with empty strings or first available answer
-                        const padding = Array(questionsLength - normalized.correct.length).fill(normalized.answers[0] || '');
-                        normalized.correct = [...normalized.correct, ...padding];
-                    } else {
-                        normalized.correct = normalized.correct.slice(0, questionsLength);
-                    }
-                }
-                // Ensure all correct values are strings
-                normalized.correct = normalized.correct.map(c => String(c));
-            }
-
-            // Ensure other required fields
-            if (!normalized.images) normalized.images = [];
-            if (!normalized.text) normalized.text = '';
-
-            return normalized;
-        });
+        let normalizedQuestions = parsed.map(q => fullNormalizeQuestion(q, mapel, rombel));
 
         // Filter out invalid questions
         const originalCount = normalizedQuestions.length;
@@ -1185,13 +1156,8 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
                     // Tambahkan ke database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
-                    // Inject basic standard properties
-                    parsedQuestions = parsedQuestions.map(q => ({
-                        ...q,
-                        mapel: q.mapel || mapel,
-                        rombel: q.rombel || fase,
-                        type: normalizeQuestionType(q.type)
-                    }));
+                    // Inject basic standard properties and full normalization
+                    parsedQuestions = parsedQuestions.map(q => fullNormalizeQuestion(q, mapel, fase));
                     db.questions = [...db.questions, ...parsedQuestions];
                     await writeDB(db);
                     console.log(`[AI Bank Soal] Successfully saved ${parsedQuestions.length} questions to database.`);
