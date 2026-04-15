@@ -273,9 +273,15 @@ function looksLikeQuestionStart(lines, index) {
             foundAnswer = true;
             break;
         }
+        // If we hit a new question start, break
+        if (/^\d+\./.test(nextLine)) {
+            break;
+        }
+        // Break on anything else that is not an empty option
         break;
     }
-    return optionCount >= 2 && foundAnswer;
+    // We relax the strict requirement of an answer line to support documents without explicit inline keys
+    return optionCount >= 2;
 }
 
 function parseTextFormatQuestions(rawText, metadata = {}) {
@@ -388,7 +394,12 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
     // Use ordered options, but limit to reasonable number
     const finalOptions = orderedOptions.slice(0, 6);
 
-    if (correctAnswer && finalOptions.length > 0) {
+    // Default answer key to first option if not found, preserving the imported question
+    if (!correctAnswer) {
+        correctAnswer = 'A';
+    }
+
+    if (finalOptions.length > 0) {
         const indices = finalOptions.length >= 2 ? parseCorrectAnswers(correctAnswer, finalOptions) : null;
         const qObj = {
             text: questionText,
