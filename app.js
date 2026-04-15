@@ -2377,6 +2377,24 @@ function showLoginForm(type) {
             document.getElementById('q-type').value = q.type || 'single';
             onQuestionTypeChange();
             if (q.type === 'tf') {
+                // SELF-HEALING: If text box contains a long sentence and options are empty/generic
+                const textLower = (q.text || '').toLowerCase();
+                const looksLikeInstruction = textLower.includes('pilihlah') || textLower.includes('tentukan') || textLower.includes('berikut ini') || textLower.includes('instruksi');
+                const isGeneric = (opt) => {
+                    if (!opt || String(opt).trim() === '') return true;
+                    const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
+                    return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
+                };
+                const optionsAreGeneric = !q.options || q.options.length === 0 || q.options.every(isGeneric);
+
+                if (q.text && q.text.length > 25 && !looksLikeInstruction && optionsAreGeneric) {
+                    q.options = [q.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim()];
+                    q.text = "Tentukan apakah pernyataan berikut Benar atau Salah:";
+                    if (!Array.isArray(q.correct) || q.correct.length === 0) q.correct = [false];
+                    // Update UI field for main text
+                    document.getElementById('q-text').value = q.text;
+                }
+
                 const tfCont = document.getElementById('q-tf-container');
                 if (tfCont) {
                     tfCont.querySelectorAll('.tf-row').forEach(r => r.remove());

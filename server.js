@@ -843,7 +843,11 @@ app.post('/api/generate-ai', async (req, res) => {
             if (!normalized.rombel) normalized.rombel = rombel;
 
             // HELPERS
-            const isGenericOption = opt => /^(benar|salah|true|false|ya|tidak|ok|yes|no)$/i.test(String(opt).trim());
+            const isGenericOption = opt => {
+                if (!opt || String(opt).trim() === '') return true;
+                const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
+                return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
+            };
             const parseBooleanAnswer = value => {
                 if (typeof value === 'boolean') return value;
                 if (typeof value === 'number') return value === 1;
@@ -942,12 +946,16 @@ app.post('/api/generate-ai', async (req, res) => {
                         normalized.options = statements;
                         normalized.correct = corrects;
                         normalized.text = defaultTfInstruction;
-                    } else if (normalized.text.length > 10 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini')) {
+                    } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi')) {
                         // Move text to options if it looks like a single statement and not an instruction
+                        // even if it's currently a single long sentence without "Pernyataan:" prefix
                         const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
-                        if (cleanStmt.length > 5) {
+                        if (cleanStmt.length > 10) {
                             normalized.options = [cleanStmt];
                             normalized.text = defaultTfInstruction;
+                            if (!Array.isArray(normalized.correct) || normalized.correct.length === 0) {
+                                normalized.correct = [false]; // Default to false if unknown
+                            }
                         }
                     }
                 }
