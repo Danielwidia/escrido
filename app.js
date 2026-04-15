@@ -4279,6 +4279,7 @@ function showLoginForm(type) {
                 if (q.type === 'multiple') return [];
                 if (q.type === 'text') return '';
                 if (q.type === 'matching') return [];
+                if (q.type === 'tf') return [];
                 return null; // default single-choice
             });
             const ragu = normalizedQuestions.map(_ => false);
@@ -4307,6 +4308,24 @@ function showLoginForm(type) {
         function showQuestion(idx) {
             examData.currentIdx = idx;
             const q = examData.questions[idx];
+
+            // SELF-HEALING for students: If tf question has statement trapped in text
+            if (q.type === 'tf') {
+                const textLower = (q.text || '').toLowerCase();
+                const looksLikeInstruction = textLower.includes('pilihlah') || textLower.includes('tentukan') || textLower.includes('berikut ini') || textLower.includes('instruksi');
+                const isGeneric = (opt) => {
+                    if (!opt || String(opt).trim() === '') return true;
+                    const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
+                    return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
+                };
+                const optionsAreGeneric = !q.options || q.options.length === 0 || q.options.every(isGeneric);
+
+                if (q.text && q.text.length > 25 && !looksLikeInstruction && optionsAreGeneric) {
+                    q.options = [q.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim()];
+                    q.text = "Tentukan apakah pernyataan berikut Benar atau Salah:";
+                }
+            }
+
             document.getElementById('curr-q-num').innerText = idx + 1;
             document.getElementById('total-q-num').innerText = examData.questions.length;
             document.getElementById('exam-q-text').innerHTML = q.text;
