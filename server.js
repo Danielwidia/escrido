@@ -762,7 +762,7 @@ app.post('/api/generate-ai', async (req, res) => {
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
-    prompt += 'Untuk soal benar/salah gunakan "options" sebagai daftar minimal 3 pernyataan dan "correct" sebagai array boolean dengan panjang sama seperti options, contoh: {"type":"tf","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. ';
+    prompt += 'Untuk soal benar/salah (type: "tf"), letakkan instruksi umum di "text" (contoh: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan letakkan daftar pernyataan yang akan dinilai di "options". Upayakan minimal 3 pernyataan (1 juga diperbolehkan). Field "correct" berisi array boolean yang sesuai dengan urutan pernyataan di options, contoh: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2"],"correct":[true,false]}. ';
     prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
@@ -810,7 +810,7 @@ app.post('/api/generate-ai', async (req, res) => {
 
             return [{
                 type: 'tf',
-                text: questionText,
+                text: questionText || 'Tentukan apakah pernyataan berikut Benar atau Salah:',
                 options: statements,
                 correct: statements.map(() => false),
                 mapel,
@@ -915,16 +915,25 @@ app.post('/api/generate-ai', async (req, res) => {
                 }
 
                 // If options are empty or need stronger parsing, try text field
-                if (normalized.options.length === 0 && normalized.text && typeof normalized.text === 'string') {
+                const defaultTfInstruction = 'Tentukan apakah pernyataan berikut Benar atau Salah:';
+                const isGenericOption = opt => /^(benar|salah|true|false|ya|tidak|ok|yes|no)$/i.test(String(opt).trim());
+                const optionsAreGeneric = normalized.options.length > 0 && normalized.options.every(isGenericOption);
+
+                if ((normalized.options.length === 0 || optionsAreGeneric) && normalized.text && typeof normalized.text === 'string' && normalized.text.length > 5) {
                     const { statements, corrects } = parseStatementsFromText(normalized.text);
-                    if (statements.length >= 3) {
-                        normalized.options = statements.slice(0, 3);
-                        normalized.correct = corrects.slice(0, 3);
-                        normalized.text = '';
-                    } else if (statements.length > 0) {
+                    if (statements.length > 0) {
                         normalized.options = statements;
                         normalized.correct = corrects;
+                        normalized.text = defaultTfInstruction;
+                    } else if (normalized.text.length > 15 && !normalized.text.includes(':') && !normalized.text.toLowerCase().includes('pilihlah')) {
+                        // Move text to options if it looks like a single statement and not an instruction
+                        normalized.options = [normalized.text];
+                        normalized.text = defaultTfInstruction;
                     }
+                }
+
+                if (!normalized.text || normalized.text.trim() === '' || isGenericOption(normalized.text)) {
+                    normalized.text = defaultTfInstruction;
                 }
 
                 if (!Array.isArray(normalized.correct)) {
@@ -932,7 +941,9 @@ app.post('/api/generate-ai', async (req, res) => {
                 } else if (normalized.correct.length !== normalized.options.length) {
                     const correctLength = normalized.correct.length;
                     const optionsLength = normalized.options.length;
-                    if (correctLength < optionsLength) {
+                    if (optionsLength === 0) {
+                         // Fallback if somehow options are empty but correct has items
+                    } else if (correctLength < optionsLength) {
                         normalized.correct = [
                             ...normalized.correct,
                             ...Array(optionsLength - correctLength).fill(false)
