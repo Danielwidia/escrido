@@ -313,7 +313,17 @@ function parseTextFormatQuestions(rawText, metadata = {}) {
 function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null) {
     let i = startIndex;
     const questionLines = [];
+    
+    // Always include the first line as part of the question to prevent `1. Soal` from being swallowed as an option
+    if (i < lines.length) {
+        questionLines.push(lines[i]);
+        i++;
+    }
+
     while (i < lines.length && !isOptionLine(lines[i]) && !isAnswerLine(lines[i])) {
+        // If the next line looks exactly like another question start, we shouldn't swallow it.
+        // But to be safe, we just let it be swallowed if it's text, unless it's a number.
+        // Actually, if it's a new question, it should have been caught in the outer loop.
         questionLines.push(lines[i]);
         i++;
     }
@@ -410,6 +420,17 @@ function parseOptionLine(line) {
     const letterMatch = candidate.match(/^([A-F])(?:[\.\)\:\-\s]+)\s*(.+)$/i);
     if (letterMatch && letterMatch[2].trim()) {
         return { label: letterMatch[1].toUpperCase(), text: letterMatch[2].trim() };
+    }
+
+    // Support for numbered options that might be used instead of letters
+    // This allows Mammoth output (which often uses <ol> for options) to map 1, 2, 3 to A, B, C
+    const numericMatch = candidate.match(/^(\d+)(?:[\.\)\:\-\s]+)\s*(.+)$/);
+    if (numericMatch && numericMatch[2].trim()) {
+        const num = parseInt(numericMatch[1], 10);
+        if (num >= 1 && num <= 6) {
+            const letter = String.fromCharCode(64 + num); // 1->A, 2->B, etc.
+            return { label: letter, text: numericMatch[2].trim() };
+        }
     }
 
     // Accept pure bullet list items without labels as options too, but only if substantial
