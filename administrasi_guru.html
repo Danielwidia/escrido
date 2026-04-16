@@ -1020,7 +1020,9 @@
                     
                     extraData.jumlahPerBentuk = parts.length > 0 ? parts.join(', ') : '5 Pilihan Ganda';
                     extraData.opsiGambar = document.getElementById('input-opsi-gambar')?.value || 'none';
-                    extraData.generateKisi = document.getElementById('input-generate-kisi')?.checked ? true : false;
+                    const generateKisiChecked = document.getElementById('input-generate-kisi')?.checked ? true : false;
+                    extraData.generateKisi = generateKisiChecked;
+                    extraData.generateKisiKisi = generateKisiChecked;
                     extraData.simpanBank = document.getElementById('input-simpan-bank')?.checked ? true : false;
                     extraData.pisahLembar = document.getElementById('input-pisah-lembar')?.checked ? true : false;
 
