@@ -4265,6 +4265,22 @@ function showLoginForm(type) {
         // - a string for text/complex questions
         let examData = { mapel: "", questions: [], currentIdx: 0, answers: [], ragu: [], timer: null };
 
+        function showStudentInstructionModal() {
+            const modal = document.getElementById('student-instruction-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        function closeStudentInstructionModal() {
+            const modal = document.getElementById('student-instruction-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
         function startExam(mapel) {
             const qs = db.questions.filter(q => q.mapel === mapel && q.rombel === currentSiswa.rombel);
 
@@ -4283,6 +4299,9 @@ function showLoginForm(type) {
             });
             const ragu = normalizedQuestions.map(_ => false);
             examData = { mapel, questions: normalizedQuestions, currentIdx: 0, answers, ragu };
+
+            // Tampilkan petunjuk ujian untuk siswa
+            showStudentInstructionModal();
 
             // Reset and start anti-cheat
             cheatingCount = 0;
