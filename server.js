@@ -759,7 +759,9 @@ app.post('/api/import-word', upload.single('file'), async (req, res) => {
 async function discoverAllAPIKeys(provider, teacherId = null) {
     const providerMap = {
         'google': ['gemini', 'google'],
-        'openai': ['openai', 'chatgpt']
+        'openai': ['openai', 'chatgpt'],
+        'openrouter': ['openrouter'],
+        'deepseek': ['deepseek']
     };
     const searchTerms = providerMap[provider] || [provider];
     
@@ -771,6 +773,12 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
         allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
     } else if (provider === 'openai') {
         const raw = process.env.OPENAI_API_KEY || '';
+        allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
+    } else if (provider === 'openrouter') {
+        const raw = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || process.env.OPEN_ROUTER_KEY || '';
+        allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
+    } else if (provider === 'deepseek') {
+        const raw = process.env.DEEPSEEK_API_KEY || process.env.DEEP_SEEK_API_KEY || '';
         allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
     }
 
@@ -986,16 +994,150 @@ async function callOpenAI(prompt, teacherId = null) {
     throw new Error('OpenAI gagal: ' + lastError);
 }
 
+async function callOpenRouterAI(prompt, teacherId = null) {
+    const keys = await discoverAllAPIKeys('openrouter', teacherId);
+    console.log('[AI] Discovery [OpenRouter]: Found', keys.length, 'active keys');
+
+    if (keys.length === 0) throw new Error('API Key OpenRouter tidak ditemukan atau kuota habis di semua sumber.');
+
+    const models = [
+        'google/gemini-2.5-pro-exp-03-25:free',
+        'google/gemini-2.0-flash-exp:free',
+        'google/gemini-flash-1.5:free'
+    ];
+    let lastError;
+
+    for (const model of models) {
+        for (const key of keys) {
+            try {
+                console.log(`[AI] Trying OpenRouter model: ${model} with key: ${key.substring(0, 10)}...`);
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${key}`
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.3,
+                        max_tokens: 8192
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const result = data.choices?.[0]?.message?.content || '';
+                    console.log(`[AI] ✅ Success with OpenRouter model: ${model}`);
+                    return result;
+                }
+
+                const errData = await response.json().catch(() => ({}));
+                const errMsg = errData.error?.message || response.statusText;
+
+                if (response.status === 429 || response.status === 402) {
+                    lastError = `[KUOTA HABIS / SALDO HABIS] pada OpenRouter model ${model}.`;
+                    console.warn(`[AI] ⚠️ OpenRouter quota issue for model: ${model}`);
+                    continue;
+                }
+
+                lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
+                console.error(`[AI] ❌ OpenRouter model ${model} error: ${response.status} ${errMsg}`);
+            } catch (e) {
+                lastError = e.message;
+                console.error(`[AI] Fetch Error with OpenRouter ${model}:`, e.message);
+            }
+        }
+    }
+    throw new Error('OpenRouter gagal: ' + lastError);
+}
+
+async function callDeepSeekAI(prompt, teacherId = null) {
+    const keys = await discoverAllAPIKeys('deepseek', teacherId);
+    console.log('[AI] Discovery [DeepSeek]: Found', keys.length, 'active keys');
+
+    if (keys.length === 0) throw new Error('API Key DeepSeek tidak ditemukan atau kuota habis di semua sumber.');
+
+    const models = ['deepseek-chat', 'deepseek-coder'];
+    let lastError;
+
+    for (const model of models) {
+        for (const key of keys) {
+            try {
+                console.log(`[AI] Trying DeepSeek model: ${model} with key: ${key.substring(0, 10)}...`);
+                const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'user', content: prompt }],
+                        max_tokens: 8192,
+                        temperature: 0.3
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const result = data.choices?.[0]?.message?.content || '';
+                    console.log(`[AI] ✅ Success with DeepSeek model: ${model}`);
+                    return result;
+                }
+
+                const errData = await response.json().catch(() => ({}));
+                const errMsg = errData.error?.message || errData.error || response.statusText;
+
+                if (response.status === 429 || response.status === 402) {
+                    lastError = `[KUOTA HABIS / SALDO HABIS] pada DeepSeek model ${model}.`;
+                    console.warn(`[AI] ⚠️ DeepSeek quota issue for model: ${model}`);
+                    continue;
+                }
+
+                lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
+                console.error(`[AI] ❌ DeepSeek model ${model} error: ${response.status} ${errMsg}`);
+            } catch (e) {
+                lastError = e.message;
+                console.error(`[AI] Fetch Error with DeepSeek ${model}:`, e.message);
+            }
+        }
+    }
+    throw new Error('DeepSeek gagal: ' + lastError);
+}
+
 /**
  * Unified AI caller with fully automatic fallback mechanism
  */
 async function callAI(prompt, teacherId = null) {
-    try {
-        return await callOpenAI(prompt, teacherId);
-    } catch (e) {
-        console.warn(`[AI] OpenAI failed (${e.message}), automatically falling back to Gemini...`);
-        return await callGeminiAI(prompt, teacherId);
+    const errors = [];
+    const tryProvider = async (name, fn) => {
+        try {
+            const result = await fn();
+            return result;
+        } catch (e) {
+            errors.push(`${name} gagal: ${e.message}`);
+            console.warn(`[AI] ${name} failed (${e.message}), automatically falling back...`);
+            return null;
+        }
+    };
+
+    let result = await tryProvider('OpenAI', () => callOpenAI(prompt, teacherId));
+    if (result) return result;
+
+    result = await tryProvider('Gemini', () => callGeminiAI(prompt, teacherId));
+    if (result) return result;
+
+    result = await tryProvider('OpenRouter', () => callOpenRouterAI(prompt, teacherId));
+    if (result) return result;
+
+    result = await tryProvider('DeepSeek', () => callDeepSeekAI(prompt, teacherId));
+    if (result) return result;
+
+    if (errors.length === 0) {
+        throw new Error('Tidak ada provider AI terkonfigurasi. Silakan tambahkan minimal satu API key.');
     }
+    throw new Error('Semua provider AI gagal: ' + errors.join(' | '));
 }
 
 app.post('/api/generate-ai', async (req, res) => {
