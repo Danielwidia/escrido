@@ -63,6 +63,8 @@ function showLoginForm(type) {
         // Global Anti-Cheat State
         let isExamActive = false;
         let cheatingCount = 0;
+        let wakeLock = null;
+        let isFullscreen = false;
 
         function handleCheating(reason) {
             if (!isExamActive) return;
@@ -136,6 +138,319 @@ function showLoginForm(type) {
                 // Detect various dev tools shortcuts as well
                 if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) e.preventDefault();
                 if (e.key === 'F12') e.preventDefault();
+                // Prevent exiting fullscreen with ESC or F11
+                if (e.key === 'Escape' || e.key === 'F11') {
+                    e.preventDefault();
+                    handleCheating('Mencoba keluar dari mode layar penuh');
+                }
+            }
+        });
+
+        // Fullscreen and Wake Lock Functions
+        async function requestFullscreen() {
+            console.log('Attempting to request browser fullscreen API...');
+
+            // Don't interfere if CSS simulation is already active
+            if (isFullscreen) {
+                console.log('CSS fullscreen already active, skipping API request');
+                return;
+            }
+
+            // Check if fullscreen is supported and enabled
+            const fullscreenEnabled = document.fullscreenEnabled ||
+                                    document.webkitFullscreenEnabled ||
+                                    document.msFullscreenEnabled ||
+                                    document.mozFullScreenEnabled ||
+                                    false;
+
+            if (!fullscreenEnabled) {
+                console.warn('Browser fullscreen not supported, relying on CSS simulation');
+                return;
+            }
+
+            try {
+                const elem = document.documentElement;
+
+                // Try different fullscreen methods
+                if (elem.requestFullscreen) {
+                    console.log('Using requestFullscreen');
+                    await elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    console.log('Using webkitRequestFullscreen');
+                    await elem.webkitRequestFullscreen();
+                } else if (elem.webkitEnterFullscreen) {
+                    console.log('Using webkitEnterFullscreen');
+                    await elem.webkitEnterFullscreen();
+                } else if (elem.msRequestFullscreen) {
+                    console.log('Using msRequestFullscreen');
+                    await elem.msRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) {
+                    console.log('Using mozRequestFullScreen');
+                    await elem.mozRequestFullScreen();
+                } else {
+                    console.warn('No fullscreen API available');
+                    return;
+                }
+
+                // Check if fullscreen was actually entered
+                setTimeout(() => {
+                    const isInFullscreen = document.fullscreenElement ||
+                                         document.webkitFullscreenElement ||
+                                         document.msFullscreenElement ||
+                                         document.mozFullScreenElement;
+
+                    if (isInFullscreen) {
+                        console.log('Browser fullscreen API succeeded');
+                        isFullscreen = true;
+                    } else {
+                        console.log('Browser fullscreen API did not activate, CSS simulation will handle it');
+                    }
+                }, 200);
+
+            } catch (error) {
+                console.warn('Browser fullscreen request failed:', error);
+                console.log('Relying on CSS fullscreen simulation');
+            }
+        }
+
+        function simulateFullscreen() {
+            console.log('Activating CSS fullscreen simulation');
+
+            // Create fullscreen overlay if it doesn't exist
+            let overlay = document.getElementById('exam-fullscreen-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'exam-fullscreen-overlay';
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: #000;
+                    z-index: 10000;
+                    pointer-events: none;
+                    opacity: 0.95;
+                `;
+                document.body.appendChild(overlay);
+            }
+
+            // Apply aggressive fullscreen styles
+            document.body.style.cssText += `
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
+                z-index: 10001 !important;
+            `;
+
+            // Hide html scrollbars and margins
+            document.documentElement.style.cssText += `
+                overflow: hidden !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+            `;
+
+            // Hide all browser UI elements
+            const style = document.createElement('style');
+            style.id = 'exam-fullscreen-styles';
+            style.textContent = `
+                * {
+                    -webkit-touch-callout: none !important;
+                    -webkit-user-select: none !important;
+                    -khtml-user-select: none !important;
+                    -moz-user-select: none !important;
+                    -ms-user-select: none !important;
+                    user-select: none !important;
+                }
+                html, body {
+                    cursor: default !important;
+                }
+                /* Hide browser UI */
+                ::-webkit-scrollbar {
+                    display: none !important;
+                }
+                /* Mobile specific */
+                @media screen and (max-width: 768px) {
+                    html, body {
+                        -webkit-text-size-adjust: 100% !important;
+                        -ms-text-size-adjust: 100% !important;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+
+            isFullscreen = true;
+            console.log('CSS fullscreen simulation activated successfully');
+
+            // Force layout recalculation
+            document.body.offsetHeight;
+        }
+
+        function exitSimulatedFullscreen() {
+            console.log('Deactivating CSS fullscreen simulation');
+
+            // Remove overlay
+            const overlay = document.getElementById('exam-fullscreen-overlay');
+            if (overlay) {
+                overlay.remove();
+            }
+
+            // Remove custom styles
+            const style = document.getElementById('exam-fullscreen-styles');
+            if (style) {
+                style.remove();
+            }
+
+            // Reset body styles
+            document.body.style.cssText = '';
+            document.body.removeAttribute('style');
+
+            // Reset html styles
+            document.documentElement.style.cssText = '';
+            document.documentElement.removeAttribute('style');
+
+            isFullscreen = false;
+            console.log('CSS fullscreen simulation deactivated');
+        }
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake lock activated');
+                }
+            } catch (error) {
+                console.warn('Failed to request wake lock:', error);
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock) {
+                wakeLock.release();
+                wakeLock = null;
+                console.log('Wake lock released');
+            }
+        }
+
+        function exitFullscreen() {
+            try {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                }
+                // Also exit simulated fullscreen
+                exitSimulatedFullscreen();
+                isFullscreen = false;
+            } catch (error) {
+                console.warn('Failed to exit fullscreen:', error);
+                // Still try to exit simulated fullscreen
+                exitSimulatedFullscreen();
+            }
+        }
+
+        // Enhanced fullscreen change detection
+        function checkFullscreenStatus() {
+            // For CSS simulation, we don't need to check browser fullscreen state
+            if (isFullscreen) {
+                console.log('CSS fullscreen simulation is active');
+                return;
+            }
+
+            const isInBrowserFullscreen = document.fullscreenElement ||
+                                        document.webkitFullscreenElement ||
+                                        document.msFullscreenElement ||
+                                        document.mozFullScreenElement;
+
+            if (isExamActive && !isInBrowserFullscreen) {
+                console.log('Detected exit from browser fullscreen, attempting to restore');
+                handleCheating('Keluar dari mode layar penuh');
+                // Force back to fullscreen
+                setTimeout(() => {
+                    if (isExamActive) {
+                        if (isMobileDevice()) {
+                            requestMobileFullscreen();
+                        } else {
+                            requestFullscreen();
+                        }
+                    }
+                }, 500);
+            }
+        }
+
+        // Multiple event listeners for comprehensive fullscreen monitoring
+        document.addEventListener('fullscreenchange', checkFullscreenStatus);
+        document.addEventListener('webkitfullscreenchange', checkFullscreenStatus);
+        document.addEventListener('mozfullscreenchange', checkFullscreenStatus);
+        document.addEventListener('MSFullscreenChange', checkFullscreenStatus);
+
+        // Additional checks for simulated fullscreen
+        window.addEventListener('resize', () => {
+            if (isExamActive && isFullscreen) {
+                // Check if window size changed significantly (possible exit attempt)
+                const currentWidth = window.innerWidth;
+                const currentHeight = window.innerHeight;
+                const screenWidth = window.screen.width;
+                const screenHeight = window.screen.height;
+
+                // More sensitive detection for exit attempts
+                const widthDiff = Math.abs(currentWidth - screenWidth);
+                const heightDiff = Math.abs(currentHeight - screenHeight);
+
+                if (widthDiff > 20 || heightDiff > 20) {
+                    console.log('Window resize detected during exam, possible fullscreen exit attempt');
+                    console.log(`Size change: ${widthDiff}px width, ${heightDiff}px height`);
+                    handleCheating('Perubahan ukuran jendela terdeteksi');
+                    // Force restore fullscreen
+                    setTimeout(() => {
+                        if (isExamActive) {
+                            simulateFullscreen(); // Use CSS simulation immediately
+                        }
+                    }, 200);
+                }
+            }
+        });
+
+        // Detect focus loss (alt+tab, clicking outside window, etc.)
+        window.addEventListener('blur', () => {
+            if (isExamActive && isFullscreen) {
+                console.log('Window focus lost during exam');
+                handleCheating('Fokus jendela hilang');
+                // Force restore focus and fullscreen
+                setTimeout(() => {
+                    if (isExamActive) {
+                        window.focus();
+                        simulateFullscreen();
+                    }
+                }, 200);
+            }
+        });
+
+        // Listen for page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (isExamActive && document.visibilityState === 'hidden') {
+                handleCheating('Berpindah aplikasi/tab');
+                // Try to bring back after a short delay
+                setTimeout(() => {
+                    if (isExamActive) {
+                        if (isMobileDevice()) {
+                            requestMobileFullscreen();
+                        } else {
+                            requestFullscreen();
+                        }
+                    }
+                }, 300);
             }
         });
 
@@ -577,6 +892,11 @@ function showLoginForm(type) {
                     const stLabel = document.getElementById('st-info-label');
                     if (stLabel) stLabel.innerText = `${currentSiswa.name} | ${currentSiswa.rombel}`;
                     if (typeof renderStudentExamList === 'function' && studentDash) renderStudentExamList();
+                    
+                    // Request fullscreen mode for student
+                    if (typeof requestFullscreen === 'function') {
+                        requestFullscreen();
+                    }
                 } else if (currentSiswa.role === 'teacher') {
                     const teacherDash = document.getElementById('teacher-dashboard');
                     if (teacherDash) teacherDash.classList.remove('hidden');
@@ -626,11 +946,29 @@ function showLoginForm(type) {
             }
         }
 
-        function closeStudentInstructionModal() {
-            const modal = document.getElementById('student-instruction-modal');
-            if (modal) {
-                modal.classList.remove('flex');
-                modal.classList.add('hidden');
+        function isMobileDevice() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+                   window.innerWidth <= 768;
+        }
+
+        async function requestMobileFullscreen() {
+            console.log('Attempting mobile fullscreen');
+            try {
+                // First try standard fullscreen
+                await requestFullscreen();
+            } catch (error) {
+                console.warn('Standard fullscreen failed on mobile, trying alternatives:', error);
+                // On mobile, fullscreen might not work, so we'll use CSS simulation
+                simulateFullscreen();
+                // Also try to hide browser UI
+                if (window.navigator.standalone === false) {
+                    // iOS Safari
+                    window.scrollTo(0, 1);
+                }
+                if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+                    // PWA mode
+                    console.log('Running in PWA mode');
+                }
             }
         }
 
@@ -4349,6 +4687,11 @@ function showLoginForm(type) {
             // Reset and start anti-cheat
             cheatingCount = 0;
             isExamActive = true;
+            
+            // Request fullscreen for exam
+            if (typeof requestFullscreen === 'function') {
+                requestFullscreen();
+            }
             document.getElementById('cheat-mask').classList.add('hidden');
 
             document.getElementById('student-exam-list').classList.add('hidden');
@@ -4764,6 +5107,9 @@ function showLoginForm(type) {
         async function submitExam() {
             // IMMEDIATE UI TRANSITION: Stop exam and hide screens before processing heavy data
             isExamActive = false;
+            // Release fullscreen and wake lock
+            exitFullscreen();
+            releaseWakeLock();
             closeConfirmModal();
             closeCheatWarning();
             clearInterval(examData.timer);
