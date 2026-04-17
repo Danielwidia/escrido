@@ -1085,10 +1085,11 @@
                     });
                 }
 
-                if (response.status === 503 && retryCount < 3) {
-                    alert("Maaf AI sedang sibuk/ banyak permintaan. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
-                    // Small delay before retry
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                const retryableStatuses = [500, 502, 503, 504];
+                if (retryableStatuses.includes(response.status) && retryCount < 3) {
+                    alert("Maaf AI sedang sibuk, banyak permintaan, atau terjadi timeout server. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
+                    // Small delay before retry with incremental backoff
+                    await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
                     return await generateWithAI(retryCount + 1);
                 }
 

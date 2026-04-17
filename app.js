@@ -5600,11 +5600,13 @@ function showLoginForm(type) {
                     })
                 });
 
-                // Handle 503 Service Unavailable (High Demand)
-                if (response.status === 503 && retryCount < 3) {
-                    alert("Maaf AI sedang sibuk/ banyak permintaan. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
+                // Handle 503 Service Unavailable (High Demand) 
+                // Also handle 500/502/504 from unupdated server or Vercel timeouts/limits
+                const retryableStatuses = [500, 502, 503, 504];
+                if (retryableStatuses.includes(response.status) && retryCount < 3) {
+                    alert("Maaf AI sedang sibuk, banyak permintaan, atau terjadi timeout server. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
                     // Small delay before retry
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // Incremental delay
                     return await generateQuestionsWithAi(retryCount + 1);
                 }
 
