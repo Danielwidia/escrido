@@ -5544,7 +5544,7 @@ function showLoginForm(type) {
             }
         }
 
-        async function generateQuestionsWithAi(retryCount = 0) {
+        async function generateQuestionsWithAi() {
             const materi = document.getElementById('ai-materi')?.value.trim();
             const mapel = document.getElementById('ai-mapel')?.value;
             const rombel = document.getElementById('ai-rombel')?.value;
@@ -5583,9 +5583,7 @@ function showLoginForm(type) {
 
             const levelCounts = getAiLevelCounts(jumlah);
             const loading = document.getElementById('ai-loading');
-            
-            // Only show loading if it's the first attempt or ensure it stays visible
-            if (loading && retryCount === 0) {
+            if (loading) {
                 loading.classList.remove('hidden');
                 loading.classList.add('flex');
             }
@@ -5599,16 +5597,6 @@ function showLoginForm(type) {
                         teacherId: (currentSiswa && currentSiswa.role === 'teacher') ? currentSiswa.id : null
                     })
                 });
-
-                // Handle 503 Service Unavailable (High Demand) 
-                // Also handle 500/502/504 from unupdated server or Vercel timeouts/limits
-                const retryableStatuses = [500, 502, 503, 504];
-                if (retryableStatuses.includes(response.status) && retryCount < 3) {
-                    alert("Maaf AI sedang sibuk, banyak permintaan, atau terjadi timeout server. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
-                    // Small delay before retry
-                    await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // Incremental delay
-                    return await generateQuestionsWithAi(retryCount + 1);
-                }
 
                 const result = await response.json();
 
@@ -5638,7 +5626,7 @@ function showLoginForm(type) {
                     alert('Terjadi kesalahan saat memanggil AI: ' + (err.message || 'Error tidak diketahui'));
                 }
             } finally {
-                if (loading && retryCount === 0) {
+                if (loading) {
                     loading.classList.add('hidden');
                     loading.classList.remove('flex');
                 }
