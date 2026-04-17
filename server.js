@@ -747,17 +747,103 @@ app.post('/api/import-word', upload.single('file'), async (req, res) => {
     }
 });
 
-// ─── API: AI Generate ─────────────────────────────────────────────────────────
+/**
+ * Agregasi semua API key yang tersedia dari berbagai sumber:
+ * 1. Environment Variables (Static & Dynamic GLOBAL_*)
+ * 2. Supabase Table (global_api_keys)
+ * 3. Local database.json (globalSettings & Teacher profiles)
+ */
+async function discoverAllAPIKeys(provider, teacherId = null) {
+    const providerMap = {
+        'google': ['gemini', 'google'],
+        'openai': ['openai', 'chatgpt']
+    };
+    const searchTerms = providerMap[provider] || [provider];
+    
+    let allKeys = [];
+
+    // 1. Static Env Vars
+    if (provider === 'google') {
+        const raw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
+    } else if (provider === 'openai') {
+        const raw = process.env.OPENAI_API_KEY || '';
+        allKeys = [...allKeys, ...raw.split(',').map(k => k.trim()).filter(k => k)];
+    }
+
+    // 2. Dynamic GLOBAL_ Env Vars
+    Object.keys(process.env).forEach(envKey => {
+        if (envKey.startsWith('GLOBAL_') && envKey.includes('_APIKEY')) {
+            const isMatch = searchTerms.some(term => envKey.toLowerCase().includes(term.toLowerCase()));
+            if (isMatch) {
+                const val = process.env[envKey];
+                if (val) allKeys.push(val.trim());
+            }
+        }
+    });
+
+    // 3. Database (Local or Supabase)
+    const db = (await readDB()) || { globalSettings: { apiKeys: [] }, students: [], globalAPIKeysStatus: {} };
+    const statusMap = db.globalAPIKeysStatus || {};
+
+    // Helper to check if key is exhausted in database
+    const isExhausted = (k) => {
+        const hash = k.substring(k.length - 10);
+        return statusMap[hash]?.status === 'exhausted';
+    };
+
+    // From globalSettings
+    if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
+        db.globalSettings.apiKeys.forEach(entry => {
+            const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
+            if (isMatch && entry.status !== 'exhausted') {
+                allKeys.push(entry.key.trim());
+            }
+        });
+    }
+
+    // From Teacher Profiles
+    db.students.forEach(s => {
+        if (s.role === 'teacher' && Array.isArray(s.apiKeys)) {
+            const normalized = normalizeTeacherApiKeysArray(s.apiKeys);
+            normalized.forEach(entry => {
+                const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
+                if (isMatch && entry.status !== 'exhausted') {
+                    allKeys.push(entry.key.trim());
+                }
+            });
+        }
+    });
+
+    // 4. Supabase Table (Direct lookup if enabled)
+    if (USE_SUPABASE && supabase) {
+        try {
+            const { data } = await supabase.from('global_api_keys').select('*').eq('status', 'active');
+            if (data) {
+                data.forEach(entry => {
+                    const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
+                    if (isMatch) allKeys.push(entry.key.trim());
+                });
+            }
+        } catch (e) {
+            console.error('[AI] Supabase key discovery error:', e.message);
+        }
+    }
+
+    // Final filter by exhausted status hash tracking and deduplicate
+    const finalKeys = [...new Set(allKeys)].filter(k => !isExhausted(k));
+    
+    console.log(`[AI] Discover [${provider}]: Found ${finalKeys.length} active keys (Total scanned: ${allKeys.length})`);
+    return finalKeys;
+}
+
 /**
  * Helper to call Gemini with key rotation and model fallback
  */
-async function callGeminiAI(prompt) {
-    const rawKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
-    const keys = rawKey.split(',').map(k => k.trim()).filter(k => k);
+async function callGeminiAI(prompt, teacherId = null) {
+    const keys = await discoverAllAPIKeys('google', teacherId);
 
-    console.log('[AI] Key present:', rawKey.length > 0, '| Keys count:', keys.length);
-
-    if (keys.length === 0) throw new Error('GOOGLE_API_KEY / GEMINI_API_KEY tidak dikonfigurasi di Environment Variables');
+    if (keys.length === 0) throw new Error('API Key Google/Gemini tidak ditemukan atau kuota habis di semua sumber.');
 
     // Super-charged model list for maximum resilience (including next-gen models)
     const models = [
@@ -839,13 +925,12 @@ async function callGeminiAI(prompt) {
 /**
  * Helper to call OpenAI / ChatGPT
  */
-async function callOpenAI(prompt) {
-    const rawKey = process.env.OPENAI_API_KEY || '';
-    const keys = rawKey.split(',').map(k => k.trim()).filter(k => k);
+async function callOpenAI(prompt, teacherId = null) {
+    const keys = await discoverAllAPIKeys('openai', teacherId);
 
-    console.log('[AI] OPENAI_API_KEY present:', rawKey.length > 0, '| Keys count:', keys.length);
+    console.log('[AI] Discovery [openai]: Found', keys.length, 'active keys');
 
-    if (keys.length === 0) throw new Error('OPENAI_API_KEY tidak dikonfigurasi di Environment Variables');
+    if (keys.length === 0) throw new Error('API Key OpenAI tidak ditemukan atau kuota habis di semua sumber.');
 
     const models = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
     let lastError;
@@ -898,12 +983,12 @@ async function callOpenAI(prompt) {
 /**
  * Unified AI caller with fully automatic fallback mechanism
  */
-async function callAI(prompt) {
+async function callAI(prompt, teacherId = null) {
     try {
-        return await callOpenAI(prompt);
+        return await callOpenAI(prompt, teacherId);
     } catch (e) {
         console.warn(`[AI] OpenAI failed (${e.message}), automatically falling back to Gemini...`);
-        return await callGeminiAI(prompt);
+        return await callGeminiAI(prompt, teacherId);
     }
 }
 
@@ -915,7 +1000,8 @@ app.post('/api/generate-ai', async (req, res) => {
         mapel = '',
         rombel = '',
         typeCounts = {},
-        levelCounts = {}
+        levelCounts = {},
+        teacherId = null
     } = req.body;
 
     if (!materi) return res.status(400).json({ error: 'Materi is required' });
@@ -978,7 +1064,7 @@ app.post('/api/generate-ai', async (req, res) => {
     console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
 
     try {
-        let text = await callAI(prompt);
+        let text = await callAI(prompt, teacherId);
 
         // Clean up JSON response
         text = text.replace(/```json\n?|```/g, '').trim();
@@ -1148,7 +1234,7 @@ Berikan juga CSS inline jika dibutuhkan untuk struktur tabel (seperti: <table bo
 DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG menggunakan markdown block (seperti \`\`\`html). Output harus 100% kode HTML mentah.`;
 
     try {
-        let text = await callAI(fullPrompt);
+        let text = await callAI(fullPrompt, req.body.teacherId || null);
 
         // Membersihkan markdown wrapper (```html ... ```) jika AI membocorkannya
         text = text.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
@@ -1187,7 +1273,7 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
 
 // ─── API: Kisi-kisi Generate ──────────────────────────────────────────────────
 app.post('/api/generate-kisi-kisi', async (req, res) => {
-    const { questions, mapel = '', rombel = '' } = req.body;
+    const { questions, mapel = '', rombel = '', teacherId = null } = req.body;
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
         return res.status(400).json({ error: 'Questions are required' });
     }
@@ -1208,7 +1294,7 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
         `Hanya kembalikan JSON array saja tanpa markdown code block.`;
 
     try {
-        let text = await callAI(prompt);
+        let text = await callAI(prompt, teacherId);
 
         // Clean up JSON response
         text = text.replace(/```json\n?|```/g, '').trim();
@@ -1655,9 +1741,73 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
             console.log(`[ADMIN] Retrieved ${keys.length} global API keys from database.json`);
         }
 
+        // 3. AGGREGATE: Personal Teacher/Guru Keys
+        const db = await readDB();
+        const teacherKeysRaw = [];
+        if (db && Array.isArray(db.students)) {
+            db.students.forEach(s => {
+                if (s.role === 'teacher' && Array.isArray(s.apiKeys)) {
+                    const normalized = normalizeTeacherApiKeysArray(s.apiKeys);
+                    normalized.forEach(k => {
+                        teacherKeysRaw.push({
+                            id: `guru-${s.id}-${k.provider}`,
+                            provider: k.provider,
+                            key: k.key,
+                            status: k.status,
+                            addedAt: 'Guru: ' + s.name,
+                            updatedAt: k.exhaustedAt || new Date().toISOString(),
+                            note: 'Personal key'
+                        });
+                    });
+                }
+            });
+        }
+
+        // 4. AGGREGATE: Environment Variables (as fallback global keys)
+        const envKeysRaw = [];
+        // Gemini
+        const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
+        geminiRaw.split(',').forEach((k, i) => {
+            if (k.trim()) {
+                const hash = k.trim().substring(k.trim().length - 10);
+                const status = (db && db.globalAPIKeysStatus?.[hash]) ? db.globalAPIKeysStatus[hash].status : 'active';
+                envKeysRaw.push({
+                    id: `env-gemini-${i}`,
+                    provider: 'Google Gemini',
+                    key: k.trim(),
+                    status: status,
+                    addedAt: 'Vercel Env',
+                    updatedAt: new Date().toISOString(),
+                    note: 'Static Env Var'
+                });
+            }
+        });
+        // OpenAI
+        const oaiRaw = process.env.OPENAI_API_KEY || '';
+        oaiRaw.split(',').forEach((k, i) => {
+            if (k.trim()) {
+                const hash = k.trim().substring(k.trim().length - 10);
+                const status = (db && db.globalAPIKeysStatus?.[hash]) ? db.globalAPIKeysStatus[hash].status : 'active';
+                envKeysRaw.push({
+                    id: `env-openai-${i}`,
+                    provider: 'OpenAI',
+                    key: k.trim(),
+                    status: status,
+                    addedAt: 'Vercel Env',
+                    updatedAt: new Date().toISOString(),
+                    note: 'Static Env Var'
+                });
+            }
+        });
+
+        // Combine all
+        const allCombined = [...keys, ...teacherKeysRaw, ...envKeysRaw];
+        activeCount = allCombined.filter(k => k.status !== 'exhausted').length;
+        exhaustedCount = allCombined.filter(k => k.status === 'exhausted').length;
+
         res.json({
             ok: true,
-            globalKeys: keys,
+            globalKeys: allCombined,
             activeCount,
             exhaustedCount
         });

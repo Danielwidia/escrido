@@ -5592,7 +5592,10 @@ function showLoginForm(type) {
                 const response = await fetch(getApiBaseUrl() + '/api/generate-ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts })
+                    body: JSON.stringify({ 
+                        materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts,
+                        teacherId: (currentSiswa && currentSiswa.role === 'teacher') ? currentSiswa.id : null
+                    })
                 });
 
                 const result = await response.json();
@@ -6526,16 +6529,30 @@ function showLoginForm(type) {
                             const detectedProvider = detectProviderFromKey(fullKey);
                             const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : (key.provider || 'Unknown');
                             
+                            const source = key.addedAt || 'Global Settings';
+                            const isExternal = source.includes('Guru:') || source.includes('Vercel');
+
                             return `
-                                <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                                <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100 mb-2">
                                     <div class="flex-1">
-                                        <span class="text-xs font-mono text-slate-700">${displayKey}</span>
-                                        <span class="text-xs text-slate-500 ml-2">${displayProvider}</span>
-                                        ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-200 text-slate-600">${displayProvider}</span>
+                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded ${isExternal ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}">${source}</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-mono text-slate-700">${displayKey}</span>
+                                            ${key.status === 'exhausted' ? '<span class="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-100">KUOTA HABIS</span>' : '<span class="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">AKTIF</span>'}
+                                        </div>
                                     </div>
-                                    <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
+                                    ${!isExternal ? `
+                                    <button onclick="removeGlobalApiKey(${index})" class="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
                                         <i class="fas fa-trash"></i>
                                     </button>
+                                    ` : `
+                                    <div class="w-8 h-8 flex items-center justify-center text-slate-300 cursor-not-allowed" title="Key ini dikelola di sumber aslinya">
+                                        <i class="fas fa-lock text-xs"></i>
+                                    </div>
+                                    `}
                                 </div>
                             `;
                         }).join('');
