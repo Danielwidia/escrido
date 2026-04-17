@@ -764,7 +764,7 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
         'deepseek': ['deepseek']
     };
     const searchTerms = providerMap[provider] || [provider];
-    
+
     let allKeys = [];
 
     // 1. Static Env Vars
@@ -846,7 +846,7 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
 
     // Final filter by exhausted status hash tracking and deduplicate
     const finalKeys = [...new Set(allKeys)].filter(k => !isExhausted(k));
-    
+
     console.log(`[AI] Discover [${provider}]: Found ${finalKeys.length} active keys (Total scanned: ${allKeys.length})`);
     return finalKeys;
 }
@@ -1003,10 +1003,42 @@ async function callOpenRouterAI(prompt, teacherId = null) {
     const models = [
         'openai/gpt-4o',
         'openai/gpt-4o-mini',
-        'anthropic/claude-3-5-sonnet',
-        'qwen/qwen2.5-72b-instruct:free',
-        'mistralai/mistral-small-24b-instruct-2501:free',
-        'meta-llama/Llama-3-70b-chat-hf'
+        'anthropic/claude-3.7-sonnet',
+        'openrouter/free',
+        'qwen/qwen3-next-80b-a3b-instruct:free',
+        'qwen/qwen3-coder:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'nousresearch/hermes-3-llama-3.1-405b:free',
+        'google/gemma-3-27b-it:free',
+        'openrouter/elephant-alpha',
+        'google/gemma-4-26b-a4b-it:free',
+        'google/gemma-4-31b-it:free',
+        'google/lyria-3-pro-preview',
+        'google/lyria-3-clip-preview',
+        'nvidia/nemotron-3-super-120b-a12b:free',
+        'minimax/minimax-m2.5:free',
+        'arcee-ai/trinity-large-preview:free',
+        'liquid/lfm-2.5-1.2b-thinking:free',
+        'liquid/lfm-2.5-1.2b-instruct:free',
+        'nvidia/nemotron-3-nano-30b-a3b:free',
+        'nvidia/nemotron-nano-12b-v2-vl:free',
+        'qwen/qwen3-next-80b-a3b-instruct:free',
+        'nvidia/nemotron-nano-9b-v2:free',
+        'openai/gpt-oss-120b:free',
+        'openai/gpt-oss-20b:free',
+        'z-ai/glm-4.5-air:free',
+        'qwen/qwen3-coder:free',
+        'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
+        'google/gemma-3n-e2b-it:free',
+        'google/gemma-3n-e4b-it:free',
+        'meta-llama/llama-guard-4-12b:free',
+        'google/gemma-3-4b-it:free',
+        'google/gemma-3-12b-it:free',
+        'google/gemma-3-27b-it:free',
+        'meta-llama/llama-3.3-70b-instruct:free',
+        'meta-llama/llama-3.2-3b-instruct:free',
+        'nousresearch/hermes-3-llama-3.1-405b:free',
+        'cognitivecomputations/dolphin-mistral-24b-venice-edition:free'
     ];
     let lastError;
 
