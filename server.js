@@ -798,9 +798,10 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
     // From globalSettings
     if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
         db.globalSettings.apiKeys.forEach(entry => {
-            const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
+            const providerValue = String(entry.provider || '').toLowerCase();
+            const isMatch = searchTerms.some(term => providerValue.includes(term.toLowerCase()));
             if (isMatch && entry.status !== 'exhausted') {
-                allKeys.push(entry.key.trim());
+                if (entry.key) allKeys.push(entry.key.trim());
             }
         });
     }
@@ -810,9 +811,10 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
         if (s.role === 'teacher' && Array.isArray(s.apiKeys)) {
             const normalized = normalizeTeacherApiKeysArray(s.apiKeys);
             normalized.forEach(entry => {
-                const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
+                const providerValue = String(entry.provider || '').toLowerCase();
+                const isMatch = searchTerms.some(term => providerValue.includes(term.toLowerCase()));
                 if (isMatch && entry.status !== 'exhausted') {
-                    allKeys.push(entry.key.trim());
+                    if (entry.key) allKeys.push(entry.key.trim());
                 }
             });
         }
@@ -824,8 +826,9 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
             const { data } = await supabase.from('global_api_keys').select('*').eq('status', 'active');
             if (data) {
                 data.forEach(entry => {
-                    const isMatch = searchTerms.some(term => entry.provider.toLowerCase().includes(term.toLowerCase()));
-                    if (isMatch) allKeys.push(entry.key.trim());
+                    const providerValue = String(entry.provider || '').toLowerCase();
+                    const isMatch = searchTerms.some(term => providerValue.includes(term.toLowerCase()));
+                    if (isMatch && entry.key) allKeys.push(entry.key.trim());
                 });
             }
         } catch (e) {
