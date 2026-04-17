@@ -38,6 +38,19 @@ function showLoginForm(type) {
                 icon.classList.replace('fa-eye-slash', 'fa-eye');
             }
         }
+        
+        function reloadPage() {
+            // Show loading overlay
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+            // Delay reload to show loading animation
+            setTimeout(() => {
+                location.reload();
+            }, 500);
+        }
     
 
 
