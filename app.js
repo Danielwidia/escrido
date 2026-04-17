@@ -1108,7 +1108,7 @@ function showLoginForm(type) {
             updateStats();
         }
 
-        function updateStats() {
+        async function updateStats() {
             const subjects = Array.isArray(db?.subjects) ? db.subjects : [];
             const questions = Array.isArray(db?.questions) ? db.questions : [];
             const rombels = Array.isArray(db?.rombels) ? db.rombels : [];
@@ -1124,6 +1124,28 @@ function showLoginForm(type) {
                 results.filter(r => !r.deleted).length
             ];
             ids.forEach((id, i) => { if (document.getElementById(id)) document.getElementById(id).innerText = vals[i]; });
+            
+            // Also update API stats in overview
+            await updateAdminAPIStats();
+        }
+
+        async function updateAdminAPIStats() {
+            const activeEl = document.getElementById('stat-api-active');
+            const exhaustedEl = document.getElementById('stat-api-exhausted');
+            
+            if (!activeEl && !exhaustedEl) return;
+
+            try {
+                const res = await fetch(getApiBaseUrl() + '/api/admin/global-api-keys');
+                const data = await res.json();
+                
+                if (data.ok) {
+                    if (activeEl) activeEl.innerText = data.activeCount || 0;
+                    if (exhaustedEl) exhaustedEl.innerText = data.exhaustedCount || 0;
+                }
+            } catch (err) {
+                console.warn('Gagal membarui statistik API Admin:', err.message);
+            }
         }
 
         function updateCompletionCharts() {
@@ -2283,6 +2305,7 @@ function showLoginForm(type) {
         // --- UI HELPERS ---
         let resultsPollInterval = null;
         let teacherResultsPollInterval = null;
+        let adminStatsPollInterval = null;
 
         async function fetchAndMerge() {
             try {
@@ -2367,7 +2390,17 @@ function showLoginForm(type) {
                 populateRaportFilters();
                 renderRaport();
             }
-            if (sec === 'overview') { updateStats(); fetchIPs(); }
+            if (sec === 'overview') {
+                updateStats();
+                fetchIPs();
+                if (adminStatsPollInterval) clearInterval(adminStatsPollInterval);
+                adminStatsPollInterval = setInterval(updateStats, 5000);
+            } else {
+                if (adminStatsPollInterval) {
+                    clearInterval(adminStatsPollInterval);
+                    adminStatsPollInterval = null;
+                }
+            }
             if (sec === 'settings') {
                 const admin = db.students.find(x => x.role === 'admin');
                 document.getElementById('set-admin-id').value = admin.id;

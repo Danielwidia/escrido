@@ -11,7 +11,7 @@ const xlsx = require('xlsx');
 const pdf = require('pdf-parse');
 
 const app = express();
-const upload = multer({ 
+const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 50 * 1024 * 1024 } // Increase limit for blueprints
 });
@@ -203,7 +203,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
     // Ensure mapel and rombel are set
     if (!normalized.mapel) normalized.mapel = mapel;
     if (!normalized.rombel) normalized.rombel = rombel;
-    
+
     // Normalize type string
     normalized.type = normalizeQuestionType(normalized.type || 'single');
 
@@ -213,7 +213,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
         const clean = String(opt).replace(/[\[\]\-\(\)\.\–\—\_]/g, '').trim().toLowerCase();
         return /^(benar|salah|true|false|ya|tidak|ok|yes|no|pilihan|option)$/.test(clean);
     };
-    
+
     const parseBooleanAnswer = value => {
         if (typeof value === 'boolean') return value;
         if (typeof value === 'number') return value === 1;
@@ -293,7 +293,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
                 }
             }
             normalized.options = parsedOptions;
-            
+
             // Only overwrite if we found actual embedded answers or if original is missing/invalid
             const foundEmbedded = parsedCorrects.some((_, idx) => {
                 const originalOpt = Array.isArray(q.options) ? q.options[idx] : null;
@@ -308,7 +308,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
 
         // Clean up statements
         if (Array.isArray(normalized.options)) {
-            normalized.options = normalized.options.map(opt => 
+            normalized.options = normalized.options.map(opt =>
                 typeof opt === 'string' ? opt.replace(/^(?:pernyataan\s*\d*\s*[:\-–]\s*|(?:\d+\.|\-|\*)\s+)/i, '').trim() : opt
             );
         }
@@ -371,7 +371,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
         if (!Array.isArray(normalized.options) || normalized.options.length !== 4) normalized.options = ['A', 'B', 'C', 'D'];
         if (!Array.isArray(normalized.correct)) normalized.correct = [normalized.correct];
         if (normalized.correct.length < 2) {
-            const available = [0,1,2,3].filter(i => !normalized.correct.includes(i));
+            const available = [0, 1, 2, 3].filter(i => !normalized.correct.includes(i));
             while (normalized.correct.length < 2 && available.length > 0) normalized.correct.push(available.splice(Math.floor(Math.random() * available.length), 1)[0]);
         } else if (normalized.correct.length > 3) normalized.correct = normalized.correct.slice(0, 3);
         normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c <= 3);
@@ -550,7 +550,7 @@ async function insertResultSingle(resultObj) {
                     date: record.date
                 })
                 .maybeSingle();
-            
+
             if (fetchError) throw new Error(`Supabase lookup error: ${fetchError.message}`);
 
             if (existing) {
@@ -761,16 +761,23 @@ async function callGeminiAI(prompt) {
 
     // Super-charged model list for maximum resilience (including next-gen models)
     const models = [
+        { name: 'gemini-3-flash', version: 'v1' },
+        { name: 'gemini-3-pro', version: 'v1' },
         { name: 'gemini-3-flash', version: 'v1beta' },
         { name: 'gemini-3-pro', version: 'v1beta' },
+        { name: 'gemini-2.5-flash', version: 'v1' },
+        { name: 'gemini-2.5-pro', version: 'v1' },
         { name: 'gemini-2.5-flash', version: 'v1beta' },
         { name: 'gemini-2.5-pro', version: 'v1beta' },
         { name: 'gemini-2.0-flash', version: 'v1' },
         { name: 'gemini-1.5-flash', version: 'v1' },
+        { name: 'gemini-1.5-flash-latest', version: 'v1' },
         { name: 'gemini-1.5-flash-latest', version: 'v1beta' },
         { name: 'gemini-1.5-flash-8b', version: 'v1' },
+        { name: 'gemini-2.0-flash-lite-preview-02-05', version: 'v1' },
         { name: 'gemini-2.0-flash-lite-preview-02-05', version: 'v1beta' },
         { name: 'gemini-1.5-pro', version: 'v1' },
+        { name: 'gemini-1.5-pro-latest', version: 'v1' },
         { name: 'gemini-1.5-pro-latest', version: 'v1beta' },
         { name: 'gemini-1.0-pro', version: 'v1' }
     ];
@@ -803,7 +810,7 @@ async function callGeminiAI(prompt) {
 
                     const errData = await response.json().catch(() => ({}));
                     const errMsg = errData.error?.message || response.statusText;
-                    
+
                     if (response.status === 429) {
                         lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model ${model} (${version}). Tolong tunggu beberapa menit atau gunakan API Key lain.`;
                         console.warn(`[AI] ⚠️ Quota exceeded for model: ${model}`);
@@ -869,11 +876,11 @@ async function callOpenAI(prompt) {
 
                 const errData = await response.json().catch(() => ({}));
                 const errMsg = errData.error?.message || response.statusText;
-                
+
                 if (response.status === 429) {
                     lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model OpenAI ${model}. Tolong isi saldo atau gunakan model lain.`;
                     console.warn(`[AI] ⚠️ OpenAI Quota exceeded for model: ${model}`);
-                    continue; 
+                    continue;
                 } else {
                     lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
                     console.error(`[AI] ❌ Model OpenAI ${model} error: ${response.status} ${errMsg}`);
@@ -1232,15 +1239,15 @@ function normalizeTeacherApiKeyEntry(entry) {
     if (typeof entry === 'object' && entry.key && typeof entry.key === 'string') {
         const trimmed = entry.key.trim();
         if (!trimmed) return null;
-        
+
         let currentStatus = entry.status === 'exhausted' ? 'exhausted' : 'active';
         let updatedAtTime = entry.updatedAt ? new Date(entry.updatedAt).getTime() : 0;
-        
+
         // Auto-revive exhausted personal keys after 60 seconds
         if (currentStatus === 'exhausted' && (Date.now() - updatedAtTime > 60000)) {
             currentStatus = 'active';
         }
-        
+
         return {
             ...entry,
             key: trimmed,
@@ -1268,25 +1275,25 @@ function normalizeTeacherApiKeysArray(apiKeys = []) {
 // ─── API: Teacher Add API Key ──────────────────────────────────────────────
 app.post('/api/teacher/add-api-key', async (req, res) => {
     const { teacherId, apiKey } = req.body;
-    
+
     if (!teacherId || !apiKey) {
         return res.status(400).json({ error: 'teacherId dan apiKey diperlukan' });
     }
-    
+
     try {
         const db = await readDB();
-        
+
         // Find teacher
         const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
         if (!teacher) {
             return res.status(404).json({ error: 'Guru tidak ditemukan' });
         }
-        
+
         // Validate API key format (basic check)
         if (apiKey.trim().length < 10) {
             return res.status(400).json({ error: 'API Key tidak valid' });
         }
-        
+
         // Initialize apiKeys array if not exists
         if (!Array.isArray(teacher.apiKeys)) {
             teacher.apiKeys = [];
@@ -1310,21 +1317,21 @@ app.post('/api/teacher/add-api-key', async (req, res) => {
             updatedAt: new Date().toISOString(),
             note: ''
         });
-        
+
         // Save to database
         await writeDB(db);
         console.log(`[TEACHER] API key added untuk guru: ${teacher.name}`);
-        
+
         // Update realtime state
         updateRealtimeState('teacher-key', teacherId);
-        
+
         return res.json({
             ok: true,
             message: 'API Key berhasil ditambahkan',
             teacher: teacher.name,
             keyCount: teacher.apiKeys.length
         });
-        
+
     } catch (err) {
         console.error('[TEACHER API KEY ERROR]:', err.message);
         res.status(500).json({ error: 'Gagal menambahkan API Key: ' + err.message });
@@ -1334,40 +1341,40 @@ app.post('/api/teacher/add-api-key', async (req, res) => {
 // ─── API: Teacher Remove API Key ───────────────────────────────────────────
 app.post('/api/teacher/remove-api-key', async (req, res) => {
     const { teacherId, keyIndex } = req.body;
-    
+
     if (!teacherId || keyIndex === undefined) {
         return res.status(400).json({ error: 'teacherId dan keyIndex diperlukan' });
     }
-    
+
     try {
         const db = await readDB();
-        
+
         const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
         if (!teacher || !Array.isArray(teacher.apiKeys)) {
             return res.status(404).json({ error: 'Guru atau API Key tidak ditemukan' });
         }
-        
+
         if (keyIndex < 0 || keyIndex >= teacher.apiKeys.length) {
             return res.status(400).json({ error: 'Index API Key tidak valid' });
         }
-        
+
         // Remove API key
         const removedKey = teacher.apiKeys.splice(keyIndex, 1)[0];
-        
+
         // Save to database
         await writeDB(db);
         console.log(`[TEACHER] API key removed untuk guru: ${teacher.name}`);
-        
+
         // Update realtime state
         updateRealtimeState('teacher-key', teacherId);
-        
+
         return res.json({
             ok: true,
             message: 'API Key berhasil dihapus',
             teacher: teacher.name,
             keyCount: teacher.apiKeys.length
         });
-        
+
     } catch (err) {
         console.error('[TEACHER REMOVE KEY ERROR]:', err.message);
         res.status(500).json({ error: 'Gagal menghapus API Key: ' + err.message });
@@ -1377,36 +1384,36 @@ app.post('/api/teacher/remove-api-key', async (req, res) => {
 // ─── API: Teacher API Keys (Get) ──────────────────────────────────────────
 app.get('/api/teacher/api-keys', async (req, res) => {
     const { teacherId } = req.query;
-    
+
     if (!teacherId) {
         return res.status(400).json({ error: 'teacherId diperlukan' });
     }
-    
+
     try {
         const db = await readDB();
-        
+
         // Find teacher
         const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
         if (!teacher) {
             return res.status(404).json({ error: 'Guru tidak ditemukan' });
         }
-        
+
         // Normalize API keys only
         const normalizedKeys = normalizeTeacherApiKeysArray(teacher.apiKeys || []);
 
         // Update teacher record if normalization changed anything
-        if (normalizedKeys.length !== (teacher.apiKeys || []).length || 
+        if (normalizedKeys.length !== (teacher.apiKeys || []).length ||
             (teacher.apiKeys || []).some(k => typeof k === 'string' || (typeof k === 'object' && !('status' in k)))) {
             teacher.apiKeys = normalizedKeys;
             await writeDB(db);
         }
-        
+
         return res.json({
             ok: true,
             apiKeys: normalizedKeys,
             teacher: teacher.name
         });
-        
+
     } catch (err) {
         console.error('[TEACHER GET KEYS ERROR]:', err.message);
         res.status(500).json({ error: 'Gagal mengambil API Keys: ' + err.message });
@@ -1425,11 +1432,11 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
         // Get Gemini keys from environment
         const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
         const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
-        
+
         geminiKeys.forEach((key, idx) => {
             const keyHash = key.substring(key.length - 10);
             const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
-            
+
             globalKeys.push({
                 key: key,
                 provider: 'Google Gemini',
@@ -1438,7 +1445,7 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
                 updatedAt: statusEntry.exhaustedAt || new Date().toISOString(),
                 note: statusEntry.note || `Global key #${idx + 1}`,
                 isGlobal: true,
-                quotaInfo: statusEntry.status === 'exhausted' 
+                quotaInfo: statusEntry.status === 'exhausted'
                     ? '❌ QUOTA EXHAUSTED - Tidak dapat digunakan'
                     : 'Gemini: 15 requests/min (free tier), unlimited dengan billing'
             });
@@ -1447,11 +1454,11 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
         // Get OpenAI keys from environment
         const openaiRaw = process.env.OPENAI_API_KEY || '';
         const openaiKeys = openaiRaw.split(',').map(k => k.trim()).filter(k => k);
-        
+
         openaiKeys.forEach((key, idx) => {
             const keyHash = key.substring(key.length - 10);
             const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
-            
+
             globalKeys.push({
                 key: key,
                 provider: 'OpenAI (ChatGPT)',
@@ -1472,7 +1479,7 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
         openrouterKeys.forEach((key, idx) => {
             const keyHash = key.substring(key.length - 10);
             const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
-            
+
             globalKeys.push({
                 key: key,
                 provider: 'OpenRouter',
@@ -1494,7 +1501,7 @@ app.get('/api/teacher/global-api-keys', async (req, res) => {
         deepseekKeys.forEach((key, idx) => {
             const keyHash = key.substring(key.length - 10);
             const statusEntry = db.globalAPIKeysStatus[keyHash] || { status: 'active' };
-            
+
             globalKeys.push({
                 key: key,
                 provider: 'DeepSeek',
@@ -1545,39 +1552,39 @@ app.get('/api/ips', (req, res) => {
 app.get('/api/teacher/realtime-stats', async (req, res) => {
     try {
         const { teacherId } = req.query;
-        
+
         if (!teacherId) {
             return res.status(400).json({ error: 'teacherId diperlukan' });
         }
-        
+
         const db = await readDB();
         const teacher = db.students.find(s => s.id === teacherId && s.role === 'teacher');
-        
+
         if (!teacher) {
             return res.status(404).json({ error: 'Guru tidak ditemukan' });
         }
-        
+
         const normalizedKeys = normalizeTeacherApiKeysArray(teacher.apiKeys || []);
         const activeCount = normalizedKeys.filter(k => k.status !== 'exhausted').length;
         const totalCount = normalizedKeys.length;
-        
+
         // Get global stats
         const globalKeys = [];
         const geminiRaw = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '';
         const geminiKeys = geminiRaw.split(',').map(k => k.trim()).filter(k => k);
         const openaiRaw = process.env.OPENAI_API_KEY || '';
         const openaiKeys = openaiRaw.split(',').map(k => k.trim()).filter(k => k);
-        
+
         if (!db.globalAPIKeysStatus) db.globalAPIKeysStatus = {};
-        
+
         const globalActive = [...geminiKeys, ...openaiKeys].filter(k => {
             const hash = k.substring(k.length - 10);
             const status = db.globalAPIKeysStatus[hash];
             return !status || status.status !== 'exhausted';
         }).length;
-        
+
         const globalTotal = geminiKeys.length + openaiKeys.length;
-        
+
         return res.json({
             ok: true,
             timestamp: new Date().toISOString(),
@@ -1601,13 +1608,52 @@ app.get('/api/teacher/realtime-stats', async (req, res) => {
 // ─── API: Admin Global API Keys ─────────────────────────────────────────────
 app.get('/api/admin/global-api-keys', async (req, res) => {
     try {
-        const db = await readDB();
-        if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
-        if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+        let keys = [];
+        let activeCount = 0;
+        let exhaustedCount = 0;
 
-        const keys = db.globalSettings.apiKeys;
-        const activeCount = keys.filter(k => k.status !== 'exhausted').length;
-        const exhaustedCount = keys.filter(k => k.status === 'exhausted').length;
+        // 1. PRIMARY: Try to get from Supabase (for Vercel)
+        if (USE_SUPABASE) {
+            try {
+                const { data, error } = await supabase
+                    .from('global_api_keys')
+                    .select('*')
+                    .order('added_at', { ascending: false });
+
+                if (error) throw error;
+
+                keys = data.map(key => ({
+                    id: key.id,
+                    provider: key.provider,
+                    key: key.key,
+                    status: key.status,
+                    addedAt: key.added_at,
+                    updatedAt: key.updated_at,
+                    note: key.note
+                }));
+
+                activeCount = keys.filter(k => k.status !== 'exhausted').length;
+                exhaustedCount = keys.filter(k => k.status === 'exhausted').length;
+
+                console.log(`[ADMIN] Retrieved ${keys.length} global API keys from Supabase`);
+            } catch (err) {
+                console.error('[ADMIN] Warning: Failed to get from Supabase, falling back to database.json:', err.message);
+                // Fall through to database.json fallback
+            }
+        }
+
+        // 2. FALLBACK: Get from database.json if Supabase failed or not configured
+        if (keys.length === 0) {
+            const db = await readDB();
+            if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
+            if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+
+            keys = db.globalSettings.apiKeys;
+            activeCount = keys.filter(k => k.status !== 'exhausted').length;
+            exhaustedCount = keys.filter(k => k.status === 'exhausted').length;
+
+            console.log(`[ADMIN] Retrieved ${keys.length} global API keys from database.json`);
+        }
 
         res.json({
             ok: true,
@@ -1630,31 +1676,55 @@ app.post('/api/admin/add-global-key', async (req, res) => {
 
     try {
         const trimmedKey = apiKey.trim();
-        const db = await readDB();
-        
-        if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
-        if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+        let storageMedium = 'database.json';
 
-        // Check for duplicates
-        if (db.globalSettings.apiKeys.some(entry => entry.key === trimmedKey)) {
-            return res.status(409).json({ error: 'API Key ini sudah ada di daftar Global' });
+        // 1. PRIMARY: Try to save to Supabase (for Vercel)
+        if (USE_SUPABASE) {
+            try {
+                await addGlobalAPIKeyToSupabase(provider, trimmedKey, note);
+                storageMedium = 'Supabase';
+                console.log(`[ADMIN] Global API key added to Supabase for provider: ${provider}`);
+            } catch (err) {
+                console.error('[ADMIN] Warning: Failed to add to Supabase, falling back to database.json:', err.message);
+                // Fall through to database.json fallback
+            }
         }
 
-        db.globalSettings.apiKeys.push({
-            provider,
-            key: trimmedKey,
-            status: 'active',
-            addedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            note: note || ''
+        // 2. FALLBACK: Save to database.json if Supabase failed or not configured
+        if (storageMedium !== 'Supabase') {
+            const db = await readDB();
+            if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
+            if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+
+            // Check for duplicates in database.json
+            if (db.globalSettings.apiKeys.some(entry => entry.key === trimmedKey)) {
+                return res.status(409).json({ error: 'API Key ini sudah ada di daftar Global' });
+            }
+
+            db.globalSettings.apiKeys.push({
+                provider,
+                key: trimmedKey,
+                status: 'active',
+                addedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                note: note || ''
+            });
+
+            await writeDB(db);
+            console.log(`[ADMIN] Global API key added to database.json for provider: ${provider}`);
+        }
+
+        // 3. Optional: Push to Vercel (async, don't wait)
+        const vercelEnvVar = await pushGlobalAPIKeyToVercel(provider, trimmedKey).catch(err => {
+            console.error('[ADMIN] Vercel push error (non-blocking):', err.message);
+            return null;
         });
 
-        await writeDB(db);
-        console.log(`[ADMIN] Global API key added for provider: ${provider}`);
-
-        res.json({ 
-            ok: true, 
-            message: 'Global API Key berhasil ditambahkan'
+        return res.json({
+            ok: true,
+            message: 'Global API Key berhasil ditambahkan',
+            storage: storageMedium,
+            vercelStatus: vercelEnvVar ? `Auto-pushed sebagai ${vercelEnvVar}` : 'Vercel tidak dikonfigurasi'
         });
     } catch (err) {
         console.error('[ADMIN ADD GLOBAL KEY ERROR]:', err.message);
@@ -1663,15 +1733,45 @@ app.post('/api/admin/add-global-key', async (req, res) => {
 });
 
 app.post('/api/admin/remove-global-key', async (req, res) => {
-    const { keyIndex } = req.body;
+    const { keyIndex, keyId, keyValue } = req.body;
 
-    if (keyIndex === undefined || keyIndex === null) {
-        return res.status(400).json({ error: 'keyIndex diperlukan' });
+    // Accept either keyIndex (database.json) or keyId (Supabase) or keyValue (direct key match)
+    if (keyIndex === undefined && keyId === undefined && !keyValue) {
+        return res.status(400).json({ error: 'keyIndex, keyId, atau keyValue diperlukan' });
     }
 
     try {
+        // 1. Try to remove from Supabase first
+        if ((keyId !== undefined || keyValue) && USE_SUPABASE) {
+            try {
+                if (keyId !== undefined) {
+                    await removeGlobalAPIKeyFromSupabase(keyId);
+                } else if (keyValue) {
+                    // Find key by value
+                    const { data } = await supabase
+                        .from('global_api_keys')
+                        .select('id')
+                        .eq('key', keyValue)
+                        .single();
+
+                    if (data) {
+                        await removeGlobalAPIKeyFromSupabase(data.id);
+                    }
+                }
+                console.log(`[ADMIN] Global API key removed from Supabase`);
+                return res.json({
+                    ok: true,
+                    message: 'Global API Key berhasil dihapus dari Supabase'
+                });
+            } catch (err) {
+                console.error('[ADMIN] Warning: Failed to remove from Supabase, trying database.json:', err.message);
+                // Fall through to database.json fallback
+            }
+        }
+
+        // 2. FALLBACK: Remove from database.json
         const db = await readDB();
-        
+
         if (!db.globalSettings || !Array.isArray(db.globalSettings.apiKeys)) {
             return res.status(404).json({ error: 'Tidak ada API Keys global' });
         }
@@ -1683,9 +1783,9 @@ app.post('/api/admin/remove-global-key', async (req, res) => {
         const removedKey = db.globalSettings.apiKeys.splice(keyIndex, 1)[0];
         await writeDB(db);
 
-        console.log(`[ADMIN] Global API key removed for provider: ${removedKey.provider}`);
-        res.json({ 
-            ok: true, 
+        console.log(`[ADMIN] Global API key removed from database.json for provider: ${removedKey.provider}`);
+        res.json({
+            ok: true,
             message: 'Global API Key berhasil dihapus'
         });
     } catch (err) {
@@ -1693,6 +1793,167 @@ app.post('/api/admin/remove-global-key', async (req, res) => {
         res.status(500).json({ error: 'Gagal menghapus Global API Key: ' + err.message });
     }
 });
+
+// ─── Helper: Push Global API Key to Vercel ───────────────────────────────────
+async function pushGlobalAPIKeyToVercel(provider, apiKey) {
+    const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+    const VERCEL_PROJECT_ID = process.env.VERCEL_PROJECT_ID;
+
+    console.log('[VERCEL GLOBAL] VERCEL_TOKEN present:', !!VERCEL_TOKEN);
+    console.log('[VERCEL GLOBAL] VERCEL_PROJECT_ID present:', !!VERCEL_PROJECT_ID);
+
+    if (!VERCEL_TOKEN || !VERCEL_PROJECT_ID) {
+        console.warn('[VERCEL GLOBAL] VERCEL_TOKEN atau VERCEL_PROJECT_ID tidak dikonfigurasi, skipping auto-push');
+        return null;
+    }
+
+    try {
+        console.log(`[VERCEL GLOBAL] Pushing API key untuk provider: ${provider}...`);
+
+        // Generate env var name untuk global key (e.g., GLOBAL_GOOGLE_GEMINI_APIKEY_1)
+        const providerSafe = provider.replace(/[^A-Z0-9_]/g, '_').toUpperCase().substring(0, 30);
+        const envKeyName = `GLOBAL_${providerSafe}_APIKEY_${Date.now()}`.substring(0, 64);
+
+        console.log(`[VERCEL GLOBAL] Generated env var name: ${envKeyName}`);
+
+        const vercelApi = 'https://api.vercel.com';
+        const headers = {
+            'Authorization': `Bearer ${VERCEL_TOKEN}`,
+            'Content-Type': 'application/json'
+        };
+
+        const targets = ['production', 'preview', 'development'];
+        console.log(`[VERCEL GLOBAL] Setting env var for targets: ${targets.join(', ')}`);
+
+        const response = await fetch(`${vercelApi}/v9/projects/${VERCEL_PROJECT_ID}/env`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                key: envKeyName,
+                value: apiKey,
+                target: targets,
+                type: 'encrypted'
+            })
+        });
+
+        console.log('[VERCEL GLOBAL] Env create response status:', response.status);
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            console.log('[VERCEL GLOBAL] Env create error:', JSON.stringify(error, null, 2));
+
+            if (error.code === 'ENV_KEY_ALREADY_EXISTS') {
+                console.log(`[VERCEL GLOBAL] ${envKeyName} sudah ada, mencoba update existing entries...`);
+
+                const getRes = await fetch(`${vercelApi}/v9/projects/${VERCEL_PROJECT_ID}/env`, { headers });
+                console.log('[VERCEL GLOBAL] Get env vars status:', getRes.status);
+
+                if (!getRes.ok) throw new Error(`Failed to get env vars: ${getRes.statusText}`);
+
+                const data = await getRes.json();
+                const existingEnvs = (data.envs || []).filter(e => e.key === envKeyName);
+
+                if (existingEnvs.length === 0) {
+                    throw new Error('Env var exists but could not find existing entries');
+                }
+
+                for (const existingEnv of existingEnvs) {
+                    console.log(`[VERCEL GLOBAL] Updating existing env var ID: ${existingEnv.id}`);
+                    const updateRes = await fetch(`${vercelApi}/v9/projects/${VERCEL_PROJECT_ID}/env/${existingEnv.id}`, {
+                        method: 'PATCH',
+                        headers: headers,
+                        body: JSON.stringify({ value: apiKey })
+                    });
+                    console.log(`[VERCEL GLOBAL] Update response status for ${existingEnv.id}:`, updateRes.status);
+                    if (!updateRes.ok) throw new Error(`Failed to update ${existingEnv.id}: ${updateRes.statusText}`);
+                }
+                console.log(`[VERCEL GLOBAL] ✅ ${envKeyName} updated for existing targets`);
+            } else {
+                throw new Error(error.message || `HTTP ${response.status}`);
+            }
+        } else {
+            console.log(`[VERCEL GLOBAL] ✅ ${envKeyName} set for all targets`);
+        }
+
+        console.log(`[VERCEL GLOBAL] ✅ API key berhasil di-push ke Vercel untuk provider: ${provider}`);
+        return envKeyName;
+
+    } catch (err) {
+        console.error(`[VERCEL GLOBAL] ❌ Gagal push API key ke Vercel: ${err.message}`);
+        // Don't throw - ini adalah bonus feature, jangan error jika gagal
+        return null;
+    }
+}
+
+// ─── Supabase Helpers for Global API Keys ───────────────────────────────────
+async function addGlobalAPIKeyToSupabase(provider, key, note = '') {
+    if (!USE_SUPABASE || !supabase) {
+        throw new Error('Supabase not configured');
+    }
+
+    try {
+        // Check for duplicates
+        const { data: existing, error: checkError } = await supabase
+            .from('global_api_keys')
+            .select('id')
+            .eq('key', key)
+            .maybeSingle();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+            throw new Error('Duplicate check failed: ' + checkError.message);
+        }
+
+        if (existing) {
+            throw new Error('API Key sudah ada di Supabase');
+        }
+
+        // Insert new key
+        const { data, error } = await supabase
+            .from('global_api_keys')
+            .insert({
+                provider,
+                key,
+                status: 'active',
+                note,
+                added_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        if (error) {
+            throw new Error('Insert failed: ' + error.message);
+        }
+
+        console.log('[Supabase] Global API key added:', provider);
+        return data;
+    } catch (err) {
+        console.error('[Supabase] Error adding global API key:', err.message);
+        throw err;
+    }
+}
+
+async function removeGlobalAPIKeyFromSupabase(keyId) {
+    if (!USE_SUPABASE || !supabase) {
+        throw new Error('Supabase not configured');
+    }
+
+    try {
+        const { error } = await supabase
+            .from('global_api_keys')
+            .delete()
+            .eq('id', keyId);
+
+        if (error) {
+            throw new Error('Delete failed: ' + error.message);
+        }
+
+        console.log('[Supabase] Global API key removed, ID:', keyId);
+    } catch (err) {
+        console.error('[Supabase] Error removing global API key:', err.message);
+        throw err;
+    }
+}
 
 // ─── Catch-all ────────────────────────────────────────────────────────────────
 app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found' }));
@@ -1710,10 +1971,10 @@ if (!process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
         const { networkInterfaces } = require('os');
         const nets = networkInterfaces();
-        
+
         console.log(`\n🚀 CBT Exam Server Running!`);
         console.log(`📡 Local Access   : http://localhost:${PORT}`);
-        
+
         // Display all available network IPs
         for (const [name, net] of Object.entries(nets)) {
             for (const iface of net) {
@@ -1722,7 +1983,7 @@ if (!process.env.VERCEL) {
                 }
             }
         }
-        
+
         console.log(`\n   Database Mode : ${USE_SUPABASE ? 'Supabase Cloud' : 'Local JSON Disk'}`);
         console.log(`   Assets Folder : ${isPkg ? 'External /APP' : 'Local Root'}`);
         console.log(`   Admin Login   : Username 'ADM', Password 'admin321'`);
