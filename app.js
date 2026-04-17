@@ -3573,13 +3573,83 @@ function showLoginForm(type) {
         }
 
         function shuffleQuestions() {
-            if (confirm("Acak urutan semua soal?")) {
-                for (let i = db.questions.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [db.questions[i], db.questions[j]] = [db.questions[j], db.questions[i]];
+            let questionsToShuffleIndices = [];
+            let fM = '';
+            let fR = '';
+
+            const isTeacher = window.isTeacherMode || (typeof currentSiswa !== 'undefined' && currentSiswa && currentSiswa.role === 'teacher');
+
+            if (isTeacher) {
+                fM = document.getElementById('teacher-filter-mapel')?.value || '';
+                fR = document.getElementById('teacher-filter-rombel')?.value || '';
+
+                for (let i = 0; i < db.questions.length; i++) {
+                    const q = db.questions[i];
+                    const qSubject = typeof q.mapel === 'string' ? q.mapel : q.mapel?.name || q.mapel;
+                    if (!teacherSubjectNames(currentSiswa).includes(qSubject)) continue;
+                    const allowed = teacherAllowedRombels(currentSiswa, qSubject);
+                    if (!allowed.includes(q.rombel)) continue;
+                    if (fM && qSubject !== fM) continue;
+                    if (fR && q.rombel !== fR) continue;
+
+                    questionsToShuffleIndices.push(i);
                 }
+            } else {
+                fR = document.getElementById('filter-rombel')?.value || 'ALL';
+                fM = document.getElementById('filter-mapel')?.value || 'ALL';
+
+                for (let i = 0; i < db.questions.length; i++) {
+                    const q = db.questions[i];
+                    if ((fR === 'ALL' || q.rombel === fR) && (fM === 'ALL' || q.mapel === fM)) {
+                        questionsToShuffleIndices.push(i);
+                    }
+                }
+            }
+
+            if (questionsToShuffleIndices.length === 0) {
+                alert('Tidak ada soal yang sesuai dengan filter saat ini untuk diacak.');
+                return;
+            }
+
+            let msg = "Acak urutan semua soal?";
+            if (isTeacher) {
+                const mapelLabel = fM ? fM : 'Semua Mapel';
+                const rombelLabel = fR ? fR : 'Semua Rombel';
+                if (fM || fR) {
+                    msg = `Acak urutan ${questionsToShuffleIndices.length} soal dengan filter:\nMapel: ${mapelLabel}\nRombel: ${rombelLabel}?`;
+                } else {
+                    msg = `Acak urutan ${questionsToShuffleIndices.length} soal milik Anda?`;
+                }
+            } else {
+                if (fR !== 'ALL' || fM !== 'ALL') {
+                    const rombelLabel = fR === 'ALL' ? 'Semua Rombel' : fR;
+                    const mapelLabel = fM === 'ALL' ? 'Semua Mapel' : fM;
+                    msg = `Acak urutan ${questionsToShuffleIndices.length} soal dengan filter:\nRombel: ${rombelLabel}\nMapel: ${mapelLabel}?`;
+                }
+            }
+
+            if (confirm(msg)) {
+                // Extract those questions
+                const filteredQuestions = questionsToShuffleIndices.map(i => db.questions[i]);
+
+                // Shuffle extracted questions
+                for (let i = filteredQuestions.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [filteredQuestions[i], filteredQuestions[j]] = [filteredQuestions[j], filteredQuestions[i]];
+                }
+
+                // Put them back at their original indices (so non-filtered stay in place)
+                for (let i = 0; i < questionsToShuffleIndices.length; i++) {
+                    db.questions[questionsToShuffleIndices[i]] = filteredQuestions[i];
+                }
+
                 save();
-                renderAdminQuestions();
+                
+                if (isTeacher) {
+                    if (typeof renderTeacherQuestions === 'function') renderTeacherQuestions();
+                } else {
+                    if (typeof renderAdminQuestions === 'function') renderAdminQuestions();
+                }
             }
         }
 
