@@ -1001,9 +1001,12 @@ async function callOpenRouterAI(prompt, teacherId = null) {
     if (keys.length === 0) throw new Error('API Key OpenRouter tidak ditemukan atau kuota habis di semua sumber.');
 
     const models = [
-        'google/gemini-2.5-pro-exp-03-25:free',
-        'google/gemini-2.0-flash-exp:free',
-        'google/gemini-flash-1.5:free'
+        'openai/gpt-4o',
+        'openai/gpt-4o-mini',
+        'anthropic/claude-3-5-sonnet',
+        'qwen/qwen2.5-72b-instruct:free',
+        'mistralai/mistral-small-24b-instruct-2501:free',
+        'meta-llama/Llama-3-70b-chat-hf'
     ];
     let lastError;
 
