@@ -184,7 +184,7 @@ async function extractTextFromImage(base64Data, mimeType) {
 }
 
 function normalizeQuestionType(type = '') {
-    const t = type.toLowerCase().trim();
+    const t = String(type || '').toLowerCase().trim();
     if (['single', 'pilihan_ganda', 'pg', 'multiple_choice'].includes(t)) return 'single';
     if (['multiple', 'pg_kompleks', 'complex', 'checkbox'].includes(t)) return 'multiple';
     if (['text', 'uraian', 'isian', 'essay', 'short_answer'].includes(t)) return 'text';
@@ -199,6 +199,9 @@ function normalizeQuestionType(type = '') {
  */
 function fullNormalizeQuestion(q, mapel, rombel) {
     const normalized = { ...q };
+    if (normalized.text !== undefined && normalized.text !== null && typeof normalized.text !== 'string') {
+        normalized.text = Array.isArray(normalized.text) ? normalized.text.join('\n') : String(normalized.text);
+    }
 
     // Ensure mapel and rombel are set
     if (!normalized.mapel) normalized.mapel = mapel;
@@ -334,7 +337,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
                 }
                 normalized.correct = finalCorrects;
                 normalized.text = defaultTfInstruction;
-            } else if (normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi') && !normalized.text.toLowerCase().includes('tentukan')) {
+            } else if (typeof normalized.text === 'string' && normalized.text.length > 15 && !normalized.text.toLowerCase().includes('pilihlah') && !normalized.text.toLowerCase().includes('berikut ini') && !normalized.text.toLowerCase().includes('instruksi') && !normalized.text.toLowerCase().includes('tentukan')) {
                 const cleanStmt = normalized.text.replace(/^pernyataan\s*[:\-–]\s*/i, '').trim();
                 if (cleanStmt.length > 10) {
                     normalized.options = [cleanStmt];
@@ -345,7 +348,7 @@ function fullNormalizeQuestion(q, mapel, rombel) {
             }
         }
 
-        if (!normalized.text || normalized.text.trim() === '' || isGenericOption(normalized.text)) {
+        if (!normalized.text || (typeof normalized.text === 'string' && normalized.text.trim() === '') || isGenericOption(normalized.text)) {
             normalized.text = defaultTfInstruction;
         }
 
