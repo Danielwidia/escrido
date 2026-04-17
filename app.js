@@ -5544,7 +5544,7 @@ function showLoginForm(type) {
             }
         }
 
-        async function generateQuestionsWithAi() {
+        async function generateQuestionsWithAi(retryCount = 0) {
             const materi = document.getElementById('ai-materi')?.value.trim();
             const mapel = document.getElementById('ai-mapel')?.value;
             const rombel = document.getElementById('ai-rombel')?.value;
@@ -5583,7 +5583,9 @@ function showLoginForm(type) {
 
             const levelCounts = getAiLevelCounts(jumlah);
             const loading = document.getElementById('ai-loading');
-            if (loading) {
+            
+            // Only show loading if it's the first attempt or ensure it stays visible
+            if (loading && retryCount === 0) {
                 loading.classList.remove('hidden');
                 loading.classList.add('flex');
             }
@@ -5597,6 +5599,14 @@ function showLoginForm(type) {
                         teacherId: (currentSiswa && currentSiswa.role === 'teacher') ? currentSiswa.id : null
                     })
                 });
+
+                // Handle 503 Service Unavailable (High Demand)
+                if (response.status === 503 && retryCount < 3) {
+                    alert("Maaf AI sedang sibuk/ banyak permintaan. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
+                    // Small delay before retry
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    return await generateQuestionsWithAi(retryCount + 1);
+                }
 
                 const result = await response.json();
 
@@ -5626,7 +5636,7 @@ function showLoginForm(type) {
                     alert('Terjadi kesalahan saat memanggil AI: ' + (err.message || 'Error tidak diketahui'));
                 }
             } finally {
-                if (loading) {
+                if (loading && retryCount === 0) {
                     loading.classList.add('hidden');
                     loading.classList.remove('flex');
                 }

@@ -905,6 +905,10 @@ async function callGeminiAI(prompt, teacherId = null) {
                         lastError = `${model} (${version}): HTTP 404 - Model tidak ditemukan atau tidak tersedia untuk endpoint ini.`;
                         console.error(`[AI] ❌ Model ${model} not available on ${version}`);
                         break; // Model not exist, move to next model
+                    } else if (response.status === 503) {
+                        lastError = `[AI SEDANG SIBUK] Maaf, layanan AI sedang mengalami permintaan tinggi (High Demand).`;
+                        console.warn(`[AI] ⚠️ High demand for model: ${model}`);
+                        throw { status: 503, message: lastError };
                     } else {
                         lastError = `${model} (${version}): HTTP ${response.status} - ${errMsg}`;
                         console.error(`[AI] ❌ Model ${model} (${version}) error: ${response.status} ${errMsg}`);
@@ -966,6 +970,10 @@ async function callOpenAI(prompt, teacherId = null) {
                     lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model OpenAI ${model}. Tolong isi saldo atau gunakan model lain.`;
                     console.warn(`[AI] ⚠️ OpenAI Quota exceeded for model: ${model}`);
                     continue;
+                } else if (response.status === 503) {
+                    lastError = `[AI SEDANG SIBUK] Maaf, layanan AI sedang mengalami permintaan tinggi (High Demand).`;
+                    console.warn(`[AI] ⚠️ OpenAI High demand for model: ${model}`);
+                    throw { status: 503, message: lastError };
                 } else {
                     lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
                     console.error(`[AI] ❌ Model OpenAI ${model} error: ${response.status} ${errMsg}`);
@@ -1149,8 +1157,11 @@ app.post('/api/generate-ai', async (req, res) => {
         console.log(`[/api/generate-ai] Success: generated ${normalizedQuestions.length} questions`);
         return res.json({ ok: true, questions: normalizedQuestions });
     } catch (e) {
-        console.error('[/api/generate-ai] Fatal error:', e.message);
-        return res.status(500).json({ error: e.message });
+        console.error('[/api/generate-ai] Fatal error:', e.message || e);
+        if (e.status === 503) {
+            return res.status(503).json({ error: e.message });
+        }
+        return res.status(500).json({ error: e.message || 'Error internal server' });
     }
 });
 
@@ -1266,8 +1277,11 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
         console.log(`[/api/generate-admin-doc] Success for ${docType}`);
         return res.json({ ok: true, html: text, savedToBankSoal: !!parsedQuestions });
     } catch (e) {
-        console.error('[/api/generate-admin-doc] Fatal error:', e.message);
-        return res.status(500).json({ error: e.message });
+        console.error('[/api/generate-admin-doc] Fatal error:', e.message || e);
+        if (e.status === 503) {
+            return res.status(503).json({ error: e.message });
+        }
+        return res.status(500).json({ error: e.message || 'Error internal server' });
     }
 });
 
@@ -1304,7 +1318,11 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
         const parsed = JSON.parse(match[0]);
         return res.json({ ok: true, kisiKisi: parsed });
     } catch (e) {
-        return res.status(500).json({ error: e.message });
+        console.error('[/api/generate-kisi-kisi] Fatal error:', e.message || e);
+        if (e.status === 503) {
+            return res.status(503).json({ error: e.message });
+        }
+        return res.status(500).json({ error: e.message || 'Error internal server' });
     }
 });
 

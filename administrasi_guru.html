@@ -917,11 +917,9 @@
 
         // Hapus pemanggilan otomatis tab pertama agar di awal benar-benar bersembunyi
         // switchTab('atp-cp');
-        async function generateWithAI() {
-            if (!currentActiveTab || isGenerating) return;
-            if (currentActiveTab === 'riwayat-soal') {
-                showToast('Fitur Riwayat hanya untuk melihat, bukan untuk generate', true);
-                return;
+        async function generateWithAI(retryCount = 0) {
+            if (!currentActiveTab || isGenerating) {
+                if (retryCount === 0) return;
             }
             const activeTab = currentActiveTab; 
             
@@ -947,28 +945,33 @@
                 return;
             }
 
-            isGenerating = true;
+            if (retryCount === 0) {
+                isGenerating = true;
 
-            // Hide Empty & Result, Show Loading
-            document.getElementById('state-empty').classList.add('hidden');
-            document.getElementById('state-result').classList.add('hidden');
-            document.getElementById('state-loading').classList.remove('hidden');
+                // Hide Empty & Result, Show Loading
+                document.getElementById('state-empty').classList.add('hidden');
+                document.getElementById('state-result').classList.add('hidden');
+                document.getElementById('state-loading').classList.remove('hidden');
+            }
 
-            const loadingTexts = [
-                "Menganalisis pedoman Kurikulum Merdeka...",
-                "Menyelaraskan fase perkembangan peserta didik...",
-                "Merangkai kalimat yang operasional dan terukur...",
-                "Memformat hasil ke dalam rancangan dokumen...",
-                "Proses ini memakan waktu...",
-                "Mohon menunggu...",
-                "Pastikan Internet Stabil..."
-            ];
+            let textInterval;
+            if (retryCount === 0) {
+                const loadingTexts = [
+                    "Menganalisis pedoman Kurikulum Merdeka...",
+                    "Menyelaraskan fase perkembangan peserta didik...",
+                    "Merangkai kalimat yang operasional dan terukur...",
+                    "Memformat hasil ke dalam rancangan dokumen...",
+                    "Proses ini memakan waktu...",
+                    "Mohon menunggu...",
+                    "Pastikan Internet Stabil..."
+                ];
 
-            let textIndex = 0;
-            const textInterval = setInterval(() => {
-                textIndex = (textIndex + 1) % loadingTexts.length;
-                document.getElementById('loading-text').innerText = loadingTexts[textIndex];
-            }, 3000);
+                let textIndex = 0;
+                textInterval = setInterval(() => {
+                    textIndex = (textIndex + 1) % loadingTexts.length;
+                    document.getElementById('loading-text').innerText = loadingTexts[textIndex];
+                }, 3000);
+            }
 
             try {
                 // Prepare common extraData
@@ -1082,7 +1085,14 @@
                     });
                 }
 
-                clearInterval(textInterval);
+                if (response.status === 503 && retryCount < 3) {
+                    alert("Maaf AI sedang sibuk/ banyak permintaan. Sedang mencoba lagi, mohon menunggu jika gagal ulangi lagi!.");
+                    // Small delay before retry
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    return await generateWithAI(retryCount + 1);
+                }
+
+                if (retryCount === 0) clearInterval(textInterval);
 
                 if (!response.ok) {
                     const err = await response.json().catch(() => ({}));
@@ -1169,13 +1179,21 @@
                 isGenerating = false;
                 resetInactivityTimer();
                 
-            } catch (e) {
-                isGenerating = false;
-                clearInterval(textInterval);
-                document.getElementById('state-loading').classList.add('hidden');
-                document.getElementById('state-empty').classList.remove('hidden');
-                showToast('Gagal memproses AI: ' + e.message, true);
-                resetInactivityTimer();
+                if (retryCount === 0) {
+                    isGenerating = false;
+                    clearInterval(textInterval);
+                    document.getElementById('state-loading').classList.add('hidden');
+                    document.getElementById('state-empty').classList.remove('hidden');
+                    showToast('Gagal memproses AI: ' + e.message, true);
+                    resetInactivityTimer();
+                }
+                throw e; // Propagate error for recursive calls
+            } finally {
+                if (retryCount === 0) {
+                    if (textInterval) clearInterval(textInterval);
+                    isGenerating = false;
+                    // Note: loading state hide is normally handled in success/catch but double check here
+                }
             }
         }
 
