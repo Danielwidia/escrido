@@ -1598,6 +1598,102 @@ app.get('/api/teacher/realtime-stats', async (req, res) => {
     }
 });
 
+// ─── API: Admin Global API Keys ─────────────────────────────────────────────
+app.get('/api/admin/global-api-keys', async (req, res) => {
+    try {
+        const db = await readDB();
+        if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
+        if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+
+        const keys = db.globalSettings.apiKeys;
+        const activeCount = keys.filter(k => k.status !== 'exhausted').length;
+        const exhaustedCount = keys.filter(k => k.status === 'exhausted').length;
+
+        res.json({
+            ok: true,
+            globalKeys: keys,
+            activeCount,
+            exhaustedCount
+        });
+    } catch (err) {
+        console.error('[ADMIN GET KEYS ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal mengambil API Keys: ' + err.message });
+    }
+});
+
+app.post('/api/admin/add-global-key', async (req, res) => {
+    const { provider, apiKey, note } = req.body;
+
+    if (!provider || !apiKey) {
+        return res.status(400).json({ error: 'provider dan apiKey diperlukan' });
+    }
+
+    try {
+        const trimmedKey = apiKey.trim();
+        const db = await readDB();
+        
+        if (!db.globalSettings) db.globalSettings = { apiKeys: [] };
+        if (!Array.isArray(db.globalSettings.apiKeys)) db.globalSettings.apiKeys = [];
+
+        // Check for duplicates
+        if (db.globalSettings.apiKeys.some(entry => entry.key === trimmedKey)) {
+            return res.status(409).json({ error: 'API Key ini sudah ada di daftar Global' });
+        }
+
+        db.globalSettings.apiKeys.push({
+            provider,
+            key: trimmedKey,
+            status: 'active',
+            addedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            note: note || ''
+        });
+
+        await writeDB(db);
+        console.log(`[ADMIN] Global API key added for provider: ${provider}`);
+
+        res.json({ 
+            ok: true, 
+            message: 'Global API Key berhasil ditambahkan'
+        });
+    } catch (err) {
+        console.error('[ADMIN ADD GLOBAL KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menambahkan Global API Key: ' + err.message });
+    }
+});
+
+app.post('/api/admin/remove-global-key', async (req, res) => {
+    const { keyIndex } = req.body;
+
+    if (keyIndex === undefined || keyIndex === null) {
+        return res.status(400).json({ error: 'keyIndex diperlukan' });
+    }
+
+    try {
+        const db = await readDB();
+        
+        if (!db.globalSettings || !Array.isArray(db.globalSettings.apiKeys)) {
+            return res.status(404).json({ error: 'Tidak ada API Keys global' });
+        }
+
+        if (keyIndex < 0 || keyIndex >= db.globalSettings.apiKeys.length) {
+            return res.status(400).json({ error: 'Index API Key tidak valid' });
+        }
+
+        const removedKey = db.globalSettings.apiKeys.splice(keyIndex, 1)[0];
+        await writeDB(db);
+
+        console.log(`[ADMIN] Global API key removed for provider: ${removedKey.provider}`);
+        res.json({ 
+            ok: true, 
+            message: 'Global API Key berhasil dihapus'
+        });
+    } catch (err) {
+        console.error('[ADMIN REMOVE GLOBAL KEY ERROR]:', err.message);
+        res.status(500).json({ error: 'Gagal menghapus Global API Key: ' + err.message });
+    }
+});
+
 // ─── Catch-all ────────────────────────────────────────────────────────────────
 app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found' }));
 app.use('/api', (err, req, res, next) => res.status(err.status || 500).json({ error: err.message }));

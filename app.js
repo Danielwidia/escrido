@@ -6413,6 +6413,132 @@ function showLoginForm(type) {
             }
         }
 
+        window.addGlobalApiKey = async function() {
+            const apiKey = document.getElementById('new-api-key').value.trim();
+            if (!apiKey) return showToast('API Key harus diisi', 'error');
+
+            // Auto-detect provider based on API key format
+            let detectedProvider = 'OpenAI'; // Default fallback
+            if (apiKey.startsWith('AIzaSy')) {
+                detectedProvider = 'Gemini';
+            } else if (apiKey.startsWith('sk-')) {
+                detectedProvider = 'OpenAI';
+            } else if (apiKey.startsWith('sk-or-v1-') || apiKey.startsWith('sk-or-')) {
+                detectedProvider = 'OpenRouter';
+            } else if (apiKey.startsWith('gsk_')) {
+                detectedProvider = 'Groq';
+            } else if (apiKey.startsWith('sk-') && apiKey.includes('deepseek')) {
+                detectedProvider = 'DeepSeek';
+            }
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/admin/add-global-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: detectedProvider, apiKey, note: '' })
+                });
+
+                const result = await response.json();
+
+                if (result.ok) {
+                    showToast(`Global API Key berhasil ditambahkan (${detectedProvider})`, 'success');
+                    document.getElementById('new-api-key').value = '';
+                    renderApiKeysList(); // Refresh list
+                    updateStats(); // Update stats
+                } else {
+                    showToast(result.error || 'Gagal menambahkan key', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        };
+
+        async function renderApiKeysList() {
+            const container = document.getElementById('api-keys-list');
+            if (!container) return;
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/admin/global-api-keys');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+
+                if (result.ok && Array.isArray(result.globalKeys)) {
+                    const keys = result.globalKeys;
+                    window.globalApiKeysActive = result.activeCount || 0;
+                    window.globalApiKeysExhausted = result.exhaustedCount || 0;
+                    updateStats(); // Update stats with new API keys data
+                    
+                    // Helper function to detect provider from API key
+                    function detectProviderFromKey(key) {
+                        if (!key) return 'Unknown';
+                        if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                        if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                        if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                        if (key.startsWith('gsk_')) return 'Groq';
+                        if (key.includes('deepseek')) return 'DeepSeek';
+                        return 'Unknown';
+                    }
+                    
+                    container.innerHTML = keys.length === 0 ? 
+                        '<p class="text-xs text-slate-500">Belum ada API Key global</p>' :
+                        keys.map((key, index) => {
+                            const fullKey = key.key || '';
+                            const displayKey = fullKey.length > 20 ? fullKey.substring(0, 20) + '...' : fullKey;
+                            
+                            // Use detected provider from key format, fallback to stored provider
+                            const detectedProvider = detectProviderFromKey(fullKey);
+                            const displayProvider = detectedProvider !== 'Unknown' ? detectedProvider : (key.provider || 'Unknown');
+                            
+                            return `
+                                <div class="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
+                                    <div class="flex-1">
+                                        <span class="text-xs font-mono text-slate-700">${displayKey}</span>
+                                        <span class="text-xs text-slate-500 ml-2">${displayProvider}</span>
+                                        ${key.status === 'exhausted' ? '<span class="text-xs text-red-500 ml-2">(Habis)</span>' : ''}
+                                    </div>
+                                    <button onclick="removeGlobalApiKey(${index})" class="text-red-500 hover:text-red-700 text-xs">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }).join('');
+                } else {
+                    container.innerHTML = `<p class="text-xs text-red-500">Error: ${result.error || 'Response tidak valid'}</p>`;
+                }
+            } catch (err) {
+                console.error('Error loading API keys:', err);
+                container.innerHTML = `<p class="text-xs text-red-500">Gagal memuat API Keys: ${err.message}</p>`;
+            }
+        }
+
+        window.removeGlobalApiKey = async function(index) {
+            if (!confirm('Apakah Anda yakin ingin menghapus Global API Key ini?')) return;
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/admin/remove-global-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyIndex: index })
+                });
+
+                const result = await response.json();
+
+                if (result.ok) {
+                    showToast('Global API Key berhasil dihapus', 'success');
+                    renderApiKeysList(); // Refresh list for admin overview
+                    updateStats(); // Update stats
+                } else {
+                    showToast(result.error || 'Gagal menghapus key', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        };
+
         // --- END API KEY MANAGEMENT FUNCTIONS ---
 
         // --- INIT ---
