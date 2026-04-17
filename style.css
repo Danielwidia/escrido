@@ -335,7 +335,7 @@ body {
 }
 
 .animate-spin {
-    animation: spin 1s linear infinite;
+    animation: spin 0.5s linear infinite;
 }
 
 /* Real-time Stats Pulse */
@@ -350,4 +350,79 @@ body {
 
 .animate-pulse-brief {
     animation: pulse-brief 0.3s ease-in-out;
+}
+
+/* Glowing Border with 4 Color Segments with Gaps */
+.login-card-container {
+    position: relative;
+    width: 100%;
+}
+
+.glow-border {
+    position: absolute;
+    inset: -8px;
+    border-radius: 2rem;
+    padding: 3px;
+    pointer-events: none;
+    z-index: 0;
+    background: transparent;
+    mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    -webkit-mask: 
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+}
+
+.glow-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    filter: blur(2px);
+    transform-origin: center;
+}
+
+/* Color 1 - Red top-right corner */
+.glow-border-1::before {
+    background: conic-gradient(from 330deg, transparent 0deg 330deg, #dc2626 330deg 30deg, transparent 30deg 360deg);
+    box-shadow: 0 0 25px rgba(220, 38, 38, 1);
+    animation: rotate-common 10s linear infinite;
+}
+
+/* Color 2 - Yellow bottom-right corner */
+.glow-border-2::before {
+    background: conic-gradient(from 30deg, transparent 0deg 30deg, #eab308 30deg 90deg, transparent 90deg 360deg);
+    box-shadow: 0 0 25px rgba(234, 179, 8, 1);
+    animation: rotate-common 10s linear infinite;
+}
+
+/* Color 3 - Lemon Yellow bottom-left corner */
+.glow-border-3::before {
+    background: conic-gradient(from 90deg, transparent 0deg 90deg, #facc15 90deg 150deg, transparent 150deg 360deg);
+    box-shadow: 0 0 25px rgba(250, 204, 21, 1);
+    animation: rotate-common 10s linear infinite;
+}
+
+/* Color 4 - Cyan top-left corner */
+.glow-border-4::before {
+    background: conic-gradient(from 150deg, transparent 0deg 150deg, #06b6d4 150deg 210deg, transparent 210deg 360deg);
+    box-shadow: 0 0 25px rgba(6, 182, 212, 1);
+    animation: rotate-common 10s linear infinite;
+}
+
+.login-card {
+    position: relative;
+    z-index: 1;
+}
+
+@keyframes rotate-common {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }

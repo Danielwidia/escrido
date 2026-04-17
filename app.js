@@ -961,6 +961,26 @@ function showLoginForm(type) {
         document.addEventListener('DOMContentLoaded', () => {
             const btn = document.getElementById('login-btn');
             if (btn) btn.addEventListener('click', handleLogin);
+
+            // Add Enter key support for login
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            
+            if (usernameInput) {
+                usernameInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleLogin();
+                    }
+                });
+            }
+            
+            if (passwordInput) {
+                passwordInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleLogin();
+                    }
+                });
+            }
         });
 
         function showError(customMsg) {
@@ -1498,7 +1518,8 @@ function showLoginForm(type) {
                     <td class="px-6 py-4 text-[10px] font-medium text-slate-400">${r.date ? new Date(r.date).toLocaleString('id-ID') : '-'}</td>
                     <td class="px-6 py-4 text-center font-black text-sky-600 text-lg">${r.score != null && !isNaN(Number(r.score)) ? Number(r.score).toFixed(1) : '-'}</td>
                     <td class="px-6 py-4 text-center">
-                        <button onclick="viewDetailedResult(${resultIndex})" class="w-8 h-8 rounded-lg bg-sky-50 text-sky-500 hover:bg-sky-100 transition-all shadow-sm" title="Lihat Jawaban"><i class="fas fa-eye"></i></button>
+                        <button onclick="viewDetailedResult(${resultIndex})" class="w-8 h-8 rounded-lg bg-sky-50 text-sky-500 hover:bg-sky-100 transition-all shadow-sm mr-2" title="Lihat Jawaban"><i class="fas fa-eye"></i></button>
+                        <button onclick="deleteResult(${resultIndex})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all shadow-sm" title="Hapus"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>`;
             }).join('');
@@ -3738,7 +3759,16 @@ function showLoginForm(type) {
             db.results[idx].updatedAt = Date.now();
             updateCompletionCharts();
             save();
-            renderAdminResults();
+
+            // Check which dashboard is currently active and render accordingly
+            const adminDash = document.getElementById('admin-dashboard');
+            const teacherDash = document.getElementById('teacher-dashboard');
+
+            if (adminDash && !adminDash.classList.contains('hidden')) {
+                renderAdminResults();
+            } else if (teacherDash && !teacherDash.classList.contains('hidden')) {
+                renderTeacherResults();
+            }
         }
 
         function clearAllResults() {
@@ -6048,7 +6078,7 @@ function showLoginForm(type) {
                     overlay.classList.add('hidden');
                     overlay.classList.remove('flex');
                 }
-            }, 3000);
+            }, 2000);
 
             try {
                 await init();
