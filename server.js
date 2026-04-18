@@ -797,15 +797,33 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
     const db = (await readDB()) || { globalSettings: { apiKeys: [] }, students: [], globalAPIKeysStatus: {} };
     const statusMap = db.globalAPIKeysStatus || {};
 
-    // Helper to check if key is exhausted in database with 60s auto-revive
+    // Helper to check if key is exhausted in database with smart lockout
     const isExhausted = (k) => {
         const hash = k.substring(k.length - 10);
         const entry = statusMap[hash];
         if (!entry || entry.status !== 'exhausted') return false;
 
-        // Auto-revive logic: allow retry after 60 seconds
         const exhaustedAt = entry.exhaustedAt ? new Date(entry.exhaustedAt).getTime() : 0;
-        if (Date.now() - exhaustedAt > 60000) return false;
+        const now = Date.now();
+
+        // Smart lockout logic:
+        // 1. If it's a 402/Quota issue (Insufficient Balance), lock for 1 hour
+        // 2. If it's a 429 Rate Limit issue, lock for 5 minutes
+        // 3. Default (unknown) lock for 2 minutes
+        
+        let waitTime = 120000; // Default 2m
+        const note = (entry.note || '').toLowerCase();
+        
+        if (note.includes('quota') || note.includes('balance') || note.includes('insufficient') || note.includes('402')) {
+            waitTime = 3600000; // 1 hour
+        } else if (note.includes('limit') || note.includes('429')) {
+            waitTime = 300000; // 5 minutes
+        }
+
+        if (now - exhaustedAt > waitTime) {
+            console.log(`[AI] Auto-reviving key ...${hash} (Lockout expired after ${waitTime/1000}s)`);
+            return false;
+        }
         
         return true;
     };
@@ -852,7 +870,13 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
     }
 
     // Final filter by exhausted status hash tracking and deduplicate
-    const finalKeys = [...new Set(allKeys)].filter(k => !isExhausted(k));
+    let finalKeys = [...new Set(allKeys)].filter(k => !isExhausted(k));
+
+    // Fisher-Yates Shuffle to distribute load across all available keys
+    for (let i = finalKeys.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [finalKeys[i], finalKeys[j]] = [finalKeys[j], finalKeys[i]];
+    }
 
     console.log(`[AI] Discover [${provider}]: Found ${finalKeys.length} active keys (Total scanned: ${allKeys.length})`);
     return finalKeys;
@@ -982,6 +1006,7 @@ async function callGeminiAI(prompt, teacherId = null) {
     ];
 
     let lastError;
+    const sessionBadKeys = new Set();
     const timeoutWarning = setTimeout(() => {
         console.warn(`[AI] ⚠️ Gemini takes >8s. On Vercel Hobby, this may timeout (10s limit).`);
     }, 8000);
@@ -990,8 +1015,11 @@ async function callGeminiAI(prompt, teacherId = null) {
         for (const modelObj of models) {
             const { name: model, version } = modelObj;
             for (const key of keys) {
+                if (sessionBadKeys.has(key)) continue;
+
                 try {
-                    console.log(`[AI] Trying Gemini: ${model} (${version})...`);
+                    const hash = key.substring(key.length - 10);
+                    console.log(`[AI] Trying Gemini: ${model} (${version}) with key: ...${hash}`);
 
                     const response = await fetch(`https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${key}`, {
                         method: 'POST',
@@ -1011,17 +1039,22 @@ async function callGeminiAI(prompt, teacherId = null) {
                     const errMsg = errData.error?.message || response.statusText;
 
                     if (response.status === 429) {
-                        lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model ${model} (${version}). Tolong tunggu beberapa menit atau gunakan API Key lain.`;
+                        lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model ${model} (${version}).`;
                         console.warn(`[AI] ⚠️ Quota exceeded for model: ${model}`);
                         await markApiKeyStatus(key, 'exhausted', `Gemini Quota Exceeded (${model})`, 'Google Gemini', teacherId);
-                        continue; // Quota issue, try next key
+                        sessionBadKeys.add(key);
+                        continue; 
                     } else if (response.status === 404) {
-                        lastError = `${model} (${version}): HTTP 404 - Model tidak ditemukan atau tidak tersedia untuk endpoint ini.`;
+                        lastError = `${model} (${version}): HTTP 404 - Model tidak ditemukan.`;
                         console.error(`[AI] ❌ Model ${model} not available on ${version}`);
                         break; // Model not exist, move to next model
                     } else {
                         lastError = `${model} (${version}): HTTP ${response.status} - ${errMsg}`;
                         console.error(`[AI] ❌ Model ${model} (${version}) error: ${response.status} ${errMsg}`);
+                        if (response.status === 400 && (errMsg.includes('API_KEY_INVALID') || errMsg.includes('invalid'))) {
+                             await markApiKeyStatus(key, 'exhausted', `Gemini Invalid Key`, 'Google Gemini', teacherId);
+                             sessionBadKeys.add(key);
+                        }
                     }
 
                 } catch (e) {
@@ -1046,13 +1079,19 @@ async function callOpenAI(prompt, teacherId = null) {
 
     if (keys.length === 0) throw new Error('API Key OpenAI tidak ditemukan atau kuota habis di semua sumber.');
 
-    const models = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
+    // User requested order: gpt-4o-mini (#1), o1-mini (#2), gpt-4o (#3)
+    const models = ['gpt-4o-mini', 'o1-mini', 'gpt-4o'];
     let lastError;
+    const sessionBadKeys = new Set();
 
     for (const model of models) {
         for (const key of keys) {
+            // Mid-session skip: skip if key failed in a previous model iteration
+            if (sessionBadKeys.has(key)) continue;
+
             try {
-                console.log(`[AI] Trying OpenAI model: ${model} with key: ${key.substring(0, 10)}...`);
+                const hash = key.substring(key.length - 10);
+                console.log(`[AI] Trying OpenAI model: ${model} with key: ...${hash}`);
 
                 const response = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
@@ -1075,15 +1114,26 @@ async function callOpenAI(prompt, teacherId = null) {
 
                 const errData = await response.json().catch(() => ({}));
                 const errMsg = errData.error?.message || response.statusText;
+                const errCode = errData.error?.code || '';
 
-                if (response.status === 429) {
-                    lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model OpenAI ${model}. Tolong isi saldo atau gunakan model lain.`;
-                    console.warn(`[AI] ⚠️ OpenAI Quota exceeded for model: ${model}`);
-                    await markApiKeyStatus(key, 'exhausted', `OpenAI Quota/Balance Exceeded (${model})`, 'OpenAI', teacherId);
+                if (response.status === 429 || response.status === 402 || errCode === 'insufficient_quota') {
+                    const isQuota = response.status === 402 || errCode === 'insufficient_quota' || errMsg.toLowerCase().includes('quota');
+                    const reason = isQuota ? 'Quota/Balance Exceeded (402)' : 'Rate Limit Exceeded (429)';
+                    
+                    lastError = `[${reason}] pada model OpenAI ${model}.`;
+                    console.warn(`[AI] ⚠️ OpenAI ${reason} for model: ${model}`);
+                    
+                    await markApiKeyStatus(key, 'exhausted', `OpenAI ${reason} (${model})`, 'OpenAI', teacherId);
+                    sessionBadKeys.add(key); // Mark for skip in this session
                     continue;
                 } else {
                     lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
                     console.error(`[AI] ❌ Model OpenAI ${model} error: ${response.status} ${errMsg}`);
+                    // If it's an auth error, also skip it
+                    if (response.status === 401) {
+                        await markApiKeyStatus(key, 'exhausted', `OpenAI Auth Error (401)`, 'OpenAI', teacherId);
+                        sessionBadKeys.add(key);
+                    }
                 }
 
             } catch (e) {
@@ -1102,51 +1152,22 @@ async function callOpenRouterAI(prompt, teacherId = null) {
     if (keys.length === 0) throw new Error('API Key OpenRouter tidak ditemukan atau kuota habis di semua sumber.');
 
     const models = [
-        'openai/gpt-4o',
         'openai/gpt-4o-mini',
+        'openai/gpt-4o',
         'anthropic/claude-3.7-sonnet',
-        'openrouter/free',
-        'qwen/qwen3-next-80b-a3b-instruct:free',
-        'qwen/qwen3-coder:free',
         'meta-llama/llama-3.3-70b-instruct:free',
-        'nousresearch/hermes-3-llama-3.1-405b:free',
-        'google/gemma-3-27b-it:free',
-        'openrouter/elephant-alpha',
-        'google/gemma-4-26b-a4b-it:free',
-        'google/gemma-4-31b-it:free',
-        'google/lyria-3-pro-preview',
-        'google/lyria-3-clip-preview',
-        'nvidia/nemotron-3-super-120b-a12b:free',
-        'minimax/minimax-m2.5:free',
-        'arcee-ai/trinity-large-preview:free',
-        'liquid/lfm-2.5-1.2b-thinking:free',
-        'liquid/lfm-2.5-1.2b-instruct:free',
-        'nvidia/nemotron-3-nano-30b-a3b:free',
-        'nvidia/nemotron-nano-12b-v2-vl:free',
-        'qwen/qwen3-next-80b-a3b-instruct:free',
-        'nvidia/nemotron-nano-9b-v2:free',
-        'openai/gpt-oss-120b:free',
-        'openai/gpt-oss-20b:free',
-        'z-ai/glm-4.5-air:free',
-        'qwen/qwen3-coder:free',
-        'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
-        'google/gemma-3n-e2b-it:free',
-        'google/gemma-3n-e4b-it:free',
-        'meta-llama/llama-guard-4-12b:free',
-        'google/gemma-3-4b-it:free',
-        'google/gemma-3-12b-it:free',
-        'google/gemma-3-27b-it:free',
-        'meta-llama/llama-3.3-70b-instruct:free',
-        'meta-llama/llama-3.2-3b-instruct:free',
-        'nousresearch/hermes-3-llama-3.1-405b:free',
-        'cognitivecomputations/dolphin-mistral-24b-venice-edition:free'
+        'google/gemini-2.0-flash-001'
     ];
     let lastError;
+    const sessionBadKeys = new Set();
 
     for (const model of models) {
         for (const key of keys) {
+            if (sessionBadKeys.has(key)) continue;
+
             try {
-                console.log(`[AI] Trying OpenRouter model: ${model} with key: ${key.substring(0, 10)}...`);
+                const hash = key.substring(key.length - 10);
+                console.log(`[AI] Trying OpenRouter model: ${model} with key: ...${hash}`);
                 const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -1175,11 +1196,16 @@ async function callOpenRouterAI(prompt, teacherId = null) {
                     lastError = `[KUOTA HABIS / SALDO HABIS] pada OpenRouter model ${model}.`;
                     console.warn(`[AI] ⚠️ OpenRouter quota issue for model: ${model}`);
                     await markApiKeyStatus(key, 'exhausted', `OpenRouter ${response.status === 402 ? 'Insufficient Balance' : 'Quota Exceeded'} (${model})`, 'OpenRouter', teacherId);
+                    sessionBadKeys.add(key);
                     continue;
                 }
 
                 lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
                 console.error(`[AI] ❌ OpenRouter model ${model} error: ${response.status} ${errMsg}`);
+                if (response.status === 401) {
+                    await markApiKeyStatus(key, 'exhausted', 'OpenRouter Auth Error', 'OpenRouter', teacherId);
+                    sessionBadKeys.add(key);
+                }
             } catch (e) {
                 lastError = e.message;
                 console.error(`[AI] Fetch Error with OpenRouter ${model}:`, e.message);
@@ -1197,11 +1223,15 @@ async function callDeepSeekAI(prompt, teacherId = null) {
 
     const models = ['deepseek-chat', 'deepseek-coder'];
     let lastError;
+    const sessionBadKeys = new Set();
 
     for (const model of models) {
         for (const key of keys) {
+            if (sessionBadKeys.has(key)) continue;
+
             try {
-                console.log(`[AI] Trying DeepSeek model: ${model} with key: ${key.substring(0, 10)}...`);
+                const hash = key.substring(key.length - 10);
+                console.log(`[AI] Trying DeepSeek model: ${model} with key: ...${hash}`);
                 const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -1230,11 +1260,16 @@ async function callDeepSeekAI(prompt, teacherId = null) {
                     lastError = `[KUOTA HABIS / SALDO HABIS] pada DeepSeek model ${model}.`;
                     console.warn(`[AI] ⚠️ DeepSeek quota issue for model: ${model}`);
                     await markApiKeyStatus(key, 'exhausted', `DeepSeek ${response.status === 402 ? 'Insufficient Balance' : 'Quota Exceeded'} (${model})`, 'DeepSeek', teacherId);
+                    sessionBadKeys.add(key);
                     continue;
                 }
 
                 lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
                 console.error(`[AI] ❌ DeepSeek model ${model} error: ${response.status} ${errMsg}`);
+                if (response.status === 401) {
+                    await markApiKeyStatus(key, 'exhausted', 'DeepSeek Auth Error', 'DeepSeek', teacherId);
+                    sessionBadKeys.add(key);
+                }
             } catch (e) {
                 lastError = e.message;
                 console.error(`[AI] Fetch Error with DeepSeek ${model}:`, e.message);
