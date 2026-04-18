@@ -797,10 +797,17 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
     const db = (await readDB()) || { globalSettings: { apiKeys: [] }, students: [], globalAPIKeysStatus: {} };
     const statusMap = db.globalAPIKeysStatus || {};
 
-    // Helper to check if key is exhausted in database
+    // Helper to check if key is exhausted in database with 60s auto-revive
     const isExhausted = (k) => {
         const hash = k.substring(k.length - 10);
-        return statusMap[hash]?.status === 'exhausted';
+        const entry = statusMap[hash];
+        if (!entry || entry.status !== 'exhausted') return false;
+
+        // Auto-revive logic: allow retry after 60 seconds
+        const exhaustedAt = entry.exhaustedAt ? new Date(entry.exhaustedAt).getTime() : 0;
+        if (Date.now() - exhaustedAt > 60000) return false;
+        
+        return true;
     };
 
     // From globalSettings
@@ -849,6 +856,102 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
 
     console.log(`[AI] Discover [${provider}]: Found ${finalKeys.length} active keys (Total scanned: ${allKeys.length})`);
     return finalKeys;
+}
+
+/**
+ * Persistently marks an API key as exhausted or active.
+ * Updates local database.json and Supabase if available.
+ */
+async function markApiKeyStatus(key, status, note = '', provider = '', teacherId = null) {
+    if (!key) return;
+    const db = await readDB();
+    if (!db) return;
+
+    const hash = key.substring(key.length - 10);
+    const now = new Date().toISOString();
+
+    console.log(`[AI] Marking key ...${hash} as ${status} (${note}) for ${provider || 'Unknown Provider'} (Teacher: ${teacherId || 'System'})`);
+
+    // 1. Update in globalAPIKeysStatus (for env vars and general tracking)
+    if (!db.globalAPIKeysStatus) db.globalAPIKeysStatus = {};
+    db.globalAPIKeysStatus[hash] = {
+        status: status,
+        exhaustedAt: now,
+        updatedAt: now,
+        note: note,
+        provider: provider
+    };
+
+    // 2. Update in globalSettings if exists
+    if (db.globalSettings && Array.isArray(db.globalSettings.apiKeys)) {
+        db.globalSettings.apiKeys.forEach(entry => {
+            if (entry.key && entry.key.trim() === key.trim()) {
+                entry.status = status;
+                entry.updatedAt = now;
+                entry.exhaustedAt = now; 
+                entry.note = note;
+                if (provider) entry.provider = provider;
+            }
+        });
+    }
+
+    // 3. Update in teacher profiles if exists
+    if (Array.isArray(db.students)) {
+        db.students.forEach(s => {
+            // If we have a teacherId, we can optimize, otherwise check all teachers
+            if ((!teacherId || s.id === teacherId) && s.role === 'teacher' && Array.isArray(s.apiKeys)) {
+                s.apiKeys.forEach((entry, idx) => {
+                    const entryKey = typeof entry === 'string' ? entry : entry.key;
+                    if (entryKey && entryKey.trim() === key.trim()) {
+                        if (typeof entry === 'string') {
+                            s.apiKeys[idx] = {
+                                key: entryKey.trim(),
+                                status: status,
+                                updatedAt: now,
+                                exhaustedAt: now,
+                                note: note,
+                                provider: provider || 'Unknown'
+                            };
+                        } else {
+                            entry.status = status;
+                            entry.updatedAt = now;
+                            entry.exhaustedAt = now;
+                            entry.note = note;
+                            if (provider) entry.provider = provider;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    // 4. Update in Supabase if enabled
+    if (USE_SUPABASE && supabase) {
+        try {
+            // Update individual key in global_api_keys table
+            const { error: gError } = await supabase
+                .from('global_api_keys')
+                .update({ 
+                    status: status, 
+                    updated_at: now, 
+                    exhausted_at: now,
+                    note: note 
+                })
+                .eq('key', key.trim());
+            
+            if (gError) {
+                console.warn(`[AI] Info: Key not found in global_api_keys table (might be Env Var or Teacher key), skipping direct update.`);
+            } else {
+                console.log(`[AI] Status updated in Supabase table global_api_keys`);
+            }
+        } catch (e) {
+            console.error('[AI] Supabase individual key update internal error:', e.message);
+        }
+    }
+
+    // This saves the entire DB state (including updated globalAPIKeysStatus and students) to Supabase
+    await writeDB(db);
+    console.log(`[AI] Full database state persisted to Supabase/Local storage.`);
 }
 
 /**
@@ -910,6 +1013,7 @@ async function callGeminiAI(prompt, teacherId = null) {
                     if (response.status === 429) {
                         lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model ${model} (${version}). Tolong tunggu beberapa menit atau gunakan API Key lain.`;
                         console.warn(`[AI] ⚠️ Quota exceeded for model: ${model}`);
+                        await markApiKeyStatus(key, 'exhausted', `Gemini Quota Exceeded (${model})`, 'Google Gemini', teacherId);
                         continue; // Quota issue, try next key
                     } else if (response.status === 404) {
                         lastError = `${model} (${version}): HTTP 404 - Model tidak ditemukan atau tidak tersedia untuk endpoint ini.`;
@@ -975,6 +1079,7 @@ async function callOpenAI(prompt, teacherId = null) {
                 if (response.status === 429) {
                     lastError = `[KUOTA HABIS / LIMIT TERCAPAI] pada model OpenAI ${model}. Tolong isi saldo atau gunakan model lain.`;
                     console.warn(`[AI] ⚠️ OpenAI Quota exceeded for model: ${model}`);
+                    await markApiKeyStatus(key, 'exhausted', `OpenAI Quota/Balance Exceeded (${model})`, 'OpenAI', teacherId);
                     continue;
                 } else {
                     lastError = `${model}: HTTP ${response.status} - ${errMsg}`;
@@ -1069,6 +1174,7 @@ async function callOpenRouterAI(prompt, teacherId = null) {
                 if (response.status === 429 || response.status === 402) {
                     lastError = `[KUOTA HABIS / SALDO HABIS] pada OpenRouter model ${model}.`;
                     console.warn(`[AI] ⚠️ OpenRouter quota issue for model: ${model}`);
+                    await markApiKeyStatus(key, 'exhausted', `OpenRouter ${response.status === 402 ? 'Insufficient Balance' : 'Quota Exceeded'} (${model})`, 'OpenRouter', teacherId);
                     continue;
                 }
 
@@ -1123,6 +1229,7 @@ async function callDeepSeekAI(prompt, teacherId = null) {
                 if (response.status === 429 || response.status === 402) {
                     lastError = `[KUOTA HABIS / SALDO HABIS] pada DeepSeek model ${model}.`;
                     console.warn(`[AI] ⚠️ DeepSeek quota issue for model: ${model}`);
+                    await markApiKeyStatus(key, 'exhausted', `DeepSeek ${response.status === 402 ? 'Insufficient Balance' : 'Quota Exceeded'} (${model})`, 'DeepSeek', teacherId);
                     continue;
                 }
 
@@ -1980,7 +2087,19 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
         });
 
         // Combine all
-        const allCombined = [...keys, ...teacherKeysRaw, ...envKeysRaw];
+        const allCombinedRaw = [...keys, ...teacherKeysRaw, ...envKeysRaw];
+        
+        // Final normalization for the UI (apply auto-revive)
+        const allCombined = allCombinedRaw.map(k => {
+            if (k.status === 'exhausted' && k.updatedAt) {
+                const updatedAtTime = new Date(k.updatedAt).getTime();
+                if (Date.now() - updatedAtTime > 60000) {
+                    return { ...k, status: 'active' };
+                }
+            }
+            return k;
+        });
+
         activeCount = allCombined.filter(k => k.status !== 'exhausted').length;
         exhaustedCount = allCombined.filter(k => k.status === 'exhausted').length;
 
