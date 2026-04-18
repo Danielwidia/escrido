@@ -861,10 +861,6 @@ async function callGeminiAI(prompt, teacherId = null) {
 
     // Super-charged model list for maximum resilience (including next-gen models)
     const models = [
-        { name: 'gemini-3-flash', version: 'v1' },
-        { name: 'gemini-3-pro', version: 'v1' },
-        { name: 'gemini-3-flash', version: 'v1beta' },
-        { name: 'gemini-3-pro', version: 'v1beta' },
         { name: 'gemini-2.5-flash', version: 'v1' },
         { name: 'gemini-2.5-pro', version: 'v1' },
         { name: 'gemini-2.5-flash', version: 'v1beta' },
