@@ -341,22 +341,32 @@ function showLoginForm(type) {
 
         function exitFullscreen() {
             try {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen();
-                } else if (document.mozCancelFullScreen) {
-                    document.mozCancelFullScreen();
+                const isBrowserFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || document.mozFullScreenElement;
+                
+                if (isBrowserFullscreen) {
+                    if (document.exitFullscreen) {
+                        const promise = document.exitFullscreen();
+                        if (promise && typeof promise.catch === 'function') {
+                            promise.catch(err => console.warn('Exit fullscreen caught:', err));
+                        }
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    } else if (document.mozCancelFullScreen) {
+                        document.mozCancelFullScreen();
+                    }
                 }
-                // Also exit simulated fullscreen
-                exitSimulatedFullscreen();
-                isFullscreen = false;
             } catch (error) {
                 console.warn('Failed to exit fullscreen:', error);
-                // Still try to exit simulated fullscreen
-                exitSimulatedFullscreen();
+            } finally {
+                // Also exit simulated fullscreen
+                try {
+                    exitSimulatedFullscreen();
+                } catch (e) {
+                    console.warn('Failed to exit simulated fullscreen:', e);
+                }
+                isFullscreen = false;
             }
         }
 
@@ -5384,12 +5394,16 @@ function showLoginForm(type) {
             db.results.push(newEntry);
             updateCompletionCharts();
 
+            let directSyncError = null;
+            let backgroundSaveError = null;
+
             try {
                 // 1. Mandatory Single Result Sync (The most critical part)
                 try {
                     await sendResult(newEntry);
                 } catch (e) {
                     console.warn('[SUBMIT] Direct result sync failed, relying on background save:', e.message || e);
+                    directSyncError = e;
                 }
 
                 // 2. Background Full DB Save (Updates IndexedDB and triggers fallback sync)
@@ -5397,6 +5411,7 @@ function showLoginForm(type) {
                     await save();
                 } catch (e) {
                     console.warn('[SUBMIT] Background database save encountered an issue:', e.message || e);
+                    backgroundSaveError = e;
                 }
             } finally {
                 // ALWAYS close the modal regardless of network state
@@ -5404,6 +5419,24 @@ function showLoginForm(type) {
                     savingModal.classList.add('hidden');
                     savingModal.classList.remove('flex');
                 }
+            }
+
+            if (directSyncError || backgroundSaveError) {
+                // Hapus entry yang gagal dari state agar tidak dobel saat ditekan "Coba Lagi"
+                db.results.pop();
+                
+                const failModal = document.getElementById('failed-result');
+                if (failModal) {
+                    let errMsg = "Koneksi ke server terputus atau gagal terakses.";
+                    if (backgroundSaveError) errMsg = "Penyimpanan lokal dan server mengalami masalah.";
+                    document.getElementById('failed-result-msg').innerHTML = `${errMsg}<br>Silakan periksa koneksi internet atau server, lalu <b>coba lagi</b>.`;
+                    failModal.classList.remove('hidden');
+                    const scoreRes = document.getElementById('score-result');
+                    if(scoreRes) scoreRes.classList.add('hidden');
+                } else {
+                    alert('GAGAL TERSIMPAN: Periksa koneksi Anda dan coba lagi.');
+                }
+                return; // Stop here, so we don't show the success UI
             }
 
             // refresh admin/teacher views if they're visible so the new score
@@ -5420,7 +5453,10 @@ function showLoginForm(type) {
                 renderTeacherResults();
             }
 
-            document.getElementById('score-result').classList.remove('hidden');
+            const successModal = document.getElementById('score-result');
+            if(successModal) successModal.classList.remove('hidden');
+            const failModalUI = document.getElementById('failed-result');
+            if(failModalUI) failModalUI.classList.add('hidden');
             document.getElementById('final-score-val').innerText = score;
         }
 
