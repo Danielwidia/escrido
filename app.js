@@ -227,10 +227,9 @@ function showLoginForm(type) {
                     left: 0;
                     width: 100vw;
                     height: 100vh;
-                    background: #000;
-                    z-index: 10000;
+                    background: transparent;
+                    z-index: -1;
                     pointer-events: none;
-                    opacity: 0.95;
                 `;
                 document.body.appendChild(overlay);
             }
