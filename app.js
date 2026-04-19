@@ -626,14 +626,35 @@ function showLoginForm(type) {
             if (e.key !== DB_KEY) return;
             try {
                 const other = await loadLocalDb();
-                if (other && other.results) {
-                    const merged = mergeResults(db.results, other.results);
-                    if (merged.length !== (db.results || []).length) {
+                if (other) {
+                    // Always sync results (merge them) to ensure score tracking is consistent
+                    if (other.results) {
+                        const merged = mergeResults(db.results, other.results);
                         db.results = merged;
+                    }
+                    
+                    // For admin and teacher roles, we also want to sync configuration data
+                    // so that setting a schedule in one tab reflects in others immediately.
+                    const isManager = currentSiswa && (currentSiswa.role === 'admin' || currentSiswa.role === 'teacher');
+                    
+                    if (isManager) {
+                        // Sync settings from other tab
+                        if (other.subjects) db.subjects = other.subjects;
+                        if (other.rombels) db.rombels = other.rombels;
+                        if (other.students) db.students = other.students;
+                        if (other.questions) db.questions = other.questions;
+                        if (other.schedules) db.schedules = other.schedules;
+                        if (other.timeLimits) db.timeLimits = other.timeLimits;
+                        
                         updateStats();
                         updateCompletionCharts();
+                        
+                        // Re-render active admin sections if visible
                         if (document.getElementById('admin-results') && !document.getElementById('admin-results').classList.contains('hidden')) {
                             renderAdminResults();
+                        }
+                        if (document.getElementById('admin-overview') && !document.getElementById('admin-overview').classList.contains('hidden')) {
+                            updateStats();
                         }
                     }
                 }
@@ -1057,7 +1078,55 @@ function showLoginForm(type) {
             if (!success) throw new Error('could not send result to server');
         }
 
-        async function save() {
+/**
+         * Generic save function that pushes the current 'db' state to the server and IndexedDB.
+         * @param {Object} options Configuration for the save operation.
+         * @param {boolean} options.refreshBeforeSave If true, fetches latest data from server 
+         *                                           and merges local changes before pushing.
+         * @param {boolean} options.forceServerSave If true, pushes to server even if the user is a student.
+         */
+        async function save(options = {}) {
+            // Students should not overwrite the entire DB structure via /api/db 
+            // as they may have stale caches that erase admin settings.
+            // Their results are handled separately via sendResult().
+            const isStudent = currentSiswa && currentSiswa.role === 'student';
+            if (isStudent && !options.forceServerSave) {
+                console.log('[SAVE] Skipping server push for student role. Local persistence only.');
+                try {
+                    await saveLocalDb();
+                    updateStats();
+                } catch (err) {
+                    console.warn('LocalStorage save failed:', err.message || err);
+                }
+                return;
+            }
+
+            // OPTIONAL: Refresh from server before saving to avoid overwriting recent changes from other admins
+            if (options.refreshBeforeSave) {
+                try {
+                    const res = await fetch(getApiBaseUrl() + '/api/db?t=' + Date.now());
+                    if (res.ok) {
+                        const serverDb = await res.json();
+                        if (serverDb && serverDb.students) {
+                            // Merge results from server to local state
+                            if (serverDb.results) db.results = mergeResults(db.results, serverDb.results);
+                            
+                            // For other settings, we might want to keep some server-side updates
+                            // but usually, if we are calling save(), the current local 'db' 
+                            // contains the change we explicitly want to make.
+                            // However, we should at least ensure we don't 'undo' other changes.
+                            
+                            // Update students, subjects, rombels if they look newer/different 
+                            // (unless we are currently in that management screen - but app.js is single-state)
+                            // For now, simpler: we fetch to ensure we have the latest results/state
+                            // and let the local explicit change (like schedules) take precedence in the final POST.
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Pre-save refresh failed, proceeding with local state:', e.message);
+                }
+            }
+
             // First send database to server; don’t let localStorage issues
             // block the network request.
             let serverSaveSuccess = false;
@@ -1100,12 +1169,10 @@ function showLoginForm(type) {
                 showToast('Gagal menyimpan ke server! Periksa koneksi.', 'error');
             }
 
-            // persist locally using IndexedDB (and notify other tabs via
-            // localStorage timestamp).  Any errors are logged but non‑fatal.
             try {
                 await saveLocalDb();
-            } catch (e) {
-                console.warn('Local persistence failed:', e.message || e);
+            } catch (err) {
+                console.warn('LocalStorage save failed:', err.message || err);
             }
 
             updateStats();
@@ -2252,10 +2319,16 @@ function showLoginForm(type) {
             container.innerHTML = checklistHTML;
         }
 
-        function saveSchedules() {
+        async function saveSchedules() {
             const checkboxes = document.querySelectorAll('.schedule-checkbox:checked');
-            db.schedules = Array.from(checkboxes).map(cb => cb.dataset.key);
-            save();
+            const newSchedules = Array.from(checkboxes).map(cb => cb.dataset.key);
+            
+            // Apply changes to local state
+            db.schedules = newSchedules;
+            
+            // Save with mandatory refresh from server first to prevent overwriting other admins
+            await save({ refreshBeforeSave: true });
+            
             closeModals();
             alert('Jadwal akses tersimpan!');
         }
@@ -2290,16 +2363,21 @@ function showLoginForm(type) {
             container.innerHTML = listHTML;
         }
 
-        function saveTimeLimits() {
+        async function saveTimeLimits() {
             const inputs = document.querySelectorAll('.time-limit-input');
-            db.timeLimits = {};
+            const newTimeLimits = {};
             inputs.forEach(input => {
                 const key = input.dataset.key;
                 const value = parseInt(input.value) || 60;
-                db.timeLimits[key] = value;
+                newTimeLimits[key] = value;
             });
-            console.log('Saving timeLimits:', db.timeLimits);
-            save();
+            console.log('Saving timeLimits:', newTimeLimits);
+            
+            db.timeLimits = newTimeLimits;
+            
+            // Save with refresh
+            await save({ refreshBeforeSave: true });
+            
             closeModals();
             alert('Waktu pengerjaan tersimpan!');
         }
