@@ -727,7 +727,7 @@ function showLoginForm(type) {
                     db.timeLimits = newLimits;
                 }
 
-                save();
+                saveLocalDb();
                 console.log('[MIGRATION] Rombel migration complete.');
             }
         }
@@ -765,8 +765,8 @@ function showLoginForm(type) {
             });
 
             if (changed) {
+                saveLocalDb();
                 console.log('[MIGRATION] Question types normalized.');
-                save();
             }
         }
 
@@ -851,12 +851,6 @@ function showLoginForm(type) {
                 loginBtn.disabled = false;
                 loginBtn.style.opacity = '1';
                 loginBtn.innerHTML = loginBtnText;
-            }
-
-            // Set student status if session present
-            if (currentSiswa && currentSiswa.role === 'student') {
-                const stu = db.students.find(s => s.id === currentSiswa.id);
-                if (stu) { stu.isOnline = true; save(); }
             }
 
             // Verify user still exists in database and sync with latest data
@@ -1398,8 +1392,7 @@ function showLoginForm(type) {
                             password: "escrido",
                             name: nama,
                             rombel: rombel,
-                            role: "student",
-                            isOnline: false
+                            role: "student"
                         });
                         count++;
                     }
@@ -1447,7 +1440,7 @@ function showLoginForm(type) {
             if (!name) return alert("Nama harus diisi");
 
             const id = "DRKS-" + Math.floor(1000 + Math.random() * 9000);
-            db.students.push({ id, password: "escrido", name, rombel, role: "student", isOnline: false });
+            db.students.push({ id, password: "escrido", name, rombel, role: "student" });
             updateCompletionCharts();
             save();
             renderAdminStudents();
