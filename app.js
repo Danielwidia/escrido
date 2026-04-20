@@ -4722,6 +4722,184 @@ function showLoginForm(type) {
             document.body.appendChild(modal);
         }
 
+        async function batchAiCorrectAllStudents() {
+            // Determine which results are currently visible (respects active filters)
+            const isTeacher = document.getElementById('teacher-dashboard') && !document.getElementById('teacher-dashboard').classList.contains('hidden');
+
+            let targetResults = []; // { resultIdx, result }
+
+            if (isTeacher && currentSiswa && currentSiswa.subjects) {
+                const selectedMapel = document.getElementById('teacher-results-filter-mapel')?.value || '';
+                const selectedRombel = document.getElementById('teacher-results-filter-rombel')?.value || '';
+                db.results.forEach((r, i) => {
+                    if (r.deleted) return;
+                    if (!teacherSubjectNames(currentSiswa).includes(r.mapel)) return;
+                    const allowed = teacherAllowedRombels(currentSiswa, r.mapel);
+                    if (!allowed.includes(r.rombel)) return;
+                    if (selectedMapel && r.mapel !== selectedMapel) return;
+                    if (selectedRombel && r.rombel !== selectedRombel) return;
+                    if (Array.isArray(r.questions) && r.questions.some(q => q.type === 'text')) {
+                        targetResults.push({ resultIdx: i, result: r });
+                    }
+                });
+            } else {
+                const rombelFilter = document.getElementById('results-filter-rombel')?.value;
+                const mapelFilter = document.getElementById('results-filter-mapel')?.value;
+                const from = document.getElementById('results-date-from')?.value;
+                const to = document.getElementById('results-date-to')?.value;
+                const fromTs = from ? new Date(from + 'T00:00:00').getTime() : null;
+                const toTs = to ? new Date(to + 'T23:59:59').getTime() : null;
+
+                db.results.forEach((r, i) => {
+                    if (r.deleted) return;
+                    if (rombelFilter && rombelFilter !== 'ALL' && r.rombel !== rombelFilter) return;
+                    if (mapelFilter && mapelFilter !== 'ALL' && r.mapel !== mapelFilter) return;
+                    if (fromTs || toTs) {
+                        if (!r.date) return;
+                        const t = new Date(r.date).getTime();
+                        if (fromTs && t < fromTs) return;
+                        if (toTs && t > toTs) return;
+                    }
+                    if (Array.isArray(r.questions) && r.questions.some(q => q.type === 'text')) {
+                        targetResults.push({ resultIdx: i, result: r });
+                    }
+                });
+            }
+
+            if (targetResults.length === 0) {
+                alert('Tidak ada data hasil ujian dengan soal esai yang ditemukan sesuai filter saat ini.');
+                return;
+            }
+
+            // Count total essays across all students
+            const totalEssays = targetResults.reduce((sum, { result }) =>
+                sum + (result.questions || []).filter(q => q.type === 'text').length, 0);
+
+            if (!confirm(`Akan mengoreksi ${totalEssays} soal esai dari ${targetResults.length} siswa menggunakan AI.\n\nProses ini mungkin membutuhkan waktu beberapa menit. Lanjutkan?`)) return;
+
+            // Show master progress overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50 backdrop-blur-sm';
+            overlay.innerHTML = `
+                <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full mx-4 text-center">
+                    <div class="w-16 h-16 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                        <i class="fas fa-robot text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg font-black text-slate-800 mb-1">Koreksi AI Semua Siswa</h3>
+                    <p id="batch-all-student-label" class="text-slate-500 text-sm mb-1">Menyiapkan...</p>
+                    <p id="batch-all-question-label" class="text-violet-500 text-xs font-semibold mb-4"></p>
+                    <div class="w-full bg-slate-100 rounded-full h-3 mb-2">
+                        <div id="batch-all-progress" class="h-3 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-300" style="width:0%"></div>
+                    </div>
+                    <p id="batch-all-counter" class="text-xs text-slate-400 font-semibold">0 / ${totalEssays} soal esai</p>
+                </div>`;
+            document.body.appendChild(overlay);
+
+            const studentLabel = document.getElementById('batch-all-student-label');
+            const questionLabel = document.getElementById('batch-all-question-label');
+            const progressBar = document.getElementById('batch-all-progress');
+            const counterEl = document.getElementById('batch-all-counter');
+
+            let doneEssays = 0;
+            let totalSuccess = 0;
+            let totalError = 0;
+
+            for (let si = 0; si < targetResults.length; si++) {
+                const { resultIdx, result } = targetResults[si];
+                const questions = result.questions || [];
+                const answers = result.answers || [];
+                const essayIndices = questions.reduce((acc, q, i) => { if (q.type === 'text') acc.push(i); return acc; }, []);
+
+                if (studentLabel) studentLabel.textContent = `Siswa ${si + 1}/${targetResults.length}: ${result.studentName}`;
+
+                if (!result.manualScores) result.manualScores = {};
+                if (!result.aiEssayFeedback) result.aiEssayFeedback = {};
+
+                for (let ei = 0; ei < essayIndices.length; ei++) {
+                    const qi = essayIndices[ei];
+                    const q = questions[qi];
+                    const studentAnswer = answers[qi];
+
+                    if (questionLabel) questionLabel.textContent = `Soal esai ${ei + 1}/${essayIndices.length}: "${(q.text || '').substring(0, 60)}..."`;
+                    doneEssays++;
+                    const pct = Math.round((doneEssays / totalEssays) * 100);
+                    if (progressBar) progressBar.style.width = pct + '%';
+                    if (counterEl) counterEl.textContent = `${doneEssays} / ${totalEssays} soal esai`;
+
+                    try {
+                        const response = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                questionText: q.text || '',
+                                studentAnswer: typeof studentAnswer === 'string' ? studentAnswer : '',
+                                referenceAnswer: q.correct || '',
+                                teacherId: currentSiswa ? currentSiswa.id : null
+                            })
+                        });
+                        const data = await response.json();
+                        if (response.ok && data.ok) {
+                            result.manualScores[qi] = data.score;
+                            result.aiEssayFeedback[qi] = data.feedback;
+                            totalSuccess++;
+                        } else {
+                            totalError++;
+                        }
+                    } catch (e) {
+                        console.error(`[batchAll] Error student ${result.studentName} q${qi}:`, e.message);
+                        totalError++;
+                    }
+                }
+
+                // Recalculate score for this student
+                let totalItems = 0, correctCount = 0;
+                questions.forEach((q, i) => {
+                    const ans = answers[i];
+                    const qType = q.type || 'single';
+                    if (qType === 'text') {
+                        totalItems += 5;
+                        correctCount += (result.manualScores[i] !== undefined && result.manualScores[i] !== null) ? result.manualScores[i] : 0;
+                    } else if (qType === 'tf' && Array.isArray(q.options)) {
+                        const ansArr = Array.isArray(ans) ? ans : [];
+                        q.options.forEach((_, j) => { totalItems++; if (ansArr[j] === (Array.isArray(q.correct) ? q.correct[j] : false)) correctCount++; });
+                    } else if (qType === 'multiple') {
+                        const corr = Array.isArray(q.correct) ? q.correct : [];
+                        const ansArr = Array.isArray(ans) ? ans : [];
+                        totalItems += corr.length > 0 ? corr.length : 1;
+                        correctCount += ansArr.filter(idx => corr.includes(idx)).length;
+                    } else if (qType === 'matching') {
+                        const ansArr = Array.isArray(ans) ? ans : [];
+                        if (Array.isArray(q.questions)) { q.questions.forEach((_, qi2) => { totalItems++; if (ansArr[qi2] !== null && ansArr[qi2] !== undefined && ansArr[qi2] === (q.correct ? q.correct[qi2] : null)) correctCount++; }); }
+                        else totalItems++;
+                    } else {
+                        totalItems++;
+                        if (ans === q.correct) correctCount++;
+                    }
+                });
+
+                result.score = totalItems > 0 ? ((correctCount / totalItems) * 100).toFixed(1) : '0.0';
+                result.updatedAt = Date.now();
+                db.results[resultIdx] = result;
+            }
+
+            // Save all at once
+            if (studentLabel) studentLabel.textContent = 'Menyimpan semua hasil...';
+            try { await save(); } catch (e) { console.error('[batchAll] Save error:', e.message); }
+
+            overlay.remove();
+
+            // Refresh active dashboard
+            const adminDash = document.getElementById('admin-dashboard');
+            const teacherDash = document.getElementById('teacher-dashboard');
+            if (adminDash && !adminDash.classList.contains('hidden')) renderAdminResults();
+            else if (teacherDash && !teacherDash.classList.contains('hidden')) renderTeacherResults();
+
+            const msg = totalError === 0
+                ? `✅ Selesai! ${totalSuccess} soal esai dari ${targetResults.length} siswa berhasil dikoreksi AI.`
+                : `⚠️ ${totalSuccess} berhasil, ${totalError} gagal dari total ${totalEssays} soal esai.`;
+            alert(msg);
+        }
+
         async function batchAiCorrectEssay(resultIdx) {
             const result = db.results[resultIdx];
             if (!result) return;
