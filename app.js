@@ -2949,6 +2949,33 @@ function showLoginForm(type) {
             document.getElementById('question-modal').classList.replace('hidden', 'flex');
         }
 
+        async function uploadImageToServer(base64OrBlob, fileName = 'image.jpg') {
+            const formData = new FormData();
+            
+            let blob;
+            if (typeof base64OrBlob === 'string' && base64OrBlob.startsWith('data:')) {
+                const resp = await fetch(base64OrBlob);
+                blob = await resp.blob();
+            } else {
+                blob = base64OrBlob;
+            }
+            
+            formData.append('image', blob, fileName);
+            
+            const res = await fetch(getApiBaseUrl() + '/api/upload-image', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+                throw new Error(err.error || 'Server error');
+            }
+            
+            const data = await res.json();
+            return data.url;
+        }
+
         async function addImageUrl() {
             const urlInput = document.getElementById('q-image-url');
             const url = urlInput.value.trim();
@@ -2957,12 +2984,15 @@ function showLoginForm(type) {
             if (!window.storedImages) window.storedImages = [];
             
             if (url.startsWith('data:image')) {
-                showToast('Mekompresi data gambar...', 'info');
+                showToast('Mengunggah data gambar...', 'info');
                 try {
                     const compressed = await compressImage(url);
-                    window.storedImages.push(compressed);
+                    const cloudUrl = await uploadImageToServer(compressed, 'pasted-image.jpg');
+                    window.storedImages.push(cloudUrl);
+                    showToast('Gambar berhasil diunggah ke cloud', 'success');
                 } catch (err) {
-                    console.error('Failed to compress pasted image:', err);
+                    console.error('Failed to upload pasted image:', err);
+                    showToast('Gagal upload ke cloud: ' + err.message, 'error');
                     window.storedImages.push(url);
                 }
             } else {
@@ -3009,7 +3039,7 @@ function showLoginForm(type) {
 
             if (!window.storedImages) window.storedImages = [];
 
-            showToast('Mekompresi gambar...', 'info');
+            showToast('Memproses gambar...', 'info');
 
             for (const file of files) {
                 try {
@@ -3021,15 +3051,18 @@ function showLoginForm(type) {
                     
                     if (file.type.startsWith('image/')) {
                         const compressed = await compressImage(base64);
-                        window.storedImages.push(compressed);
-                        console.log(`[IMAGE] Compressed: ${file.name} (${(base64.length/1024).toFixed(1)}KB -> ${(compressed.length/1024).toFixed(1)}KB)`);
+                        const cloudUrl = await uploadImageToServer(compressed, file.name);
+                        window.storedImages.push(cloudUrl);
+                        console.log(`[STORAGE] Uploaded: ${file.name} -> ${cloudUrl}`);
                     } else {
                         window.storedImages.push(base64);
                     }
                 } catch (err) {
-                    console.error('Failed to process image:', file.name, err);
+                    console.error('Failed to upload image:', file.name, err);
+                    showToast('Gagal upload ' + file.name + ': ' + err.message, 'error');
                 }
             }
+            showToast('Proses upload selesai', 'success');
             renderImagePreviews();
         }
 

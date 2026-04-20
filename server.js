@@ -649,6 +649,52 @@ app.post('/api/db', async (req, res) => {
     }
 });
 
+// ─── API: Upload Image to Supabase Storage ─────────────────────────────────────
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+    try {
+        if (!USE_SUPABASE) {
+            return res.status(400).json({ error: 'Supabase storage requires SUPABASE_URL and SUPABASE_KEY to be configured.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image provided' });
+        }
+
+        const file = req.file;
+        const rawFileName = file.originalname || 'image.jpg';
+        const fileExt = path.extname(rawFileName) || '.jpg';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${fileExt}`;
+        const filePath = `questions/${fileName}`;
+
+        console.log(`[STORAGE] Uploading ${fileName} (${file.size} bytes)...`);
+
+        const { data, error } = await supabase.storage
+            .from('images')
+            .upload(filePath, file.buffer, {
+                contentType: file.mimetype,
+                upsert: true
+            });
+
+        if (error) {
+            console.error('Supabase storage upload error:', error.message);
+            // Hint for common error: bucket not found or not public
+            if (error.message.includes('not found')) {
+                return res.status(500).json({ error: 'Bucket "images" tidak ditemukan. Pastikan Anda sudah membuat bucket bernama "images" di Supabase.' });
+            }
+            return res.status(500).json({ error: 'Gagal mengunggah ke Storage: ' + error.message });
+        }
+
+        const { data: publicData } = supabase.storage
+            .from('images')
+            .getPublicUrl(filePath);
+
+        console.log(`[STORAGE] Upload success: ${publicData.publicUrl}`);
+        return res.json({ ok: true, url: publicData.publicUrl });
+    } catch (e) {
+        console.error('POST /api/upload-image error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── API: Results ─────────────────────────────────────────────────────────────
 app.get('/api/results', async (req, res) => {
     try {
