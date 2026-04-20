@@ -1969,13 +1969,30 @@ function showLoginForm(type) {
                 const resultIndex = db.results.indexOf(r);
                 if (resultIndex === -1) return '';
 
+                const hasEssay = Array.isArray(r.questions) && r.questions.some(q => q.type === 'text');
+                const allEssayDone = hasEssay && Array.isArray(r.questions) &&
+                    r.questions.every((q, qi) => q.type !== 'text' || (r.manualScores && r.manualScores[qi] !== undefined && r.manualScores[qi] !== null));
+                const scoreDisplay = r.score != null && !isNaN(Number(r.score)) ? Number(r.score).toFixed(1) : '-';
+
+                let aiBtn = '';
+                if (hasEssay) {
+                    if (allEssayDone) {
+                        aiBtn = `<button onclick="batchAiCorrectEssay(${resultIndex})" id="ai-batch-btn-${resultIndex}" title="Koreksi ulang semua esai dengan AI" class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 hover:bg-violet-200 text-violet-700 text-[10px] font-black rounded-lg border border-violet-300 transition-all"><i class="fas fa-robot"></i> ✓ Koreksi Ulang</button>`;
+                    } else {
+                        aiBtn = `<button onclick="batchAiCorrectEssay(${resultIndex})" id="ai-batch-btn-${resultIndex}" title="Koreksi semua soal esai dengan AI" class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-black rounded-lg transition-all shadow-sm"><i class="fas fa-magic"></i> Koreksi AI</button>`;
+                    }
+                }
+
                 return `
                 <tr class="hover:bg-slate-50 transition-colors">
                     <td class="px-6 py-4 font-bold text-slate-700">${r.studentName}</td>
                     <td class="px-6 py-4 text-xs font-semibold text-slate-500">${r.rombel}</td>
                     <td class="px-6 py-4 text-xs font-bold text-sky-600 uppercase tracking-tighter">${r.mapel}</td>
                     <td class="px-6 py-4 text-[10px] font-medium text-slate-400">${r.date ? new Date(r.date).toLocaleString('id-ID') : '-'}</td>
-                    <td class="px-6 py-4 text-center font-black text-sky-600 text-lg">${r.score != null && !isNaN(Number(r.score)) ? Number(r.score).toFixed(1) : '-'}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="font-black text-sky-600 text-lg">${scoreDisplay}</span>
+                        ${aiBtn}
+                    </td>
                     <td class="px-6 py-4 text-center">
                         <button onclick="viewDetailedResult(${resultIndex})" class="w-8 h-8 rounded-lg bg-sky-50 text-sky-500 hover:bg-sky-100 transition-all shadow-sm mr-2" title="Lihat Jawaban"><i class="fas fa-eye"></i></button>
                         <button onclick="deleteResult(${resultIndex})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all shadow-sm" title="Hapus"><i class="fas fa-trash"></i></button>
@@ -4358,25 +4375,44 @@ function showLoginForm(type) {
                     if (mapelFilter && mapelFilter !== 'ALL' && r.mapel !== mapelFilter) return false;
 
                     if (!fromTs && !toTs) return true;
-                    if (!r.date) return false; // skip undated entries when filtering by date
+                    if (!r.date) return false;
                     const t = new Date(r.date).getTime();
                     if (fromTs && t < fromTs) return false;
                     if (toTs && t > toTs) return false;
                     return true;
                 })
-                .map(({ r, i }) => `
+                .map(({ r, i }) => {
+                    const hasEssay = Array.isArray(r.questions) && r.questions.some(q => q.type === 'text');
+                    const allEssayDone = hasEssay && Array.isArray(r.questions) &&
+                        r.questions.every((q, qi) => q.type !== 'text' || (r.manualScores && r.manualScores[qi] !== undefined && r.manualScores[qi] !== null));
+                    const scoreDisplay = r.score != null && !isNaN(Number(r.score)) ? Number(r.score).toFixed(1) : '-';
+
+                    let aiBtn = '';
+                    if (hasEssay) {
+                        if (allEssayDone) {
+                            aiBtn = `<button onclick="batchAiCorrectEssay(${i})" id="ai-batch-btn-${i}" title="Koreksi ulang semua esai dengan AI" class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 hover:bg-violet-200 text-violet-700 text-[10px] font-black rounded-lg border border-violet-300 transition-all"><i class="fas fa-robot"></i> ✓ Koreksi Ulang</button>`;
+                        } else {
+                            aiBtn = `<button onclick="batchAiCorrectEssay(${i})" id="ai-batch-btn-${i}" title="Koreksi semua soal esai dengan AI" class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-black rounded-lg transition-all shadow-sm"><i class="fas fa-magic"></i> Koreksi AI</button>`;
+                        }
+                    }
+
+                    return `
                 <tr>
                     <td class="px-6 py-4 font-bold">${r.studentName}</td>
                     <td class="px-6 py-4 text-xs">${r.rombel}</td>
                     <td class="px-6 py-4 text-xs font-medium">${r.mapel}</td>
                     <td class="px-6 py-4 text-xs">${r.date ? new Date(r.date).toLocaleString() : '-'}</td>
-                    <td class="px-6 py-4 text-center font-black text-sky-600">${r.score != null && !isNaN(Number(r.score)) ? Number(r.score).toFixed(1) : '-'}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="font-black text-sky-600">${scoreDisplay}</span>
+                        ${aiBtn}
+                    </td>
                     <td class="px-6 py-4 text-center">
                         <button onclick="viewDetailedResult(${i})" class="text-sky-400 hover:text-sky-600 mr-2" title="Lihat Jawaban"><i class="fas fa-eye"></i></button>
                         <button onclick="deleteResult(${i})" class="text-red-400 hover:text-red-600" title="Hapus"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>
-            `).join('');
+            `;
+                }).join('');
 
             tbody.innerHTML = rows;
         }
@@ -4542,6 +4578,9 @@ function showLoginForm(type) {
                 } else if (qType === 'text') {
                     const studentText = studentAnswer || '';
                     const correctText = correctAnswer || '';
+                    const manualScore = result.manualScores ? result.manualScores[i] : undefined;
+                    const hasManualScore = manualScore !== undefined && manualScore !== null;
+                    const aiFeedback = result.aiEssayFeedback ? result.aiEssayFeedback[i] : '';
                     content += `<div class="space-y-3 mt-4">
                         <div class="bg-white border-2 border-slate-200 rounded-xl p-4">
                             <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Jawaban Siswa:</p>
@@ -4551,7 +4590,25 @@ function showLoginForm(type) {
                             <p class="text-xs font-black text-emerald-600 uppercase tracking-wider mb-2">Kunci Jawaban:</p>
                             <p class="text-emerald-900 leading-relaxed whitespace-pre-wrap border-l-4 border-emerald-500 pl-3">${escapeHtml(correctText) || '<em class="text-emerald-500">Tidak ada kunci</em>'}</p>
                         </div>
+                        ${hasManualScore ? `
+                        <div class="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <p class="text-xs font-black text-violet-600 uppercase tracking-wider flex items-center gap-1"><i class="fas fa-robot"></i> Hasil Koreksi AI</p>
+                                <span class="inline-flex items-center gap-1 px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-black"><i class="fas fa-star"></i> ${Number(manualScore).toFixed(1)} / 5</span>
+                            </div>
+                            ${aiFeedback ? `<p class="text-slate-700 text-sm leading-relaxed italic mb-3">"${escapeHtml(aiFeedback)}"</p>` : ''}
+                            <div class="flex items-center gap-2 flex-wrap mt-1">
+                                <label class="text-xs text-slate-500 font-semibold">Ubah Skor Manual:</label>
+                                <input type="number" id="ai-essay-score-input-${idx}-${i}" min="0" max="5" step="0.5" value="${Number(manualScore).toFixed(1)}" class="w-20 border border-slate-300 rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-violet-400">
+                                <button onclick="applyEssayScore(${idx}, ${i}, document.getElementById('ai-essay-score-input-${idx}-${i}').value)" class="px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg transition-colors"><i class="fas fa-check mr-1"></i>Terapkan</button>
+                            </div>
+                        </div>` : `
+                        <div class="rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-4 text-center">
+                            <i class="fas fa-robot text-violet-300 text-2xl mb-2"></i>
+                            <p class="text-violet-400 text-xs font-semibold">Belum dikoreksi AI.<br>Gunakan tombol <strong>"Koreksi AI"</strong> di tabel hasil ujian.</p>
+                        </div>`}
                     </div>`;
+
                 } else if (qType === 'tf') {
                     content += '<div class="space-y-2 mt-4">';
                     qOptions.forEach((opt, optIdx) => {
@@ -4663,6 +4720,336 @@ function showLoginForm(type) {
                 </div>
             `;
             document.body.appendChild(modal);
+        }
+
+        async function batchAiCorrectEssay(resultIdx) {
+            const result = db.results[resultIdx];
+            if (!result) return;
+
+            const questions = result.questions || [];
+            const answers = result.answers || [];
+
+            // Collect all essay question indices
+            const essayIndices = questions.reduce((acc, q, i) => {
+                if (q.type === 'text') acc.push(i);
+                return acc;
+            }, []);
+
+            if (essayIndices.length === 0) {
+                alert('Tidak ada soal esai dalam ujian ini.');
+                return;
+            }
+
+            // Show progress overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'ai-batch-overlay';
+            overlay.className = 'fixed inset-0 bg-slate-900/70 flex items-center justify-center z-50 backdrop-blur-sm';
+            overlay.innerHTML = `
+                <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+                    <div class="w-16 h-16 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                        <i class="fas fa-robot text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg font-black text-slate-800 mb-1">AI Sedang Mengoreksi</h3>
+                    <p id="ai-batch-status" class="text-slate-500 text-sm mb-4">Memproses soal esai...</p>
+                    <div class="w-full bg-slate-100 rounded-full h-3 mb-2">
+                        <div id="ai-batch-progress" class="h-3 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <p id="ai-batch-counter" class="text-xs text-slate-400 font-semibold">0 / ${essayIndices.length} soal</p>
+                </div>`;
+            document.body.appendChild(overlay);
+
+            const statusEl = document.getElementById('ai-batch-status');
+            const progressEl = document.getElementById('ai-batch-progress');
+            const counterEl = document.getElementById('ai-batch-counter');
+
+            const btn = document.getElementById(`ai-batch-btn-${resultIdx}`);
+            if (btn) btn.disabled = true;
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            if (!result.manualScores) result.manualScores = {};
+            if (!result.aiEssayFeedback) result.aiEssayFeedback = {};
+
+            for (let idx = 0; idx < essayIndices.length; idx++) {
+                const qi = essayIndices[idx];
+                const q = questions[qi];
+                const studentAnswer = answers[qi];
+
+                if (statusEl) statusEl.textContent = `Mengoreksi soal ${idx + 1} dari ${essayIndices.length}...`;
+                if (progressEl) progressEl.style.width = `${((idx) / essayIndices.length) * 100}%`;
+                if (counterEl) counterEl.textContent = `${idx} / ${essayIndices.length} soal selesai`;
+
+                try {
+                    const response = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            questionText: q.text || '',
+                            studentAnswer: typeof studentAnswer === 'string' ? studentAnswer : '',
+                            referenceAnswer: q.correct || '',
+                            teacherId: currentSiswa ? currentSiswa.id : null
+                        })
+                    });
+                    const data = await response.json();
+                    if (response.ok && data.ok) {
+                        result.manualScores[qi] = data.score;
+                        result.aiEssayFeedback[qi] = data.feedback;
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } catch (e) {
+                    console.error(`[batchAiCorrect] Error on question ${qi}:`, e.message);
+                    errorCount++;
+                }
+            }
+
+            // Final progress
+            if (progressEl) progressEl.style.width = '100%';
+            if (counterEl) counterEl.textContent = `${essayIndices.length} / ${essayIndices.length} soal selesai`;
+            if (statusEl) statusEl.textContent = 'Menghitung ulang skor...';
+
+            // Recalculate total score
+            let totalItems = 0;
+            let correctCount = 0;
+            questions.forEach((q, i) => {
+                const ans = answers[i];
+                const qType = q.type || 'single';
+                if (qType === 'text') {
+                    const essayScore = (result.manualScores[i] !== undefined && result.manualScores[i] !== null) ? result.manualScores[i] : 0;
+                    totalItems += 5;
+                    correctCount += essayScore;
+                } else if (qType === 'tf' && Array.isArray(q.options)) {
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    q.options.forEach((_, j) => {
+                        totalItems++;
+                        const corrVal = Array.isArray(q.correct) ? q.correct[j] : false;
+                        if (ansArr[j] === corrVal) correctCount++;
+                    });
+                } else if (qType === 'multiple') {
+                    const corr = Array.isArray(q.correct) ? q.correct : [];
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    const totalCorrectOpts = corr.length > 0 ? corr.length : 1;
+                    totalItems += totalCorrectOpts;
+                    correctCount += ansArr.filter(idx2 => corr.includes(idx2)).length;
+                } else if (qType === 'matching') {
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    if (Array.isArray(q.questions)) {
+                        q.questions.forEach((_, qi2) => {
+                            totalItems++;
+                            if (ansArr[qi2] !== null && ansArr[qi2] !== undefined && ansArr[qi2] === (q.correct ? q.correct[qi2] : null)) correctCount++;
+                        });
+                    } else {
+                        totalItems++;
+                    }
+                } else {
+                    totalItems++;
+                    if (ans === q.correct) correctCount++;
+                }
+            });
+
+            const newScore = totalItems > 0 ? ((correctCount / totalItems) * 100).toFixed(1) : '0.0';
+            result.score = newScore;
+            result.updatedAt = Date.now();
+            db.results[resultIdx] = result;
+
+            // Save and close overlay
+            try {
+                await save();
+            } catch (e) {
+                console.error('[batchAiCorrect] Save error:', e.message);
+            }
+
+            overlay.remove();
+            if (btn) btn.disabled = false;
+
+            // Refresh the active dashboard
+            const adminDash = document.getElementById('admin-dashboard');
+            const teacherDash = document.getElementById('teacher-dashboard');
+            if (adminDash && !adminDash.classList.contains('hidden')) {
+                renderAdminResults();
+            } else if (teacherDash && !teacherDash.classList.contains('hidden')) {
+                renderTeacherResults();
+            }
+
+            const msg = errorCount === 0
+                ? `✅ Semua ${successCount} soal esai berhasil dikoreksi AI!\nSkor baru: ${newScore}`
+                : `⚠️ ${successCount} soal berhasil, ${errorCount} soal gagal.\nSkor baru: ${newScore}`;
+            alert(msg);
+        }
+
+        async function runAiCorrection(resultIdx, qIdx) {
+            const result = db.results[resultIdx];
+            if (!result) return;
+            const q = (result.questions || [])[qIdx];
+            const studentAnswer = (result.answers || [])[qIdx];
+
+            const btnEl = document.getElementById(`ai-essay-btn-${resultIdx}-${qIdx}`);
+            const loadingEl = document.getElementById(`ai-essay-loading-${resultIdx}-${qIdx}`);
+            const resultEl = document.getElementById(`ai-essay-result-${resultIdx}-${qIdx}`);
+            const panelEl = document.getElementById(`ai-essay-panel-${resultIdx}-${qIdx}`);
+
+            if (btnEl) btnEl.disabled = true;
+            if (loadingEl) { loadingEl.classList.remove('hidden'); loadingEl.style.display = 'flex'; }
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        questionText: q ? q.text : '',
+                        studentAnswer: typeof studentAnswer === 'string' ? studentAnswer : '',
+                        referenceAnswer: q ? (q.correct || '') : '',
+                        teacherId: currentSiswa ? currentSiswa.id : null
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    alert('Gagal koreksi AI: ' + (data.error || 'Terjadi kesalahan.'));
+                    return;
+                }
+
+                const score = data.score;
+                const feedback = data.feedback;
+
+                // Display result in UI
+                if (resultEl) {
+                    resultEl.innerHTML = `
+                        <p class="text-slate-700 text-sm leading-relaxed mb-3 italic">"${feedback.replace(/</g,'&lt;').replace(/>/g,'&gt;')}"</p>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <label class="text-xs text-slate-500 font-semibold">Skor AI: <strong class="text-violet-700">${score.toFixed(1)}/5</strong> &nbsp;|&nbsp; Ubah:</label>
+                            <input type="number" id="ai-essay-score-input-${resultIdx}-${qIdx}" min="0" max="5" step="0.5" value="${score.toFixed(1)}" class="w-20 border border-slate-300 rounded-lg px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-violet-400">
+                            <button onclick="applyEssayScore(${resultIdx}, ${qIdx}, document.getElementById('ai-essay-score-input-${resultIdx}-${qIdx}').value)" class="px-3 py-1 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg transition-colors"><i class="fas fa-check mr-1"></i>Terapkan Skor</button>
+                        </div>`;
+                    resultEl.classList.remove('hidden');
+                }
+
+                // Update panel badge
+                if (panelEl) {
+                    panelEl.classList.remove('border-slate-200');
+                    panelEl.classList.add('border-violet-300', 'bg-violet-50');
+                    const badgeContainer = panelEl.querySelector('.flex.items-center.justify-between');
+                    if (badgeContainer) {
+                        const existingBadge = badgeContainer.querySelector('span');
+                        if (existingBadge) existingBadge.remove();
+                        const badge = document.createElement('span');
+                        badge.className = 'inline-flex items-center gap-1 px-3 py-1 bg-violet-500 text-white rounded-full text-xs font-black';
+                        badge.innerHTML = `<i class="fas fa-star"></i> Skor AI: ${score.toFixed(1)} / 5`;
+                        badgeContainer.appendChild(badge);
+                    }
+                }
+
+                if (btnEl) btnEl.textContent = '✦ Koreksi Ulang dengan AI';
+
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                if (loadingEl) { loadingEl.classList.add('hidden'); loadingEl.style.display = ''; }
+                if (btnEl) btnEl.disabled = false;
+            }
+        }
+
+        async function applyEssayScore(resultIdx, qIdx, rawScore) {
+            const result = db.results[resultIdx];
+            if (!result) return;
+
+            const score = Math.min(5, Math.max(0, parseFloat(rawScore) || 0));
+
+            // Save manual score and feedback
+            if (!result.manualScores) result.manualScores = {};
+            result.manualScores[qIdx] = score;
+
+            // Also persist AI feedback if available
+            const feedbackEl = document.getElementById(`ai-essay-result-${resultIdx}-${qIdx}`)?.querySelector('p.italic');
+            if (feedbackEl) {
+                if (!result.aiEssayFeedback) result.aiEssayFeedback = {};
+                result.aiEssayFeedback[qIdx] = feedbackEl.textContent.replace(/^"|"$/g, '');
+            }
+
+            // Recalculate total score
+            // Essay questions get a weight of 5 (max). Others use the existing per-item scoring.
+            const questions = result.questions || [];
+            const answers = result.answers || [];
+            let totalItems = 0;
+            let correctCount = 0;
+
+            questions.forEach((q, i) => {
+                const ans = answers[i];
+                const qType = q.type || 'single';
+
+                if (qType === 'text') {
+                    // Essay contributes 5 points max
+                    const essayScore = (result.manualScores && result.manualScores[i] !== undefined && result.manualScores[i] !== null)
+                        ? result.manualScores[i]
+                        : 0;
+                    totalItems += 5;
+                    correctCount += essayScore;
+                } else if (qType === 'tf' && Array.isArray(q.options)) {
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    q.options.forEach((_, j) => {
+                        totalItems++;
+                        const corrVal = Array.isArray(q.correct) ? q.correct[j] : false;
+                        if (ansArr[j] === corrVal) correctCount++;
+                    });
+                } else if (qType === 'multiple') {
+                    const corr = Array.isArray(q.correct) ? q.correct : [];
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    const totalCorrectOpts = corr.length > 0 ? corr.length : 1;
+                    totalItems += totalCorrectOpts;
+                    correctCount += ansArr.filter(idx => corr.includes(idx)).length;
+                } else if (qType === 'matching') {
+                    const ansArr = Array.isArray(ans) ? ans : [];
+                    if (Array.isArray(q.questions)) {
+                        q.questions.forEach((_, qi) => {
+                            totalItems++;
+                            if (ansArr[qi] !== null && ansArr[qi] !== undefined && ansArr[qi] === (q.correct ? q.correct[qi] : null)) correctCount++;
+                        });
+                    } else {
+                        totalItems++;
+                    }
+                } else {
+                    totalItems++;
+                    if (ans === q.correct) correctCount++;
+                }
+            });
+
+            const newScore = totalItems > 0 ? ((correctCount / totalItems) * 100).toFixed(1) : '0.0';
+            result.score = newScore;
+            result.updatedAt = Date.now();
+
+            // Update in db array
+            db.results[resultIdx] = result;
+
+            // Persist to backend
+            try {
+                await save();
+                // Refresh score in modal badge
+                const panelEl = document.getElementById(`ai-essay-panel-${resultIdx}-${qIdx}`);
+                if (panelEl) {
+                    const badgeContainer = panelEl.querySelector('.flex.items-center.justify-between');
+                    if (badgeContainer) {
+                        const existingBadge = badgeContainer.querySelector('span');
+                        if (existingBadge) {
+                            existingBadge.innerHTML = `<i class="fas fa-star"></i> Skor: ${score.toFixed(1)} / 5`;
+                            existingBadge.className = 'inline-flex items-center gap-1 px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-black';
+                        }
+                    }
+                }
+                // Refresh active results table
+                const adminDash2 = document.getElementById('admin-dashboard');
+                const teacherDash2 = document.getElementById('teacher-dashboard');
+                if (adminDash2 && !adminDash2.classList.contains('hidden')) {
+                    renderAdminResults();
+                } else if (teacherDash2 && !teacherDash2.classList.contains('hidden')) {
+                    renderTeacherResults();
+                }
+                alert(`✅ Skor esai berhasil diterapkan! Skor baru: ${score.toFixed(1)}/5 → Total ujian: ${newScore}`);
+
+            } catch (e) {
+                alert('Gagal menyimpan skor: ' + e.message);
+            }
         }
 
         function exportResultsToExcel() {

@@ -1795,6 +1795,63 @@ app.post('/api/generate-kisi-kisi', async (req, res) => {
     }
 });
 
+// ─── API: AI Essay Correction ─────────────────────────────────────────────────
+app.post('/api/ai-correct-essay', async (req, res) => {
+    const { questionText, studentAnswer, referenceAnswer, teacherId = null } = req.body;
+
+    if (!questionText) {
+        return res.status(400).json({ error: 'questionText diperlukan' });
+    }
+    if (!studentAnswer || studentAnswer.trim() === '') {
+        return res.json({ ok: true, score: 0, feedback: 'Siswa tidak memberikan jawaban.' });
+    }
+
+    const prompt = `Kamu adalah guru pengoreksi soal esai/uraian yang berpengalaman. Berikan penilaian objektif terhadap jawaban siswa berikut ini.
+
+SOAL:
+${questionText}
+
+${referenceAnswer ? `KUNCI JAWABAN / JAWABAN REFERENSI:\n${referenceAnswer}\n\n` : ''}JAWABAN SISWA:
+${studentAnswer}
+
+INSTRUKSI PENILAIAN:
+- Berikan skor antara 0 sampai 5 (bilangan bulat atau desimal dengan 1 angka di belakang koma).
+  - 0 = Tidak menjawab atau jawaban sama sekali tidak relevan
+  - 1 = Jawaban sangat kurang, hampir tidak memahami materi
+  - 2 = Jawaban kurang, ada sedikit pemahaman tapi banyak yang keliru
+  - 3 = Jawaban cukup, memahami sebagian besar konsep tapi ada kekurangan
+  - 4 = Jawaban baik, hampir lengkap dan tepat dengan kekurangan minor
+  - 5 = Jawaban sangat baik, lengkap, tepat, dan jelas
+- Berikan umpan balik singkat dalam Bahasa Indonesia (1-3 kalimat) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
+- Jika tidak ada kunci jawaban, nilai berdasarkan kelengkapan, kejelasan, dan relevansi jawaban terhadap soal.
+
+BALAS HANYA dengan JSON format berikut, tanpa teks lain:
+{"score": 3.5, "feedback": "Jawaban siswa sudah memahami konsep dasar namun belum menjelaskan secara lengkap. Perlu menambahkan contoh konkret untuk memperkuat argumen."}`;
+
+    try {
+        let text = await callAI(prompt, teacherId);
+        text = text.replace(/```json\n?|```/g, '').trim();
+
+        // Extract JSON from response
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) {
+            console.error('[/api/ai-correct-essay] No JSON in response:', text.substring(0, 200));
+            return res.status(500).json({ error: 'AI tidak memberikan respons yang valid. Coba lagi.' });
+        }
+
+        const parsed = JSON.parse(match[0]);
+        const rawScore = parseFloat(parsed.score);
+        const score = isNaN(rawScore) ? 0 : Math.min(5, Math.max(0, rawScore));
+        const feedback = typeof parsed.feedback === 'string' ? parsed.feedback : 'Tidak ada umpan balik.';
+
+        console.log(`[/api/ai-correct-essay] Score: ${score}, Feedback length: ${feedback.length}`);
+        return res.json({ ok: true, score, feedback });
+    } catch (e) {
+        console.error('[/api/ai-correct-essay] Fatal error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Helper: Normalize Teacher API Keys ───────────────────────────────────────
 function normalizeTeacherApiKeyEntry(entry) {
     if (!entry) return null;
