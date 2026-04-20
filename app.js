@@ -116,10 +116,12 @@ function showLoginForm(type) {
 
         window.addEventListener('blur', () => {
             if (isExamActive) {
-                // SKIP on mobile if input is active
-                const activeEl = document.activeElement;
-                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
-                if (isMobileDevice() && isInputActive) return;
+                // On mobile, blur is often triggered by keyboard or system overlays.
+                // We rely on visibilitychange for app switching and resize for split-screen.
+                if (isMobileDevice()) {
+                    const widthDiff = Math.abs(window.innerWidth - window.screen.width);
+                    if (widthDiff <= 25) return; // Still full width, ignore blur
+                }
 
                 handleCheating('Meninggalkan jendela ujian');
             }
@@ -412,26 +414,24 @@ function showLoginForm(type) {
         // Additional checks for simulated fullscreen
         window.addEventListener('resize', () => {
             if (isExamActive && isFullscreen) {
-                // Check if window size changed significantly (possible exit attempt)
                 const currentWidth = window.innerWidth;
                 const currentHeight = window.innerHeight;
-
-                // SKIP detection on mobile if an input/textarea is focused (keyboard likely shown)
-                const activeEl = document.activeElement;
-                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
-                
-                if (isMobileDevice() && isInputActive) {
-                    console.log('Mobile input is active, ignoring resize event (keyboard likely shown)');
-                    return;
-                }
-
                 const screenWidth = window.screen.width;
                 const screenHeight = window.screen.height;
 
-                // More sensitive detection for exit attempts
                 const widthDiff = Math.abs(currentWidth - screenWidth);
                 const heightDiff = Math.abs(currentHeight - screenHeight);
 
+                // ROBUST CHECK FOR MOBILE: Ignore height-only resize (keyboard/toolbar)
+                if (isMobileDevice()) {
+                    // On mobile, width is consistent. If width hasn't changed > 25px,
+                    // we assume it's just the keyboard or browser UI toggling.
+                    if (widthDiff <= 25) {
+                        return; 
+                    }
+                }
+
+                // More sensitive detection for exit attempts (Desktop or structural mobile changes)
                 if (widthDiff > 20 || heightDiff > 20) {
                     console.log('Window resize detected during exam, possible fullscreen exit attempt');
                     console.log(`Size change: ${widthDiff}px width, ${heightDiff}px height`);
@@ -449,10 +449,11 @@ function showLoginForm(type) {
         // Detect focus loss (alt+tab, clicking outside window, etc.)
         window.addEventListener('blur', () => {
             if (isExamActive && isFullscreen) {
-                // SKIP on mobile if input is active
-                const activeEl = document.activeElement;
-                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
-                if (isMobileDevice() && isInputActive) return;
+                // On mobile, ignore blur if still full width
+                if (isMobileDevice()) {
+                    const widthDiff = Math.abs(window.innerWidth - window.screen.width);
+                    if (widthDiff <= 25) return;
+                }
 
                 console.log('Window focus lost during exam');
                 handleCheating('Fokus jendela hilang');
