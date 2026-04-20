@@ -6882,6 +6882,106 @@ function showLoginForm(type) {
             }
         };
 
+        // ─── Detailed API Keys Modal Logic ───────────────────
+        window.openApiKeysDetailModal = async function() {
+            const modal = document.getElementById('api-keys-detail-modal');
+            if (modal) modal.classList.remove('hidden');
+            if (modal) modal.classList.add('flex');
+            
+            // Show loading in table body
+            const tbody = document.getElementById('api-keys-detail-table-body');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400 font-bold"><i class="fas fa-spinner fa-spin mr-2"></i> Mengambil data API Keys...</td></tr>`;
+
+            try {
+                const response = await fetch(getApiBaseUrl() + '/api/admin/global-api-keys');
+                if (!response.ok) throw new Error('Refresh gagal');
+                const result = await response.json();
+                
+                if (result.ok && Array.isArray(result.globalKeys)) {
+                    renderApiKeysDetailTable(result.globalKeys);
+                } else {
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-500 font-bold">Gagal memuat data API Keys</td></tr>`;
+                }
+            } catch (err) {
+                if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-red-500 font-bold">Error: ${err.message}</td></tr>`;
+            }
+        };
+
+        window.closeApiKeysDetailModal = function() {
+            const modal = document.getElementById('api-keys-detail-modal');
+            if (modal) modal.classList.add('hidden');
+            if (modal) modal.classList.remove('flex');
+        };
+
+        function renderApiKeysDetailTable(keys) {
+            const tbody = document.getElementById('api-keys-detail-table-body');
+            if (!tbody) return;
+
+            if (keys.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400 font-bold">Belum ada API Key global terdaftar.</td></tr>`;
+                return;
+            }
+
+            function detectProviderFromKey(key) {
+                if (!key) return 'Unknown';
+                if (key.startsWith('AIzaSy')) return 'Google Gemini';
+                if (key.startsWith('sk-')) return 'OpenAI (ChatGPT)';
+                if (key.startsWith('sk-or-v1-') || key.startsWith('sk-or-')) return 'OpenRouter';
+                if (key.startsWith('gsk_')) return 'Groq';
+                if (key.includes('deepseek')) return 'DeepSeek';
+                return 'Unknown';
+            }
+
+            tbody.innerHTML = keys.map((k, i) => {
+                const fullKey = k.key || '';
+                const provider = detectProviderFromKey(fullKey);
+                const source = k.addedAt || 'Global Settings';
+                const isExhausted = k.status === 'exhausted';
+                const lastUpdated = k.updatedAt ? new Date(k.updatedAt).toLocaleString('id-ID') : '-';
+                
+                return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-6 py-4 text-center font-bold text-slate-400">${i + 1}</td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] font-black uppercase px-2 py-1 rounded bg-slate-200 text-slate-600">${provider}</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2">
+                                <code class="text-xs font-mono bg-white border border-slate-100 px-2 py-1 rounded-lg text-slate-700">${fullKey.substring(0, 8)}••••••••${fullKey.substring(fullKey.length - 4)}</code>
+                                <button onclick="copyApiKey('${fullKey}')" class="text-slate-400 hover:text-sky-600 transition-all" title="Salin Key">
+                                    <i class="fas fa-copy text-xs"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            ${isExhausted ? 
+                                '<span class="text-[9px] font-black bg-red-100 text-red-600 px-2.5 py-1 rounded-full flex items-center gap-1 w-fit"><i class="fas fa-times-circle"></i> KUOTA HABIS</span>' : 
+                                '<span class="text-[9px] font-black bg-emerald-100 text-emerald-600 px-2.5 py-1 rounded-full flex items-center gap-1 w-fit"><i class="fas fa-check-circle"></i> AKTIF</span>'
+                            }
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] font-bold text-slate-500">${source}</span>
+                            ${k.note ? `<p class="text-[10px] text-slate-400 mt-0.5 italic">${k.note}</p>` : ''}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <button onclick="removeGlobalApiKey(${i})" class="w-8 h-8 flex items-center justify-center text-red-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Hapus Key">
+                                <i class="fas fa-trash-alt text-xs"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        window.copyApiKey = function(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                showToast('API Key disalin ke clipboard!', 'success');
+            }).catch(err => {
+                console.error('Clipboard error:', err);
+                showToast('Gagal menyalin key', 'error');
+            });
+        };
+
         // --- END API KEY MANAGEMENT FUNCTIONS ---
 
         // --- INIT ---

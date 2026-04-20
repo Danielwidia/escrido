@@ -183,7 +183,12 @@
                     <div class="mt-8">
                         <h3 class="text-xl font-black text-slate-800 mb-4">API Keys Global</h3>
                         <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                            <p class="text-slate-400 text-xs font-bold uppercase mb-3">Kelola API Keys untuk Fitur AI</p>
+                            <div class="flex items-center justify-between mb-3">
+                                <p class="text-slate-400 text-xs font-bold uppercase">Kelola API Keys untuk Fitur AI</p>
+                                <button onclick="openApiKeysDetailModal()" class="text-[10px] font-black px-3 py-1 bg-sky-50 text-sky-600 border border-sky-100 rounded-full hover:bg-sky-600 hover:text-white transition-all">
+                                    <i class="fas fa-list-ul mr-1"></i> LIHAT DETAIL
+                                </button>
+                            </div>
                             <div class="space-y-4">
                                 <div>
                                     <label class="text-xs font-bold text-slate-600 mb-2 block">Tambah API Key Baru</label>
@@ -1440,6 +1445,44 @@
     <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+
+    <!-- API Keys Detail Modal -->
+    <div id="api-keys-detail-modal" class="fixed inset-0 bg-slate-900 bg-opacity-50 z-[60] hidden items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col animate-fade-in">
+            <div class="p-8 border-b border-slate-50 flex items-center justify-between">
+                <div>
+                    <h3 class="text-2xl font-black text-slate-800 tracking-tight">Daftar API Keys Global</h3>
+                    <p class="text-slate-400 text-sm font-bold uppercase tracking-wider">Status & Penggunaan AI</p>
+                </div>
+                <button onclick="closeApiKeysDetailModal()" class="w-12 h-12 flex items-center justify-center bg-slate-50 text-slate-400 rounded-2xl hover:bg-slate-100 hover:text-slate-600 transition-all">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8">
+                <div class="bg-slate-50 rounded-3xl border border-slate-100 overflow-hidden">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead class="bg-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4 w-12 text-center">No</th>
+                                <th class="px-6 py-4">Provider</th>
+                                <th class="px-6 py-4">API Key</th>
+                                <th class="px-6 py-4">Status</th>
+                                <th class="px-6 py-4">Sumber</th>
+                                <th class="px-6 py-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="api-keys-detail-table-body" class="divide-y divide-slate-100">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="p-8 bg-slate-50/50 border-t border-slate-50 flex justify-between items-center text-xs text-slate-500 italic">
+                <p><i class="fas fa-info-circle mr-1"></i> Data di atas mencakup API keys dari Env Vars (Github), Supabase, dan Guru.</p>
+                <button onclick="renderApiKeysList(); openApiKeysDetailModal();" class="text-sky-600 font-bold hover:underline"><i class="fas fa-sync-alt mr-1"></i> Refresh Data</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Notification Container -->
     <div id="toast-container" class="fixed bottom-6 left-6 z-[10000] flex flex-col gap-2 pointer-events-none"></div>

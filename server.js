@@ -1341,13 +1341,13 @@ async function callAI(prompt, teacherId = null) {
         }
     };
 
-    let result = await tryProvider('OpenAI', () => callOpenAI(prompt, teacherId));
-    if (result) return result;
-
-    result = await tryProvider('Gemini', () => callGeminiAI(prompt, teacherId));
+    let result = await tryProvider('Gemini', () => callGeminiAI(prompt, teacherId));
     if (result) return result;
 
     result = await tryProvider('OpenRouter', () => callOpenRouterAI(prompt, teacherId));
+    if (result) return result;
+
+    result = await tryProvider('OpenAI', () => callOpenAI(prompt, teacherId));
     if (result) return result;
 
     result = await tryProvider('DeepSeek', () => callDeepSeekAI(prompt, teacherId));
