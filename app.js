@@ -1137,10 +1137,19 @@ function showLoginForm(type) {
                 try {
                     // Images are now synced with server to fix broken images in Supabase cross-device.
                     const dbForServer = db;
+                    const payload = JSON.stringify(dbForServer);
+                    const sizeInMb = payload.length / (1024 * 1024);
+                    console.log(`[SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
+
+                    // Vercel Serverless Function payload limit is 4.5MB
+                    if (sizeInMb > 4.2) {
+                        showToast(`Peringatan: Ukuran data (${sizeInMb.toFixed(2)}MB) hampir melebihi batas server (4.5MB).`, 'warning');
+                    }
+
                     const res = await fetch(getApiBaseUrl() + '/api/db', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(dbForServer)
+                        body: payload
                     });
 
                     if (res.ok) {
@@ -2940,35 +2949,88 @@ function showLoginForm(type) {
             document.getElementById('question-modal').classList.replace('hidden', 'flex');
         }
 
-        function addImageUrl() {
+        async function addImageUrl() {
             const urlInput = document.getElementById('q-image-url');
             const url = urlInput.value.trim();
             if (!url) return;
 
             if (!window.storedImages) window.storedImages = [];
-            window.storedImages.push(url);
+            
+            if (url.startsWith('data:image')) {
+                showToast('Mekompresi data gambar...', 'info');
+                try {
+                    const compressed = await compressImage(url);
+                    window.storedImages.push(compressed);
+                } catch (err) {
+                    console.error('Failed to compress pasted image:', err);
+                    window.storedImages.push(url);
+                }
+            } else {
+                window.storedImages.push(url);
+            }
+            
             urlInput.value = '';
             renderImagePreviews();
         }
 
-        function previewQuestionImages(event) {
+        function compressImage(base64Str, maxWidth = 1024, maxHeight = 1024, quality = 0.7) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = base64Str;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height *= maxWidth / width;
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width *= maxHeight / height;
+                            height = maxHeight;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+            });
+        }
+
+        async function previewQuestionImages(event) {
             const files = Array.from(event.target.files);
             if (files.length === 0) return;
 
             if (!window.storedImages) window.storedImages = [];
 
-            let loaded = 0;
-            files.forEach((file) => {
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    window.storedImages.push(e.target.result);
-                    loaded++;
-                    if (loaded === files.length) {
-                        renderImagePreviews();
+            showToast('Mekompresi gambar...', 'info');
+
+            for (const file of files) {
+                try {
+                    const base64 = await new Promise(resolve => {
+                        const reader = new FileReader();
+                        reader.onload = e => resolve(e.target.result);
+                        reader.readAsDataURL(file);
+                    });
+                    
+                    if (file.type.startsWith('image/')) {
+                        const compressed = await compressImage(base64);
+                        window.storedImages.push(compressed);
+                        console.log(`[IMAGE] Compressed: ${file.name} (${(base64.length/1024).toFixed(1)}KB -> ${(compressed.length/1024).toFixed(1)}KB)`);
+                    } else {
+                        window.storedImages.push(base64);
                     }
-                };
-                reader.readAsDataURL(file);
-            });
+                } catch (err) {
+                    console.error('Failed to process image:', file.name, err);
+                }
+            }
+            renderImagePreviews();
         }
 
         function renderImagePreviews() {
