@@ -20,19 +20,19 @@
 
     <div id="app">
         <!-- Login Screen -->
-        
+
 
         <!-- Auth Modal -->
-        
+
 
         <!-- Admin Dashboard -->
-        
+
 
         <!-- Student Area -->
-        
+
 
         <!-- Confirmation Finish Exam Modal -->
-        
+
     </div>
 
     <!-- Saving Data Modal for Sequential Render/Deploy Queue -->
@@ -270,7 +270,7 @@
     </div>
 
     <!-- Student Instruction Modal -->
-    
+
 
     <!-- Image Zoom Modal -->
     <div id="image-zoom-modal"
@@ -374,7 +374,8 @@
                                     </button>
                                 </div>
                                 <p id="ai-open-hint" class="hidden text-[10px] text-slate-500 leading-relaxed mt-2">
-                                    Tekan tombol untuk membuka fitur AI. Setelah fitur terbuka, pilih materi, jenis & jumlah soal, dan opsi gambar jika perlu.
+                                    Tekan tombol untuk membuka fitur AI. Setelah fitur terbuka, pilih materi, jenis &
+                                    jumlah soal, dan opsi gambar jika perlu.
                                 </p>
                             </div>
 
@@ -481,7 +482,11 @@
                                         <thead
                                             class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                             <tr>
-                                                <th class="px-6 py-4 text-center w-16"><input type="checkbox" id="teacher-select-all-checkbox" onclick="toggleTeacherSelectAll(event)" class="rounded border-slate-300 text-sky-600 focus:ring-sky-500"></th>
+                                                <th class="px-6 py-4 text-center w-16"><input type="checkbox"
+                                                        id="teacher-select-all-checkbox"
+                                                        onclick="toggleTeacherSelectAll(event)"
+                                                        class="rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+                                                </th>
                                                 <th class="px-6 py-4 w-20 text-center">Urutan</th>
                                                 <th class="px-6 py-4">Isi Soal</th>
                                                 <th class="px-6 py-4 w-32">Kategori</th>
@@ -509,10 +514,10 @@
                         </div>
                         <div class="flex gap-2">
                             <button onclick="exportTeacherResultsToExcel()"
-                                class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2"><i
+                                class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-1.5"><i
                                     class="fas fa-download"></i> Export Excel</button>
                             <button onclick="batchAiCorrectAllStudents()"
-                                class="px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"><i
+                                class="px-3 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm transition-all"><i
                                     class="fas fa-robot"></i> Koreksi AI Semua Siswa</button>
                         </div>
                     </div>
@@ -563,18 +568,22 @@
                             <h1 class="text-3xl font-black text-slate-800 mb-2">Manajemen API Keys</h1>
                             <p class="text-slate-400">Tambahkan API Key pribadi Anda untuk meningkatkan kuota AI</p>
                         </div>
-                        
+
                         <div class="bg-blue-50 border border-blue-200 rounded-3xl p-6">
                             <div class="flex gap-4">
                                 <div class="flex-shrink-0">
-                                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                    <div
+                                        class="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
                                         <i class="fas fa-lightbulb text-lg"></i>
                                     </div>
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-blue-900 mb-2">Dapatkan API Key Gratis</h3>
-                                    <p class="text-sm text-blue-800 mb-3">Google Gemini API menyediakan kuota gratis untuk pengembang. Gunakan API Key pribadi Anda untuk meningkatkan kemampuan sistem AI kami.</p>
-                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-all">
+                                    <p class="text-sm text-blue-800 mb-3">Google Gemini API menyediakan kuota gratis
+                                        untuk pengembang. Gunakan API Key pribadi Anda untuk meningkatkan kemampuan
+                                        sistem AI kami.</p>
+                                    <a href="https://aistudio.google.com/app/apikey" target="_blank"
+                                        class="inline-block px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-all">
                                         <i class="fas fa-external-link-alt mr-2"></i>Buka Google AI Studio
                                     </a>
                                 </div>
@@ -584,14 +593,18 @@
                         <div class="bg-green-50 border border-green-200 rounded-3xl p-6">
                             <div class="flex gap-4">
                                 <div class="flex-shrink-0">
-                                    <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+                                    <div
+                                        class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
                                         <i class="fas fa-robot text-lg"></i>
                                     </div>
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-green-900 mb-2">Dapatkan API Key ChatGPT/OpenAI</h3>
-                                    <p class="text-sm text-green-800 mb-3">OpenAI menyediakan API untuk ChatGPT dan model AI lainnya. Dapatkan API Key Anda untuk menggunakan kemampuan AI yang lebih canggih.</p>
-                                    <a href="https://platform.openai.com/api-keys" target="_blank" class="inline-block px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-all">
+                                    <p class="text-sm text-green-800 mb-3">OpenAI menyediakan API untuk ChatGPT dan
+                                        model AI lainnya. Dapatkan API Key Anda untuk menggunakan kemampuan AI yang
+                                        lebih canggih.</p>
+                                    <a href="https://platform.openai.com/api-keys" target="_blank"
+                                        class="inline-block px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-all">
                                         <i class="fas fa-external-link-alt mr-2"></i>Buka OpenAI Platform
                                     </a>
                                 </div>
@@ -603,17 +616,19 @@
                             <div class="lg:col-span-2">
                                 <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                                     <h3 class="text-lg font-black text-slate-800 mb-4">Tambahkan API Key Baru</h3>
-                                    <div id="api-keys-warning-banner" class="hidden mb-4 rounded-2xl border p-4 text-sm font-bold"></div>
+                                    <div id="api-keys-warning-banner"
+                                        class="hidden mb-4 rounded-2xl border p-4 text-sm font-bold"></div>
                                     <div class="space-y-4">
                                         <div>
-                                            <label class="text-xs font-black text-slate-400 uppercase tracking-widest block mb-2">Google Gemini / ChatGPT API Key</label>
+                                            <label
+                                                class="text-xs font-black text-slate-400 uppercase tracking-widest block mb-2">Google
+                                                Gemini / ChatGPT API Key</label>
                                             <div class="flex gap-2">
                                                 <div class="flex-1 relative">
-                                                    <input type="password" id="new-api-key-input" 
-                                                        autocomplete="off"
+                                                    <input type="password" id="new-api-key-input" autocomplete="off"
                                                         class="w-full px-4 py-3 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-sky-500 text-sm font-mono"
                                                         placeholder="sk_live_... atau AIza...">
-                                                    <button type="button" 
+                                                    <button type="button"
                                                         class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-sky-500 transition-colors"
                                                         onclick="toggleNewKeyVisibility()">
                                                         <i class="fas fa-eye"></i>
@@ -626,7 +641,8 @@
                                             </div>
                                         </div>
                                         <p class="text-xs text-slate-500 leading-relaxed">
-                                            <strong>Privasi:</strong> API Key Anda disimpan aman di server dan hanya digunakan untuk request AI Anda saat membuat soal.
+                                            <strong>Privasi:</strong> API Key Anda disimpan aman di server dan hanya
+                                            digunakan untuk request AI Anda saat membuat soal.
                                         </p>
                                     </div>
                                 </div>
@@ -634,7 +650,8 @@
 
                             <!-- Stats -->
                             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-                                <h3 class="text-sm font-black text-slate-800 mb-4 uppercase flex items-center justify-between">
+                                <h3
+                                    class="text-sm font-black text-slate-800 mb-4 uppercase flex items-center justify-between">
                                     <span>Statistik Real-Time</span>
                                     <span class="flex items-center gap-1">
                                         <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -654,12 +671,14 @@
                                     <div class="h-px bg-slate-100"></div>
                                     <div>
                                         <p class="text-xs text-slate-400 mb-2">Status Kuota</p>
-                                        <div id="api-keys-status-badge" class="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+                                        <div id="api-keys-status-badge"
+                                            class="inline-block px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
                                             <i class="fas fa-check-circle mr-1"></i>API Keys Pribadi Siap Digunakan
                                         </div>
                                     </div>
                                     <div>
-                                        <div id="global-api-keys-status-badge" class="inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full">
+                                        <div id="global-api-keys-status-badge"
+                                            class="inline-block px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full">
                                             <i class="fas fa-exclamation-circle mr-1"></i>Tidak ada key global
                                         </div>
                                     </div>
@@ -670,7 +689,8 @@
                                         </p>
                                     </div>
                                     <div>
-                                        <p id="api-keys-quota-note" class="text-xs text-slate-500 leading-relaxed">Sinkronisasi otomatis setiap 3 detik</p>
+                                        <p id="api-keys-quota-note" class="text-xs text-slate-500 leading-relaxed">
+                                            Sinkronisasi otomatis setiap 3 detik</p>
                                     </div>
                                 </div>
                             </div>
@@ -681,11 +701,11 @@
                             <div class="flex items-center justify-between mb-4">
                                 <h3 class="text-lg font-black text-slate-800">API Keys Pribadi Anda</h3>
                                 <div class="flex gap-2">
-                                    <button onclick="syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys())" 
+                                    <button onclick="syncTeacherAPIKeysFromServer().then(() => renderTeacherAPIKeys())"
                                         class="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-all">
                                         <i class="fas fa-sync mr-1"></i>SYNC
                                     </button>
-                                    <select id="api-keys-filter" onchange="renderTeacherAPIKeys()" 
+                                    <select id="api-keys-filter" onchange="renderTeacherAPIKeys()"
                                         class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 transition-all">
                                         <option value="all">Semua Key</option>
                                         <option value="active">Aktif Saja</option>
@@ -696,7 +716,8 @@
                             <div id="api-keys-list" class="space-y-3">
                                 <div class="text-center py-8 text-slate-400">
                                     <i class="fas fa-inbox text-3xl mb-2 opacity-30"></i>
-                                    <p class="text-sm">Belum ada API Key. Tambahkan satu sekarang untuk meningkatkan kuota!</p>
+                                    <p class="text-sm">Belum ada API Key. Tambahkan satu sekarang untuk meningkatkan
+                                        kuota!</p>
                                 </div>
                             </div>
                         </div>
@@ -704,11 +725,13 @@
                         <!-- Global API Keys -->
                         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                             <div class="flex items-center justify-between mb-4">
-                                <button onclick="window.toggleGlobalAPIKeysList()" class="flex-1 flex items-center justify-between text-lg font-black text-slate-800 hover:text-sky-600 transition-colors">
+                                <button onclick="window.toggleGlobalAPIKeysList()"
+                                    class="flex-1 flex items-center justify-between text-lg font-black text-slate-800 hover:text-sky-600 transition-colors">
                                     <span>API Keys Global (System)</span>
-                                    <i id="global-api-keys-toggle-icon" class="fas fa-chevron-down transition-transform duration-200"></i>
+                                    <i id="global-api-keys-toggle-icon"
+                                        class="fas fa-chevron-down transition-transform duration-200"></i>
                                 </button>
-                                <button onclick="syncGlobalAPIKeysFromServer()" 
+                                <button onclick="syncGlobalAPIKeysFromServer()"
                                     class="ml-2 px-3 py-2 bg-sky-50 text-sky-600 rounded-lg text-xs font-bold hover:bg-sky-600 hover:text-white transition-all">
                                     <i class="fas fa-sync mr-1"></i>SYNC
                                 </button>
@@ -719,21 +742,28 @@
                                     <p class="text-sm">Memuat daftar global API key...</p>
                                 </div>
                             </div>
-                            <p class="text-xs text-slate-500 leading-relaxed mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                                <i class="fas fa-info-circle mr-2"></i>Global API key adalah key yang dikonfigurasi administrator sistem. Key ini digunakan ketika personal key Anda tidak tersedia atau sudah habis.
+                            <p
+                                class="text-xs text-slate-500 leading-relaxed mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                                <i class="fas fa-info-circle mr-2"></i>Global API key adalah key yang dikonfigurasi
+                                administrator sistem. Key ini digunakan ketika personal key Anda tidak tersedia atau
+                                sudah habis.
                             </p>
                         </div>
 
                         <div class="bg-amber-50 border border-amber-200 rounded-3xl p-6">
                             <div class="flex gap-4">
                                 <div class="flex-shrink-0">
-                                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
+                                    <div
+                                        class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
                                         <i class="fas fa-chart-line text-lg"></i>
                                     </div>
                                 </div>
                                 <div>
                                     <h3 class="font-bold text-amber-900 mb-2">Kuota Unlimited dengan Multiple Keys</h3>
-                                    <p class="text-sm text-amber-800">Sistem ini secara otomatis menggunakan API Key Anda saat membuat soal AI. Jika kuota satu key habis, sistem akan mencoba key lain atau fallback ke global key. Dengan menambahkan API Key sendiri, Anda berkontribusi memperbesar kapasitas sistem untuk semua pengguna.</p>
+                                    <p class="text-sm text-amber-800">Sistem ini secara otomatis menggunakan API Key
+                                        Anda saat membuat soal AI. Jika kuota satu key habis, sistem akan mencoba key
+                                        lain atau fallback ke global key. Dengan menambahkan API Key sendiri, Anda
+                                        berkontribusi memperbesar kapasitas sistem untuk semua pengguna.</p>
                                 </div>
                             </div>
                         </div>
@@ -772,7 +802,9 @@
 
             <div class="space-y-4">
                 <div>
-                    <label id="ai-materi-label" class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Materi / Topik Utama</label>
+                    <label id="ai-materi-label"
+                        class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Materi /
+                        Topik Utama</label>
                     <input type="text" id="ai-materi"
                         class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"
                         placeholder="Contoh: Ekosistem Laut, Aljabar, dll">
@@ -780,12 +812,19 @@
 
                 <!-- Upload Kisi-kisi -->
                 <div class="bg-amber-50 border border-amber-100 rounded-2xl p-4">
-                    <label class="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-2">Upload Kisi-kisi / Blueprint (Opsional)</label>
-                    <p class="text-[10px] text-amber-500 mb-3 leading-relaxed">Punya kisi-kisi sendiri? Upload file Word, Excel, PDF, atau Gambar (JPG, PNG) agar AI membuat soal persis sesuai dokumen Anda.</p>
-                    <input type="file" id="ai-blueprint-file" onchange="handleAiBlueprintChange(this)" accept=".doc,.docx,.xlsx,.xls,.pdf,.jpg,.jpeg,.png" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 transition-all">
+                    <label class="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-2">Upload
+                        Kisi-kisi / Blueprint (Opsional)</label>
+                    <p class="text-[10px] text-amber-500 mb-3 leading-relaxed">Punya kisi-kisi sendiri? Upload file
+                        Word, Excel, PDF, atau Gambar (JPG, PNG) agar AI membuat soal persis sesuai dokumen Anda.</p>
+                    <input type="file" id="ai-blueprint-file" onchange="handleAiBlueprintChange(this)"
+                        accept=".doc,.docx,.xlsx,.xls,.pdf,.jpg,.jpeg,.png"
+                        class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 transition-all">
                     <div class="mt-4">
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Penanganan Gambar / Ilustrasi</label>
-                        <select id="ai-opsi-gambar" class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold">
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Penanganan
+                            Gambar / Ilustrasi</label>
+                        <select id="ai-opsi-gambar"
+                            class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold">
                             <option value="none">Tanpa Gambar</option>
                             <option value="placeholder">Buat Area Ilustrasi Kosong</option>
                             <option value="auto">Generate Gambar AI Otomatis</option>
@@ -795,30 +834,37 @@
 
                 <!-- Jumlah Per Jenis Soal -->
                 <div>
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Jumlah &amp; Bentuk Soal</label>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Jumlah
+                        &amp; Bentuk Soal</label>
                     <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-2xl ring-1 ring-slate-200">
                         <div class="flex items-center gap-2">
-                            <input type="number" id="ai-jml-pg" min="0" value="5" oninput="calculateAiHots()" class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <input type="number" id="ai-jml-pg" min="0" value="5" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
                             <span class="text-xs text-slate-700 font-medium">Pilihan Ganda</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="number" id="ai-jml-pgk" min="0" value="0" oninput="calculateAiHots()" class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <input type="number" id="ai-jml-pgk" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
                             <span class="text-xs text-slate-700 font-medium">PG Kompleks</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="number" id="ai-jml-esai" min="0" value="0" oninput="calculateAiHots()" class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <input type="number" id="ai-jml-esai" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
                             <span class="text-xs text-slate-700 font-medium">Esai / Uraian</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="number" id="ai-jml-bs" min="0" value="0" oninput="calculateAiHots()" class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <input type="number" id="ai-jml-bs" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
                             <span class="text-xs text-slate-700 font-medium">Benar / Salah</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <input type="number" id="ai-jml-jodoh" min="0" value="0" oninput="calculateAiHots()" class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
+                            <input type="number" id="ai-jml-jodoh" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-14 px-2 py-2 bg-white rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center font-bold">
                             <span class="text-xs text-slate-700 font-medium">Menjodohkan</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span id="ai-total-display" class="w-14 text-center text-sm font-black text-rose-600 bg-rose-50 py-2 rounded-lg ring-1 ring-rose-200">5</span>
+                            <span id="ai-total-display"
+                                class="w-14 text-center text-sm font-black text-rose-600 bg-rose-50 py-2 rounded-lg ring-1 ring-rose-200">5</span>
                             <span class="text-xs text-rose-600 font-bold">Total Soal</span>
                         </div>
                     </div>
@@ -826,44 +872,55 @@
 
                 <!-- Level Soal -->
                 <div>
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Level Soal</label>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Level
+                        Soal</label>
                     <div class="grid grid-cols-3 gap-2">
                         <div>
                             <label class="text-[10px] text-slate-500 block mb-1">Mudah</label>
-                            <input type="number" id="ai-lvl-mudah" min="0" value="0" oninput="calculateAiHots()" class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
+                            <input type="number" id="ai-lvl-mudah" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
                         </div>
                         <div>
                             <label class="text-[10px] text-slate-500 block mb-1">Sedang</label>
-                            <input type="number" id="ai-lvl-sedang" min="0" value="0" oninput="calculateAiHots()" class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
+                            <input type="number" id="ai-lvl-sedang" min="0" value="0" oninput="calculateAiHots()"
+                                class="w-full px-2 py-2 bg-slate-50 rounded-lg outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-rose-400 text-sm text-center">
                         </div>
                         <div>
                             <label class="text-[10px] text-slate-500 block mb-1">HOTS</label>
-                            <input type="number" id="ai-lvl-hots" min="0" value="0" readonly class="w-full px-2 py-2 bg-rose-50 text-rose-600 font-bold rounded-lg outline-none ring-1 ring-rose-200 text-sm text-center">
+                            <input type="number" id="ai-lvl-hots" min="0" value="0" readonly
+                                class="w-full px-2 py-2 bg-rose-50 text-rose-600 font-bold rounded-lg outline-none ring-1 ring-rose-200 text-sm text-center">
                         </div>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3" id="ai-target-selectors">
                     <div>
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mapel</label>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Mapel</label>
                         <select id="ai-mapel"
                             class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel</label>
+                        <label
+                            class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rombel</label>
                         <select id="ai-rombel"
                             class="w-full px-5 py-3 bg-slate-50 rounded-2xl outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-rose-500 font-bold"></select>
                     </div>
                 </div>
 
-                <div class="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-[11px] text-rose-800 leading-relaxed">
-                    <i class="fas fa-info-circle mr-1"></i> AI akan membuat soal sesuai jenis dan level yang dipilih, mengikuti Kurikulum Merdeka SMP.
+                <div
+                    class="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-[11px] text-rose-800 leading-relaxed">
+                    <i class="fas fa-info-circle mr-1"></i> AI akan membuat soal sesuai jenis dan level yang dipilih,
+                    mengikuti Kurikulum Merdeka SMP.
                 </div>
-                <div class="text-[11px] text-slate-500 leading-relaxed border border-slate-100 rounded-2xl p-4 bg-slate-50">
-                    <i class="fas fa-hand-point-right mr-1"></i> Tekan GENERATE SOAL setelah memilih jumlah, level, dan opsi gambar. Jika Anda ingin soal berilustrasi, pilih opsi gambar di atas.
+                <div
+                    class="text-[11px] text-slate-500 leading-relaxed border border-slate-100 rounded-2xl p-4 bg-slate-50">
+                    <i class="fas fa-hand-point-right mr-1"></i> Tekan GENERATE SOAL setelah memilih jumlah, level, dan
+                    opsi gambar. Jika Anda ingin soal berilustrasi, pilih opsi gambar di atas.
                 </div>
 
-                <button onclick="generateQuestionsWithAi()" id="ai-generate-btn" title="Klik untuk membuat soal AI. Gunakan opsi gambar jika perlu ilustrasi."
+                <button onclick="generateQuestionsWithAi()" id="ai-generate-btn"
+                    title="Klik untuk membuat soal AI. Gunakan opsi gambar jika perlu ilustrasi."
                     class="w-full py-4 bg-rose-600 text-white font-bold rounded-2xl hover:bg-rose-700 shadow-xl shadow-rose-100 transition-all flex items-center justify-center gap-3">
                     <i class="fas fa-magic"></i> GENERATE SOAL
                 </button>
@@ -1030,11 +1087,14 @@
     </div>
 
     <!-- Loading Overlay -->
-    <div id="loading-overlay" class="fixed inset-0 bg-slate-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
+    <div id="loading-overlay"
+        class="fixed inset-0 bg-slate-900 bg-opacity-60 flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center">
             <div class="w-16 h-16 mx-auto mb-4 relative">
                 <div class="absolute inset-0 rounded-full border-4 border-slate-200"></div>
-                <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-indigo-500 animate-spin"></div>
+                <div
+                    class="absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-indigo-500 animate-spin">
+                </div>
                 <div class="absolute inset-0 flex items-center justify-center">
                     <i class="fas fa-spinner text-xl text-sky-600 animate-pulse"></i>
                 </div>
@@ -1058,7 +1118,7 @@
     <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
-    
+
     <!-- Toast Notification Container -->
     <div id="toast-container" class="fixed bottom-6 left-6 z-[10000] flex flex-col gap-2 pointer-events-none"></div>
 </body>
