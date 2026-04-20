@@ -1359,6 +1359,109 @@ async function callAI(prompt, teacherId = null) {
     throw new Error('Semua provider AI gagal: ' + errors.join(' | '));
 }
 
+/**
+ * Fetch an image from a URL and upload it to Supabase Storage
+ */
+async function uploadImageUrlToSupabase(url) {
+    if (!url || typeof url !== 'string') return url;
+    if (!url.includes('pollinations.ai') && !url.startsWith('http')) return url;
+
+    try {
+        console.log(`[STORAGE] Auto-migrating external image to Supabase: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
+        
+        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const ext = contentType.split('/')[1] || 'jpg';
+        const fileName = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${ext}`;
+
+        const { data, error } = await supabase.storage
+            .from('images')
+            .upload(fileName, buffer, {
+                contentType: contentType,
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('images')
+            .getPublicUrl(fileName);
+
+        console.log(`[STORAGE] Upload success: ${publicUrl}`);
+        return publicUrl;
+    } catch (err) {
+        console.error(`[STORAGE] Failed to migrate image ${url}:`, err.message);
+        return url; // Fallback to original URL if upload fails
+    }
+}
+
+/**
+ * Scan questions for external AI images and migrate them to Supabase
+ */
+async function processImagesInQuestions(questions) {
+    if (!Array.isArray(questions)) return questions;
+    
+    for (const q of questions) {
+        // Handle q.image (legacy)
+        if (q.image && typeof q.image === 'string' && q.image.includes('pollinations.ai')) {
+            q.image = await uploadImageUrlToSupabase(q.image);
+        }
+        
+        // Handle q.images (array)
+        if (Array.isArray(q.images)) {
+            for (let i = 0; i < q.images.length; i++) {
+                if (typeof q.images[i] === 'string' && q.images[i].includes('pollinations.ai')) {
+                    q.images[i] = await uploadImageUrlToSupabase(q.images[i]);
+                }
+            }
+        }
+        
+        // Handle images embedded in question text
+        if (q.text && q.text.includes('<img')) {
+            const imgRegex = /<img[^>]+src="([^">]+)"/g;
+            let match;
+            const urlsToReplace = [];
+            while ((match = imgRegex.exec(q.text)) !== null) {
+                if (match[1].includes('pollinations.ai')) {
+                    urlsToReplace.push(match[1]);
+                }
+            }
+            
+            for (const oldUrl of urlsToReplace) {
+                const newUrl = await uploadImageUrlToSupabase(oldUrl);
+                q.text = q.text.split(oldUrl).join(newUrl);
+            }
+        }
+    }
+    return questions;
+}
+
+/**
+ * Scan HTML for external AI images and migrate them to Supabase
+ */
+async function processImagesInHtml(html) {
+    if (!html || typeof html !== 'string' || !html.includes('<img')) return html;
+    
+    const imgRegex = /<img[^>]+src="([^">]+)"/g;
+    let match;
+    const urlsToReplace = [];
+    while ((match = imgRegex.exec(html)) !== null) {
+        if (match[1].includes('pollinations.ai')) {
+            urlsToReplace.push(match[1]);
+        }
+    }
+    
+    let processedHtml = html;
+    for (const oldUrl of urlsToReplace) {
+        const newUrl = await uploadImageUrlToSupabase(oldUrl);
+        processedHtml = processedHtml.split(oldUrl).join(newUrl);
+    }
+    return processedHtml;
+}
+
 app.post('/api/generate-ai', async (req, res) => {
     const {
         materi,
@@ -1368,6 +1471,7 @@ app.post('/api/generate-ai', async (req, res) => {
         rombel = '',
         typeCounts = {},
         levelCounts = {},
+        opsiGambar = 'none',
         teacherId = null
     } = req.body;
 
@@ -1422,13 +1526,20 @@ app.post('/api/generate-ai', async (req, res) => {
     if (levelParts.length > 0) {
         prompt += `Sebarkan level soal sebagai ${levelParts.join(', ')}. `;
     }
+
+    if (opsiGambar === 'auto') {
+        prompt += `\nUsahakan untuk soal yang relevan, sertakan ilustrasi gambar secara otomatis menggunakan tag HTML berikut di dalam field "text": <br><img src="https://image.pollinations.ai/prompt/[ENGLISH_VISUAL_DESCRIPTION]?width=500&height=300&nologo=true" alt="Ilustrasi AI" style="border-radius: 8px; margin: 15px 0; max-width: 100%;"><br>\nGantikan [ENGLISH_VISUAL_DESCRIPTION] with deskripsi visual detail dalam BAHASA INGGRIS yang merangkum maksud soal. `;
+    } else if (opsiGambar === 'placeholder') {
+        prompt += `\nUntuk soal yang memerlukan ilustrasi, sertakan placeholder HTML berikut di field "text": <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; background-color: #f8fafc; margin: 15px 0;"><p style="font-weight: bold; color: #475569; margin: 0;">[Area Ilustrasi: DESKRIPSI_GAMBAR]</p></div>. Ganti DESKRIPSI_GAMBAR dengan nama objek gambar yang relevan. `;
+    }
+
     prompt += 'Balas HANYA dengan JSON array valid tanpa markdown atau kata-kata tambahan. ';
     prompt += 'Contoh format: [{"text":"Pertanyaan?","options":["A","B","C","D"],"correct":0,"mapel":"' + mapel + '","rombel":"' + rombel + '","type":"single"}]. ';
     prompt += 'Untuk soal pilihan ganda kompleks gunakan "correct" sebagai array indeks (0-3 untuk A-D) dengan 2-3 jawaban benar, contoh: {"type":"multiple","options":["A","B","C","D"],"correct":[0,2,3]}. ';
     prompt += 'SANGAT PENTING untuk soal benar/salah (type: "tf"): Field "text" HANYA berisi instruksi (misal: "Tentukan apakah pernyataan berikut Benar atau Salah:"), dan SEMUA pernyataan yang akan dinilai WAJIB masuk ke array "options". Secara default buat 3 pernyataan per soal, namun 1 atau 2 pernyataan juga diperbolehkan. Field "correct" berisi array boolean (true/false) sesuai urutan pernyataan di options. Contoh 3 pernyataan: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1","Pernyataan 2","Pernyataan 3"],"correct":[true,false,true]}. Contoh 1 pernyataan: {"type":"tf","text":"Pilihlah Benar atau Salah:","options":["Pernyataan 1"],"correct":[true]}. JANGAN meletakkan pernyataan di dalam field "text".';
-    prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, dan "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
+    prompt += 'Untuk soal menjodohkan gunakan "questions" sebagai array pertanyaan, "answers" sebagai array jawaban, and "correct" sebagai array string yang menunjukkan jawaban untuk setiap pertanyaan, contoh: {"type":"matching","questions":["Pertanyaan 1","Pertanyaan 2"],"answers":["Jawaban A","Jawaban B"],"correct":["Jawaban A","Jawaban B"]}.';
 
-    console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, typeCounts=${JSON.stringify(normalizedCounts)}, levelCounts=${JSON.stringify(levelCounts)}`);
+    console.log(`[/api/generate-ai] Request: mapel=${mapel}, rombel=${rombel}, jumlah=${actualJumlah}, tipe=${tipe}, opsiGambar=${opsiGambar}`);
 
     try {
         let text = await callAI(prompt, teacherId);
@@ -1495,10 +1606,11 @@ app.post('/api/generate-ai', async (req, res) => {
             parsed = JSON.parse(match[0]);
         }
 
-        console.log(`[/api/generate-ai] Parsed questions:`, JSON.stringify(parsed, null, 2));
-
         // Normalize question formats
         let normalizedQuestions = parsed.map(q => fullNormalizeQuestion(q, mapel, rombel));
+
+        // PROCESS IMAGES: Migrate pollination.ai urls to Supabase
+        normalizedQuestions = await processImagesInQuestions(normalizedQuestions);
 
         // Filter out invalid questions
         const originalCount = normalizedQuestions.length;
@@ -1606,6 +1718,9 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
         // Membersihkan markdown wrapper (```html ... ```) jika AI membocorkannya
         text = text.replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
 
+        // PROCESS IMAGES: Migrate pollination.ai urls in HTML to Supabase
+        text = await processImagesInHtml(text);
+
         // Cek apakah ada script JSON Bank Soal
         let parsedQuestions = null;
         if (extraData?.simpanBank) {
@@ -1613,11 +1728,16 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
             if (match && match[1]) {
                 try {
                     parsedQuestions = JSON.parse(match[1].trim());
+                    
+                    // Inject basic standard properties and full normalization
+                    parsedQuestions = parsedQuestions.map(q => fullNormalizeQuestion(q, mapel, fase));
+
+                    // PROCESS IMAGES: Migrate pollination.ai urls in Bank Soal questions to Supabase
+                    parsedQuestions = await processImagesInQuestions(parsedQuestions);
+
                     // Tambahkan ke database
                     const db = (await readDB()) || { questions: [] };
                     if (!db.questions) db.questions = [];
-                    // Inject basic standard properties and full normalization
-                    parsedQuestions = parsedQuestions.map(q => fullNormalizeQuestion(q, mapel, fase));
                     db.questions = [...db.questions, ...parsedQuestions];
                     await writeDB(db);
                     console.log(`[AI Bank Soal] Successfully saved ${parsedQuestions.length} questions to database.`);

@@ -5853,6 +5853,7 @@ function showLoginForm(type) {
             }
 
             const levelCounts = getAiLevelCounts(jumlah);
+            const opsiGambar = document.getElementById('ai-opsi-gambar')?.value || 'none';
             const loading = document.getElementById('ai-loading');
             if (loading) {
                 loading.classList.remove('hidden');
@@ -5864,7 +5865,7 @@ function showLoginForm(type) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                        materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts,
+                        materi, jumlah, tipe, mapel, rombel, typeCounts, levelCounts, opsiGambar,
                         teacherId: (currentSiswa && currentSiswa.role === 'teacher') ? currentSiswa.id : null
                     })
                 });
