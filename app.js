@@ -116,6 +116,11 @@ function showLoginForm(type) {
 
         window.addEventListener('blur', () => {
             if (isExamActive) {
+                // SKIP on mobile if input is active
+                const activeEl = document.activeElement;
+                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
+                if (isMobileDevice() && isInputActive) return;
+
                 handleCheating('Meninggalkan jendela ujian');
             }
         });
@@ -410,6 +415,16 @@ function showLoginForm(type) {
                 // Check if window size changed significantly (possible exit attempt)
                 const currentWidth = window.innerWidth;
                 const currentHeight = window.innerHeight;
+
+                // SKIP detection on mobile if an input/textarea is focused (keyboard likely shown)
+                const activeEl = document.activeElement;
+                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
+                
+                if (isMobileDevice() && isInputActive) {
+                    console.log('Mobile input is active, ignoring resize event (keyboard likely shown)');
+                    return;
+                }
+
                 const screenWidth = window.screen.width;
                 const screenHeight = window.screen.height;
 
@@ -434,6 +449,11 @@ function showLoginForm(type) {
         // Detect focus loss (alt+tab, clicking outside window, etc.)
         window.addEventListener('blur', () => {
             if (isExamActive && isFullscreen) {
+                // SKIP on mobile if input is active
+                const activeEl = document.activeElement;
+                const isInputActive = activeEl && (activeEl.tagName === 'TEXTAREA' || (activeEl.tagName === 'INPUT' && activeEl.type !== 'button' && activeEl.type !== 'submit'));
+                if (isMobileDevice() && isInputActive) return;
+
                 console.log('Window focus lost during exam');
                 handleCheating('Fokus jendela hilang');
                 // Force restore focus and fullscreen
