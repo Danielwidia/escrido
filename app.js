@@ -7556,19 +7556,36 @@ function showLoginForm(type) {
         // --- QUIZZ MANAGEMENT FUNCTIONS ---
 
         async function openQuizzAiModal() {
+            let mapelOpts = '<option value="">--Pilih Mapel--</option>';
+            if (db.settings && db.settings.mapel) {
+                db.settings.mapel.forEach(m => mapelOpts += `<option value="${m}">${m}</option>`);
+            }
+            let rombelOpts = '<option value="">--Pilih Rombel--</option>';
+            if (db.settings && db.settings.rombel) {
+                db.settings.rombel.forEach(r => rombelOpts += `<option value="${r}">${r}</option>`);
+            }
+
             const { value: formValues } = await Swal.fire({
                 title: 'Buat Quizz AI',
                 html:
                     '<input id="swal-q-topic" class="swal2-input" placeholder="Topik (misal: Kemajuan Teknologi)">' +
-                    '<input id="swal-q-count" type="number" class="swal2-input" value="5" min="1" max="50" placeholder="Jumlah (misal: 5)">',
+                    '<input id="swal-q-count" type="number" class="swal2-input" value="5" min="1" max="50" placeholder="Jumlah (misal: 5)">' +
+                    '<select id="swal-q-mapel" class="swal2-select w-full" style="width:100%">' + mapelOpts + '</select>' +
+                    '<select id="swal-q-rombel" class="swal2-select w-full" style="width:100%">' + rombelOpts + '</select>',
                 focusConfirm: false,
                 showCancelButton: true,
                 confirmButtonText: 'Generate',
                 confirmButtonColor: '#0ea5e9',
                 preConfirm: () => {
+                    const mapel = document.getElementById('swal-q-mapel').value;
+                    const rombel = document.getElementById('swal-q-rombel').value;
+                    if (!mapel || !rombel) return Swal.showValidationMessage('Mapel dan Rombel wajib dipilih!');
+                    
                     return {
                         topic: document.getElementById('swal-q-topic').value,
-                        count: document.getElementById('swal-q-count').value
+                        count: document.getElementById('swal-q-count').value,
+                        mapel: mapel,
+                        rombel: rombel
                     }
                 }
             });
@@ -7599,11 +7616,16 @@ function showLoginForm(type) {
                     const data = await response.json();
                     if (data.ok && data.questions) {
                         if (!db.quizzes) db.quizzes = [];
-                        db.quizzes.push(...data.questions);
+                        const questions = data.questions.map(q => ({
+                            mapel: formValues.mapel,
+                            rombel: formValues.rombel,
+                            ...q
+                        }));
+                        db.quizzes.push(...questions);
                         await save();
                         renderAdminQuizz();
                         renderTeacherQuizz();
-                        Swal.fire('Berhasil!', `${data.questions.length} soal quizz telah ditambahkan.`, 'success');
+                        Swal.fire('Berhasil!', `${questions.length} soal quizz telah ditambahkan.`, 'success');
                     } else {
                         throw new Error(data.error || 'Gagal generate AI');
                     }
@@ -7614,13 +7636,24 @@ function showLoginForm(type) {
         }
 
         async function openQuizzModal() {
+            let mapelOpts = '<option value="">--Pilih Mapel--</option>';
+            if (db.settings && db.settings.mapel) {
+                db.settings.mapel.forEach(m => mapelOpts += `<option value="${m}">${m}</option>`);
+            }
+            let rombelOpts = '<option value="">--Pilih Rombel--</option>';
+            if (db.settings && db.settings.rombel) {
+                db.settings.rombel.forEach(r => rombelOpts += `<option value="${r}">${r}</option>`);
+            }
+
             const result = await Swal.fire({
                 title: 'Tambah Soal Quizz Manual',
                 html:
+                    '<select id="quizz-mapel" class="swal2-select w-full mb-3" style="width:100%">' + mapelOpts + '</select>' +
+                    '<select id="quizz-rombel" class="swal2-select w-full mb-3" style="width:100%">' + rombelOpts + '</select>' +
                     '<input id="quizz-q" class="swal2-input" placeholder="Pertanyaan">' +
                     '<div class="flex gap-2"><input id="quizz-a0" class="swal2-input w-full" placeholder="Opsi A"><input id="quizz-a1" class="swal2-input w-full" placeholder="Opsi B"></div>' +
                     '<div class="flex gap-2 mb-4"><input id="quizz-a2" class="swal2-input w-full" placeholder="Opsi C"><input id="quizz-a3" class="swal2-input w-full" placeholder="Opsi D"></div>' +
-                    '<select id="quizz-correct" class="swal2-select w-full">' +
+                    '<select id="quizz-correct" class="swal2-select w-full" style="width:100%">' +
                     '<option value="0">Jawaban Benar: A</option>' +
                     '<option value="1">Jawaban Benar: B</option>' +
                     '<option value="2">Jawaban Benar: C</option>' +
@@ -7632,11 +7665,17 @@ function showLoginForm(type) {
                 confirmButtonText: 'Simpan',
                 confirmButtonColor: '#0ea5e9',
                 preConfirm: () => {
+                    const mapel = document.getElementById('quizz-mapel').value;
+                    const rombel = document.getElementById('quizz-rombel').value;
                     const q = document.getElementById('quizz-q').value;
                     const a0 = document.getElementById('quizz-a0').value;
                     const a1 = document.getElementById('quizz-a1').value;
+                    if (!mapel || !rombel) return Swal.showValidationMessage('Mapel dan Rombel wajib dipilih!');
                     if (!q || !a0 || !a1) return Swal.showValidationMessage('Pertanyaan dan minimal 2 opsi (A & B) wajib diisi!');
+                    
                     return {
+                        mapel: mapel,
+                        rombel: rombel,
                         question: q,
                         answers: [a0, a1,
                             document.getElementById('quizz-a2').value || "",
@@ -7650,6 +7689,8 @@ function showLoginForm(type) {
                 if (!db.quizzes) db.quizzes = [];
                 const answers = result.value.answers;
                 db.quizzes.push({
+                    mapel: result.value.mapel,
+                    rombel: result.value.rombel,
                     question: result.value.question,
                     answers: answers,
                     correct: Math.min(result.value.correct, answers.length - 1)
@@ -7679,71 +7720,104 @@ function showLoginForm(type) {
             }
         }
 
+        function populateQuizzFilters(mapelSelect, rombelSelect) {
+            if (mapelSelect && mapelSelect.options.length <= 1 && db.settings && db.settings.mapel) {
+                db.settings.mapel.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = opt.textContent = m;
+                    mapelSelect.appendChild(opt);
+                });
+            }
+            if (rombelSelect && rombelSelect.options.length <= 1 && db.settings && db.settings.rombel) {
+                db.settings.rombel.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = opt.textContent = m;
+                    rombelSelect.appendChild(opt);
+                });
+            }
+        }
+
+        function buildQuizzRow(tbody, q, baseIdx) {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-slate-50 hover:bg-slate-50/50 transition-colors';
+            let answersHtml = q.answers.map((a, i) =>
+                `<div class="${i === q.correct ? 'text-green-600 font-bold' : 'text-slate-500'} bg-slate-50 p-1 mb-1 rounded flex items-center justify-between">
+                    <span>${String.fromCharCode(65 + i)}. ${a}</span>
+                    <i class="fas ${i === q.correct ? 'fa-check text-green-500' : 'fa-times opacity-0'}"></i>
+                </div>`
+            ).join('');
+
+            let mapelBadge = q.mapel ? `<span class="bg-blue-100 text-blue-700 font-bold text-[9px] px-2 py-0.5 rounded-full mr-1">${q.mapel}</span>` : '';
+            let rombelBadge = q.rombel ? `<span class="bg-purple-100 text-purple-700 font-bold text-[9px] px-2 py-0.5 rounded-full">${q.rombel}</span>` : '';
+
+            tr.innerHTML = `
+                <td class="px-6 py-4">
+                    <div class="mb-2">${mapelBadge}${rombelBadge}</div>
+                    <div class="text-sm font-bold text-slate-800">${q.question}</div>
+                </td>
+                <td class="px-6 py-4 text-xs w-1/2">${answersHtml}</td>
+                <td class="px-6 py-4 text-center">
+                    <button onclick="deleteQuizz(${baseIdx})" class="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                        <i class="fas fa-trash-alt text-[10px]"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+
         function renderAdminQuizz() {
             const tbody = document.getElementById('admin-quizz-table-body');
+            const mapelFilter = document.getElementById('admin-quizz-filter-mapel');
+            const rombelFilter = document.getElementById('admin-quizz-filter-rombel');
             if (!tbody) return;
+
+            populateQuizzFilters(mapelFilter, rombelFilter);
+
+            const fMapel = mapelFilter ? mapelFilter.value : '';
+            const fRombel = rombelFilter ? rombelFilter.value : '';
+
+            let quizzes = db.quizzes || [];
+            if (fMapel) quizzes = quizzes.filter(q => q.mapel === fMapel);
+            if (fRombel) quizzes = quizzes.filter(q => q.rombel === fRombel);
+
             tbody.innerHTML = '';
 
-            if (!db.quizzes || db.quizzes.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz. Gunakan AI atau buat manual.</td></tr>';
+            if (quizzes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz untuk kategori ini.</td></tr>';
                 return;
             }
 
-            db.quizzes.forEach((q, idx) => {
-                const tr = document.createElement('tr');
-                tr.className = 'border-b border-slate-50 hover:bg-slate-50/50 transition-colors';
-                let answersHtml = q.answers.map((a, i) =>
-                    `<div class="${i === q.correct ? 'text-green-600 font-bold' : 'text-slate-500'} bg-slate-50 p-1 mb-1 rounded">
-                        ${String.fromCharCode(65 + i)}. ${a}
-                    </div>`
-                ).join('');
-
-                tr.innerHTML = `
-                    <td class="px-6 py-4">
-                        <div class="text-sm font-bold text-slate-800">${q.question}</div>
-                    </td>
-                    <td class="px-6 py-4 text-xs w-1/2">${answersHtml}</td>
-                    <td class="px-6 py-4 text-center">
-                        <button onclick="deleteQuizz(${idx})" class="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
-                            <i class="fas fa-trash-alt text-[10px]"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+            quizzes.forEach((q) => {
+                const baseIdx = db.quizzes.indexOf(q);
+                buildQuizzRow(tbody, q, baseIdx);
             });
         }
 
         function renderTeacherQuizz() {
             const tbody = document.getElementById('teacher-quizz-table-body');
+            const mapelFilter = document.getElementById('teacher-quizz-filter-mapel');
+            const rombelFilter = document.getElementById('teacher-quizz-filter-rombel');
             if (!tbody) return;
+
+            populateQuizzFilters(mapelFilter, rombelFilter);
+
+            const fMapel = mapelFilter ? mapelFilter.value : '';
+            const fRombel = rombelFilter ? rombelFilter.value : '';
+
+            let quizzes = db.quizzes || [];
+            if (fMapel) quizzes = quizzes.filter(q => q.mapel === fMapel);
+            if (fRombel) quizzes = quizzes.filter(q => q.rombel === fRombel);
+
             tbody.innerHTML = '';
 
-            if (!db.quizzes || db.quizzes.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz. Gunakan AI atau buat manual.</td></tr>';
+            if (quizzes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz untuk kategori ini.</td></tr>';
                 return;
             }
 
-            db.quizzes.forEach((q, idx) => {
-                const tr = document.createElement('tr');
-                tr.className = 'border-b border-slate-50 hover:bg-slate-50/50 transition-colors';
-                let answersHtml = q.answers.map((a, i) =>
-                    `<div class="${i === q.correct ? 'text-green-600 font-bold' : 'text-slate-500'} bg-slate-50 p-1 mb-1 rounded">
-                        ${String.fromCharCode(65 + i)}. ${a}
-                    </div>`
-                ).join('');
-
-                tr.innerHTML = `
-                    <td class="px-6 py-4">
-                        <div class="text-sm font-bold text-slate-800">${q.question}</div>
-                    </td>
-                    <td class="px-6 py-4 text-xs w-1/2">${answersHtml}</td>
-                    <td class="px-6 py-4 text-center">
-                        <button onclick="deleteQuizz(${idx})" class="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
-                            <i class="fas fa-trash-alt text-[10px]"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+            quizzes.forEach((q) => {
+                const baseIdx = db.quizzes.indexOf(q);
+                buildQuizzRow(tbody, q, baseIdx);
             });
         }
 

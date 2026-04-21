@@ -91,7 +91,13 @@
             <div class="bg-white/10 p-8 md:p-12 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl flex flex-col items-center w-full max-w-lg">
                 <i class="fas fa-bolt text-7xl text-yellow-400 drop-shadow-lg mb-6"></i>
                 <h1 class="text-5xl md:text-6xl font-black mb-8 text-center drop-shadow-lg leading-tight">Siap Bermain?</h1>
-                <input type="text" id="player-name" placeholder="Masukkan Nama Kamu" autocomplete="off" class="text-black text-center text-2xl font-bold py-4 px-6 rounded-xl w-full mb-6 border-4 border-transparent focus:border-yellow-400 outline-none transition-all shadow-inner">
+                <input type="text" id="player-name" placeholder="Masukkan Nama Kamu" autocomplete="off" class="text-black text-center text-2xl font-bold py-4 px-6 rounded-xl w-full mb-3 border-4 border-transparent focus:border-yellow-400 outline-none transition-all shadow-inner">
+                <select id="select-mapel" class="text-black text-center text-lg font-bold py-3 px-6 rounded-xl w-full mb-3 border-4 border-transparent outline-none">
+                    <option value="">-- Semua Mapel --</option>
+                </select>
+                <select id="select-rombel" class="text-black text-center text-lg font-bold py-3 px-6 rounded-xl w-full mb-6 border-4 border-transparent outline-none">
+                    <option value="">-- Semua Rombel --</option>
+                </select>
                 <button onclick="startGame()" class="bg-yellow-400 border-b-4 border-yellow-600 hover:bg-yellow-300 text-purple-900 text-3xl font-black py-4 px-12 rounded-xl w-full transition-transform active:translate-y-1 shadow-lg">Gas Mulai!</button>
             </div>
         </div>
@@ -156,19 +162,8 @@
     </main>
 
     <script>
-        // Quiz Data
-        let questions = [
-            {
-                question: "Apa ibukota Indonesia?",
-                answers: ["Jakarta", "Surabaya", "Bandung", "Medan"],
-                correct: 0
-            },
-            {
-                question: "Berapa hasil dari 5 + 7 x 2?",
-                answers: ["24", "19", "17", "12"],
-                correct: 1
-            }
-        ];
+        let allQuestions = [];
+        let questions = [];
 
         // Fetch Quizzes from Server
         async function fetchQuizzes() {
@@ -176,7 +171,7 @@
                 const res = await fetch(window.location.origin + '/api/db');
                 const data = await res.json();
                 if (data && data.quizzes && data.quizzes.length > 0) {
-                    questions = data.quizzes;
+                    allQuestions = data.quizzes;
                 }
             } catch(e) {
                 console.error('Failed to load quizzes from database, using offline mode or fallback data.');
@@ -184,10 +179,27 @@
                 try {
                     const localData = JSON.parse(localStorage.getItem('DORKAS_CBT_DB'));
                     if (localData && localData.quizzes && localData.quizzes.length > 0) {
-                        questions = localData.quizzes;
+                        allQuestions = localData.quizzes;
                     }
                 } catch(err) {}
             }
+            populateFilters();
+        }
+
+        function populateFilters() {
+            const mapelSet = new Set();
+            const rombelSet = new Set();
+            allQuestions.forEach(q => {
+                if(q.mapel) mapelSet.add(q.mapel);
+                if(q.rombel) rombelSet.add(q.rombel);
+            });
+            const sm = document.getElementById('select-mapel');
+            const sr = document.getElementById('select-rombel');
+            sm.innerHTML = '<option value="">-- Semua Mapel --</option>';
+            sr.innerHTML = '<option value="">-- Semua Rombel --</option>';
+            
+            mapelSet.forEach(m => sm.innerHTML += `<option value="${m}">${m}</option>`);
+            rombelSet.forEach(r => sr.innerHTML += `<option value="${r}">${r}</option>`);
         }
         
         // Load immediately
@@ -215,6 +227,23 @@
             const nameInput = document.getElementById("player-name").value.trim();
             playerName = nameInput || "Pemain Jago";
             
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+
+            questions = allQuestions.filter(q => {
+                let match = true;
+                if (selMapel && q.mapel !== selMapel) match = false;
+                if (selRombel && q.rombel !== selRombel) match = false;
+                return match;
+            });
+
+            if (questions.length === 0) {
+                alert("Maaf, belum ada soal kuis untuk kategori mapel dan rombel yang tertera.");
+                return;
+            }
+
+            questions = questions.sort(() => Math.random() - 0.5);
+
             document.getElementById("start-screen").classList.add("hidden");
             document.getElementById("quiz-screen").classList.remove("hidden");
             document.getElementById("quiz-screen").classList.add("flex");
