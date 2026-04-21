@@ -4954,14 +4954,19 @@ function showLoginForm(type) {
             const questions = result.questions || [];
             const answers = result.answers || [];
 
-            // Collect all essay question indices
+            // Collect uncorrected essay question indices
             const essayIndices = questions.reduce((acc, q, i) => {
-                if (q.type === 'text') acc.push(i);
+                if (q.type === 'text' && 
+                    (!result.manualScores || result.manualScores[i] === undefined || result.manualScores[i] === null) &&
+                    (!result.aiEssayFeedback || result.aiEssayFeedback[i] === undefined || result.aiEssayFeedback[i] === null)
+                ) {
+                    acc.push(i);
+                }
                 return acc;
             }, []);
 
             if (essayIndices.length === 0) {
-                alert('Tidak ada soal esai dalam ujian ini.');
+                alert('Semua soal esai untuk siswa ini sudah pernah dikoreksi AI/Manual.');
                 return;
             }
 
