@@ -67,7 +67,8 @@ const DEFAULT_DB = {
     students: [{ id: 'ADM', password: 'admin321', name: 'Administrator', role: 'admin' }],
     results: [],
     schedules: [],
-    timeLimits: {}
+    timeLimits: {},
+    quizzes: []
 };
 
 // ─── Real-time State Manager untuk API Keys ────────────────────────────────────
@@ -1754,6 +1755,33 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
         return res.json({ ok: true, html: text, savedToBankSoal: !!parsedQuestions });
     } catch (e) {
         console.error('[/api/generate-admin-doc] Fatal error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── API: Generate Quizz AI ───────────────────────────────────────────────────
+app.post('/api/generate-quizz-ai', async (req, res) => {
+    const { topic, count = 5, teacherId = null } = req.body;
+    if (!topic) return res.status(400).json({ error: 'Topic is required' });
+
+    const prompt = `Buatkan soal kuis edukatif interaktif bergaya game (seperti Kahoot) tentang topik "${topic}". Jumlah soal: ${count}.\n` +
+        `Berikan output dalam format JSON array of objects secara langsung tanpa awalan atau blok markdown (misalnya tanpa \`\`\`json). Properti yang harus ada:\n` +
+        `- question: teks pertanyaan\n` +
+        `- answers: array [string, string, string, string] berisi persis 4 pilihan jawaban yang salah satunya benar\n` +
+        `- correct: indeks (0, 1, 2, atau 3) dari jawaban yang benar\n\n` +
+        `Soal harus mendidik, menarik, dan bahasanya ramah untuk siswa.`;
+
+    try {
+        let text = await callAI(prompt, teacherId);
+
+        // Clean up JSON response
+        text = text.replace(/```json\n?|```/g, '').trim();
+        const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (!match) return res.status(500).json({ error: 'No JSON array in AI response' });
+
+        const parsed = JSON.parse(match[0]);
+        return res.json({ ok: true, questions: parsed });
+    } catch (e) {
         return res.status(500).json({ error: e.message });
     }
 });

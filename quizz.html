@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Interaktif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap');
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #f2f2f2;
+        }
+
+        .kahoot-bg {
+            background: #46178f; /* Classic Kahoot Purple */
+        }
+        
+        .answer-btn {
+            transition: transform 0.1s, filter 0.1s;
+        }
+        .answer-btn:hover {
+            filter: brightness(0.9);
+        }
+        .answer-btn:active {
+            transform: scale(0.98);
+        }
+
+        .shape-icon {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+        }
+
+        .triangle-up {
+            width: 0;
+            height: 0;
+            border-left: 16px solid transparent;
+            border-right: 16px solid transparent;
+            border-bottom: 28px solid white;
+        }
+
+        .diamond {
+            width: 24px;
+            height: 24px;
+            background: white;
+            transform: rotate(45deg);
+        }
+
+        .circle {
+            width: 28px;
+            height: 28px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .square {
+            width: 26px;
+            height: 26px;
+            background: white;
+        }
+
+        /* Animations */
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="kahoot-bg min-h-screen text-white flex flex-col">
+
+    <!-- Header (Score & PIN / Status) -->
+    <header class="p-4 flex justify-between items-center bg-white/10 shadow-sm backdrop-blur-md">
+        <div class="text-xl font-black tracking-widest uppercase flex items-center gap-2">
+            <i class="fas fa-gamepad text-yellow-400"></i> CBT Games
+        </div>
+        <div class="bg-black/30 px-6 py-2 rounded-full text-2xl font-black shadow-inner">
+            Score: <span id="score-display">0</span>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col p-4 md:p-8 max-w-5xl mx-auto w-full" id="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="flex-1 flex flex-col items-center justify-center animate-pop">
+            <div class="bg-white/10 p-8 md:p-12 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl flex flex-col items-center w-full max-w-lg">
+                <i class="fas fa-bolt text-7xl text-yellow-400 drop-shadow-lg mb-6"></i>
+                <h1 class="text-5xl md:text-6xl font-black mb-8 text-center drop-shadow-lg leading-tight">Siap Bermain?</h1>
+                <input type="text" id="player-name" placeholder="Masukkan Nama Kamu" autocomplete="off" class="text-black text-center text-2xl font-bold py-4 px-6 rounded-xl w-full mb-6 border-4 border-transparent focus:border-yellow-400 outline-none transition-all shadow-inner">
+                <button onclick="startGame()" class="bg-yellow-400 border-b-4 border-yellow-600 hover:bg-yellow-300 text-purple-900 text-3xl font-black py-4 px-12 rounded-xl w-full transition-transform active:translate-y-1 shadow-lg">Gas Mulai!</button>
+            </div>
+        </div>
+
+        <!-- Quiz Screen -->
+        <div id="quiz-screen" class="hidden flex-1 flex-col">
+            <!-- Question Title -->
+            <div class="bg-white text-black text-center p-6 md:p-10 rounded-2xl shadow-xl mb-4 self-center w-full min-h-[140px] flex items-center justify-center animate-pop relative border-b-8 border-gray-200">
+                 <h2 id="question-text" class="text-3xl md:text-5xl font-black leading-tight drop-shadow-sm">Pertanyaan akan muncul di sini?</h2>
+            </div>
+            
+            <!-- Timer & Media -->
+            <div class="flex flex-col md:flex-row justify-between items-center py-4 my-2 gap-4">
+                <div class="w-24 h-24 bg-purple-700 rounded-full flex items-center justify-center flex-col shadow-lg border-4 border-purple-400 animate-pop relative overflow-hidden">
+                    <span id="timer-display" class="text-4xl font-black relative z-10">20</span>
+                </div>
+                
+                <!-- Optional Image Placeholder -->
+                <div class="w-full max-w-xl h-48 bg-black/20 rounded-xl flex items-center justify-center overflow-hidden shadow-inner border border-white/10">
+                    <i class="fas fa-image text-5xl text-white/30"></i>
+                </div>
+                
+                <div class="w-24 h-24 bg-teal-500 rounded-full flex items-center justify-center flex-col shadow-lg border-4 border-teal-300 animate-pop">
+                    <span class="text-sm font-bold opacity-80">SOAL</span>
+                    <span id="question-counter" class="text-2xl font-black">1/5</span>
+                </div>
+            </div>
+
+            <!-- Answers Grid -->
+            <div id="answers-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mt-auto">
+                <!-- Buttons will be injected here via JS -->
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden flex-1 flex-col items-center justify-center animate-pop">
+            <h1 class="text-5xl md:text-7xl font-black mb-2 text-center drop-shadow-lg text-yellow-400">Permainan Selesai!</h1>
+            <p class="text-2xl font-bold mb-8 text-center text-purple-200" id="result-message">Kerja bagus, <span id="final-name" class="text-white"></span>!</p>
+            
+            <div class="bg-white/20 p-8 rounded-3xl backdrop-blur-xl border border-white/30 text-center w-full max-w-md shadow-2xl flex flex-col items-center relative overflow-hidden">
+                <div class="absolute -top-10 -right-10 text-yellow-400 opacity-20"><i class="fas fa-trophy text-[10rem]"></i></div>
+                
+                <h3 class="text-lg uppercase tracking-widest font-bold text-gray-200 mb-2 relative z-10">Total Score</h3>
+                <div class="text-7xl font-black mb-8 text-white drop-shadow-lg relative z-10" id="final-score">0</div>
+                
+                <div class="flex justify-around w-full text-xl font-bold bg-black/20 p-4 rounded-xl relative z-10">
+                    <div class="text-green-400 flex flex-col items-center">
+                        <i class="fas fa-check-circle mb-1 text-3xl"></i> 
+                        <span id="correct-count">0</span> Benar
+                    </div>
+                    <div class="text-red-400 flex flex-col items-center">
+                        <i class="fas fa-times-circle mb-1 text-3xl"></i> 
+                        <span id="wrong-count">0</span> Salah
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="location.reload()" class="mt-10 bg-white border-b-4 border-gray-300 text-purple-800 hover:bg-gray-100 text-2xl font-black py-4 px-12 rounded-xl shadow-xl transition-transform active:translate-y-1">
+                Main Lagi <i class="fas fa-redo ml-2"></i>
+            </button>
+        </div>
+    </main>
+
+    <script>
+        // Quiz Data
+        let questions = [
+            {
+                question: "Apa ibukota Indonesia?",
+                answers: ["Jakarta", "Surabaya", "Bandung", "Medan"],
+                correct: 0
+            },
+            {
+                question: "Berapa hasil dari 5 + 7 x 2?",
+                answers: ["24", "19", "17", "12"],
+                correct: 1
+            }
+        ];
+
+        // Fetch Quizzes from Server
+        async function fetchQuizzes() {
+            try {
+                const res = await fetch(window.location.origin + '/api/db');
+                const data = await res.json();
+                if (data && data.quizzes && data.quizzes.length > 0) {
+                    questions = data.quizzes;
+                }
+            } catch(e) {
+                console.error('Failed to load quizzes from database, using offline mode or fallback data.');
+                // Fallback to localstorage if available
+                try {
+                    const localData = JSON.parse(localStorage.getItem('DORKAS_CBT_DB'));
+                    if (localData && localData.quizzes && localData.quizzes.length > 0) {
+                        questions = localData.quizzes;
+                    }
+                } catch(err) {}
+            }
+        }
+        
+        // Load immediately
+        fetchQuizzes();
+
+        // Colors and Shapes for Buttons (Kahoot style)
+        const styles = [
+            { bg: "bg-[#e21b3c]", border: "border-[#b0102b]", shape: "<div class='triangle-up drop-shadow-md'></div>" }, // Red
+            { bg: "bg-[#1368ce]", border: "border-[#0d4f9e]", shape: "<div class='diamond drop-shadow-md'></div>" },     // Blue
+            { bg: "bg-[#d89e00]", border: "border-[#a87a00]", shape: "<div class='circle drop-shadow-md'></div>" },      // Yellow
+            { bg: "bg-[#26890c]", border: "border-[#1c6408]", shape: "<div class='square drop-shadow-md'></div>" }       // Green
+        ];
+
+        // State Variables
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let timeLeft = 20;
+        let timerInterval;
+        let playerName = "";
+        let correctAnswers = 0;
+        let isAnswering = false;
+
+        // Start Game
+        function startGame() {
+            const nameInput = document.getElementById("player-name").value.trim();
+            playerName = nameInput || "Pemain Jago";
+            
+            document.getElementById("start-screen").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.remove("hidden");
+            document.getElementById("quiz-screen").classList.add("flex");
+            
+            loadQuestion();
+        }
+
+        // Add event listener to input to start on Enter key
+        document.getElementById("player-name").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                startGame();
+            }
+        });
+
+        // Load Question
+        function loadQuestion() {
+            isAnswering = false;
+            if (currentQuestionIndex >= questions.length) {
+                endGame();
+                return;
+            }
+
+            const q = questions[currentQuestionIndex];
+            document.getElementById("question-text").innerText = q.question;
+            document.getElementById("question-counter").innerText = `${currentQuestionIndex + 1}/${questions.length}`;
+            
+            const answersContainer = document.getElementById("answers-container");
+            answersContainer.innerHTML = "";
+
+            // Create Buttons
+            q.answers.forEach((ans, index) => {
+                const btn = document.createElement("button");
+                btn.className = `answer-btn ${styles[index].bg} border-b-[6px] ${styles[index].border} rounded-xl p-4 md:p-6 text-left flex items-center gap-4 text-xl md:text-3xl font-bold min-h-[100px] shadow-lg relative overflow-hidden`;
+                
+                // Content
+                btn.innerHTML = `
+                    <div class="flex-shrink-0 w-12 flex justify-center pointer-events-none">${styles[index].shape}</div>
+                    <span class="pointer-events-none w-full text-center pr-8 drop-shadow-md leading-tight">${ans}</span>
+                    <div class="result-icon hidden absolute right-6 text-4xl pointer-events-none"></div>
+                `;
+                
+                btn.onclick = () => selectAnswer(index, btn);
+                answersContainer.appendChild(btn);
+            });
+
+            // Reset and start timer
+            timeLeft = 20;
+            updateTimerDisplay();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(handleTimer, 1000);
+        }
+
+        function handleTimer() {
+            timeLeft--;
+            updateTimerDisplay();
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                handleTimeout();
+            }
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById("timer-display");
+            display.innerText = timeLeft;
+            if (timeLeft <= 5) {
+                display.classList.add("text-red-300", "animate-ping");
+                setTimeout(() => display.classList.remove("animate-ping"), 300);
+            } else {
+                display.classList.remove("text-red-300");
+            }
+        }
+
+        function handleTimeout() {
+            if (isAnswering) return;
+            isAnswering = true;
+            revealAnswers(-1); // -1 means no answer selected
+            setTimeout(() => {
+                currentQuestionIndex++;
+                loadQuestion();
+            }, 3000);
+        }
+
+        function selectAnswer(selectedIndex, selectedBtn) {
+            if (isAnswering) return;
+            isAnswering = true;
+            clearInterval(timerInterval);
+
+            const q = questions[currentQuestionIndex];
+            const isCorrect = selectedIndex === q.correct;
+
+            if (isCorrect) {
+                 // Calculate points based on speed (max 1000, min 500 if correct)
+                 const points = Math.round((timeLeft / 20) * 500) + 500;
+                 score += points;
+                 correctAnswers++;
+                 
+                 // Animate score update
+                 const scoreDisplay = document.getElementById("score-display");
+                 scoreDisplay.innerText = score;
+                 scoreDisplay.classList.add("text-yellow-400", "scale-125");
+                 setTimeout(() => scoreDisplay.classList.remove("text-yellow-400", "scale-125"), 300);
+                 
+                 // Show check icon
+                 const icon = selectedBtn.querySelector(".result-icon");
+                 icon.innerHTML = "<i class='fas fa-check text-green-300 drop-shadow'></i>";
+                 icon.classList.remove("hidden");
+                 icon.classList.add("animate-pop");
+            } else {
+                 // Show cross icon
+                 const icon = selectedBtn.querySelector(".result-icon");
+                 icon.innerHTML = "<i class='fas fa-times text-red-300 drop-shadow'></i>";
+                 icon.classList.remove("hidden");
+                 icon.classList.add("animate-pop");
+            }
+
+            revealAnswers(selectedIndex);
+
+            setTimeout(() => {
+                currentQuestionIndex++;
+                loadQuestion();
+            }, 3000); // Wait 3 seconds to show answers before moving next
+        }
+
+        function revealAnswers(selectedIndex) {
+            const btns = document.querySelectorAll(".answer-btn");
+            const q = questions[currentQuestionIndex];
+
+            btns.forEach((btn, index) => {
+                btn.onclick = null; // Remove click events
+                btn.style.cursor = "default";
+                btn.classList.remove("active:translate-y-1");
+                
+                if (index === q.correct) {
+                    // Correct answer stays bright
+                    if (index !== selectedIndex && selectedIndex !== -1) {
+                         // If user didn't select this but it's the correct one, show checkmark
+                         const icon = btn.querySelector(".result-icon");
+                         icon.innerHTML = "<i class='fas fa-check text-white opacity-80'></i>";
+                         icon.classList.remove("hidden");
+                         icon.classList.add("animate-pop");
+                    }
+                } else {
+                    // Dim incorrect answers
+                    btn.style.opacity = "0.3";
+                    btn.style.filter = "grayscale(50%)";
+                }
+            });
+        }
+
+        function endGame() {
+            document.getElementById("quiz-screen").classList.add("hidden");
+            document.getElementById("result-screen").classList.remove("hidden");
+            document.getElementById("result-screen").classList.add("flex");
+
+            document.getElementById("final-name").innerText = playerName;
+            
+            // Animate final score
+            let currentScore = 0;
+            const targetScore = score;
+            const duration = 1500;
+            const intervalTime = 30;
+            const steps = duration / intervalTime;
+            const increment = targetScore / steps;
+            
+            const scoreDisplay = document.getElementById("final-score");
+            const counter = setInterval(() => {
+                currentScore += increment;
+                if (currentScore >= targetScore) {
+                    currentScore = targetScore;
+                    clearInterval(counter);
+                    // Add pop animation at the end
+                    scoreDisplay.classList.add("text-yellow-400", "scale-110", "transition-all");
+                    setTimeout(() => scoreDisplay.classList.remove("text-yellow-400", "scale-110", "transition-all"), 300);
+                }
+                scoreDisplay.innerText = Math.round(currentScore);
+            }, intervalTime);
+
+            document.getElementById("correct-count").innerText = correctAnswers;
+            document.getElementById("wrong-count").innerText = questions.length - correctAnswers;
+        }
+    </script>
+</body>
+</html>

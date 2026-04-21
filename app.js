@@ -565,6 +565,7 @@ function showLoginForm(type) {
             subjects: [{ name: "Pendidikan Agama", locked: false }, { name: "Bahasa Indonesia", locked: false }, { name: "Matematika", locked: false }, { name: "IPA", locked: false }, { name: "IPS", locked: false }, { name: "Bahasa Inggris", locked: false }],
             rombels: ["VII", "VIII", "IX"],
             questions: [],
+            quizzes: [],
             students: [{ id: "ADM", password: "admin321", name: "Administrator", role: "admin" }],
             results: [],
             schedules: []
@@ -576,6 +577,7 @@ function showLoginForm(type) {
                 subjects: Array.isArray(d.subjects) ? d.subjects : [],
                 rombels: Array.isArray(d.rombels) ? d.rombels : [],
                 questions: Array.isArray(d.questions) ? d.questions : [],
+                quizzes: Array.isArray(d.quizzes) ? d.quizzes : [],
                 students: Array.isArray(d.students) ? d.students : [],
                 results: Array.isArray(d.results) ? d.results : [],
                 schedules: Array.isArray(d.schedules) ? d.schedules : [],
@@ -1851,9 +1853,8 @@ function showLoginForm(type) {
             alert(msg);
         }
 
-        // Switch between teacher dashboard tabs
         function switchTeacherTab(tab) {
-            const tabs = ['bank-soal', 'hasil-ujian', 'api-keys'];
+            const tabs = ['bank-soal', 'hasil-ujian', 'api-keys', 'quizz'];
             tabs.forEach(t => {
                 const tabDiv = document.getElementById(`teacher-tab-${t}`);
                 const tabBtn = document.getElementById(`tab-${t}`);
@@ -1884,7 +1885,9 @@ function showLoginForm(type) {
                     clearInterval(teacherResultsPollInterval);
                     teacherResultsPollInterval = null;
                 }
-                if (tab === 'bank-soal') {
+                if (tab === 'quizz') {
+                    renderTeacherQuizz();
+                } else if (tab === 'bank-soal') {
                     // Clear search input to prevent browser autocomplete from persisting values
                     const searchInput = document.getElementById('teacher-search-questions');
                     if (searchInput) searchInput.value = '';
@@ -2503,6 +2506,7 @@ function showLoginForm(type) {
             if (sec === 'banksoal') { populateSelects(['filter-mapel', 'filter-rombel'], true); renderAdminQuestions(); }
             if (sec === 'rombel') { renderRombelSection(); }
             if (sec === 'students') renderAdminStudents();
+            if (sec === 'quizz') renderAdminQuizz();
             if (sec === 'results') {
                 populateSelects(['results-filter-rombel', 'results-filter-mapel'], true);
                 renderAdminResults();
@@ -7548,6 +7552,206 @@ function showLoginForm(type) {
         };
 
         // --- END API KEY MANAGEMENT FUNCTIONS ---
+
+        // --- QUIZZ MANAGEMENT FUNCTIONS ---
+
+        async function openQuizzAiModal() {
+            const { value: formValues } = await Swal.fire({
+                title: 'Buat Quizz AI',
+                html:
+                    '<input id="swal-q-topic" class="swal2-input" placeholder="Topik (misal: Kemajuan Teknologi)">' +
+                    '<input id="swal-q-count" type="number" class="swal2-input" value="5" min="1" max="50" placeholder="Jumlah (misal: 5)">',
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Generate',
+                confirmButtonColor: '#0ea5e9',
+                preConfirm: () => {
+                    return {
+                        topic: document.getElementById('swal-q-topic').value,
+                        count: document.getElementById('swal-q-count').value
+                    }
+                }
+            });
+
+            if (formValues && formValues.topic && formValues.count) {
+                Swal.fire({
+                    title: 'Membuat Quizz...',
+                    html: '<div class="text-sm text-slate-500">AI sedang menyusun pertanyaan interaktif, harap tunggu.</div>',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+
+                try {
+                    let teacherId = null;
+                    if (typeof currentSiswa !== 'undefined' && currentSiswa && currentSiswa.role === 'guru') {
+                        teacherId = currentSiswa.id;
+                    }
+                    const response = await fetch(getApiBaseUrl() + '/api/generate-quizz-ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            topic: formValues.topic,
+                            count: parseInt(formValues.count) || 5,
+                            teacherId: teacherId
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.ok && data.questions) {
+                        if (!db.quizzes) db.quizzes = [];
+                        db.quizzes.push(...data.questions);
+                        await save();
+                        renderAdminQuizz();
+                        renderTeacherQuizz();
+                        Swal.fire('Berhasil!', `${data.questions.length} soal quizz telah ditambahkan.`, 'success');
+                    } else {
+                        throw new Error(data.error || 'Gagal generate AI');
+                    }
+                } catch (e) {
+                    Swal.fire('Error', e.message, 'error');
+                }
+            }
+        }
+
+        async function openQuizzModal() {
+            const result = await Swal.fire({
+                title: 'Tambah Soal Quizz Manual',
+                html:
+                    '<input id="quizz-q" class="swal2-input" placeholder="Pertanyaan">' +
+                    '<div class="flex gap-2"><input id="quizz-a0" class="swal2-input w-full" placeholder="Opsi A"><input id="quizz-a1" class="swal2-input w-full" placeholder="Opsi B"></div>' +
+                    '<div class="flex gap-2 mb-4"><input id="quizz-a2" class="swal2-input w-full" placeholder="Opsi C"><input id="quizz-a3" class="swal2-input w-full" placeholder="Opsi D"></div>' +
+                    '<select id="quizz-correct" class="swal2-select w-full">' +
+                    '<option value="0">Jawaban Benar: A</option>' +
+                    '<option value="1">Jawaban Benar: B</option>' +
+                    '<option value="2">Jawaban Benar: C</option>' +
+                    '<option value="3">Jawaban Benar: D</option>' +
+                    '</select>',
+                focusConfirm: false,
+                width: '600px',
+                showCancelButton: true,
+                confirmButtonText: 'Simpan',
+                confirmButtonColor: '#0ea5e9',
+                preConfirm: () => {
+                    const q = document.getElementById('quizz-q').value;
+                    const a0 = document.getElementById('quizz-a0').value;
+                    const a1 = document.getElementById('quizz-a1').value;
+                    if (!q || !a0 || !a1) return Swal.showValidationMessage('Pertanyaan dan minimal 2 opsi (A & B) wajib diisi!');
+                    return {
+                        question: q,
+                        answers: [a0, a1,
+                            document.getElementById('quizz-a2').value || "",
+                            document.getElementById('quizz-a3').value || ""].filter(x => x && x.trim() !== ""),
+                        correct: parseInt(document.getElementById('quizz-correct').value) || 0
+                    }
+                }
+            });
+
+            if (result.isConfirmed && result.value) {
+                if (!db.quizzes) db.quizzes = [];
+                const answers = result.value.answers;
+                db.quizzes.push({
+                    question: result.value.question,
+                    answers: answers,
+                    correct: Math.min(result.value.correct, answers.length - 1)
+                });
+                await save();
+                renderAdminQuizz();
+                renderTeacherQuizz();
+                const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+                Toast.fire({ icon: 'success', title: 'Pertanyaan Quizz ditambahkan!' });
+            }
+        }
+
+        async function deleteQuizz(idx) {
+            const result = await Swal.fire({
+                title: 'Hapus Pertanyaan Quizz?',
+                text: 'Pertanyaan ini akan dihapus secara permanen.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Ya, Hapus!'
+            });
+            if (result.isConfirmed) {
+                db.quizzes.splice(idx, 1);
+                await save();
+                renderAdminQuizz();
+                renderTeacherQuizz();
+            }
+        }
+
+        function renderAdminQuizz() {
+            const tbody = document.getElementById('admin-quizz-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (!db.quizzes || db.quizzes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz. Gunakan AI atau buat manual.</td></tr>';
+                return;
+            }
+
+            db.quizzes.forEach((q, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-50 hover:bg-slate-50/50 transition-colors';
+                let answersHtml = q.answers.map((a, i) =>
+                    `<div class="${i === q.correct ? 'text-green-600 font-bold' : 'text-slate-500'} bg-slate-50 p-1 mb-1 rounded">
+                        ${String.fromCharCode(65 + i)}. ${a}
+                    </div>`
+                ).join('');
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-bold text-slate-800">${q.question}</div>
+                    </td>
+                    <td class="px-6 py-4 text-xs w-1/2">${answersHtml}</td>
+                    <td class="px-6 py-4 text-center">
+                        <button onclick="deleteQuizz(${idx})" class="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                            <i class="fas fa-trash-alt text-[10px]"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderTeacherQuizz() {
+            const tbody = document.getElementById('teacher-quizz-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (!db.quizzes || db.quizzes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center py-8 text-slate-400"><i class="fas fa-gamepad text-3xl mb-2 opacity-30 block"></i>Belum ada pertanyaan quizz. Gunakan AI atau buat manual.</td></tr>';
+                return;
+            }
+
+            db.quizzes.forEach((q, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-50 hover:bg-slate-50/50 transition-colors';
+                let answersHtml = q.answers.map((a, i) =>
+                    `<div class="${i === q.correct ? 'text-green-600 font-bold' : 'text-slate-500'} bg-slate-50 p-1 mb-1 rounded">
+                        ${String.fromCharCode(65 + i)}. ${a}
+                    </div>`
+                ).join('');
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-bold text-slate-800">${q.question}</div>
+                    </td>
+                    <td class="px-6 py-4 text-xs w-1/2">${answersHtml}</td>
+                    <td class="px-6 py-4 text-center">
+                        <button onclick="deleteQuizz(${idx})" class="w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                            <i class="fas fa-trash-alt text-[10px]"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.openQuizzAiModal = openQuizzAiModal;
+        window.openQuizzModal = openQuizzModal;
+        window.deleteQuizz = deleteQuizz;
+        window.renderAdminQuizz = renderAdminQuizz;
+        window.renderTeacherQuizz = renderTeacherQuizz;
 
         // --- INIT ---
         window.addEventListener('load', async () => {
