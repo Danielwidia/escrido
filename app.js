@@ -4775,11 +4775,31 @@ function showLoginForm(type) {
                 return;
             }
 
-            // Count total essays across all students
-            const totalEssays = targetResults.reduce((sum, { result }) =>
-                sum + (result.questions || []).filter(q => q.type === 'text').length, 0);
+            // FILTER: Only include students who have at least ONE uncorrected essay
+            targetResults = targetResults.filter(({ result }) => {
+                const questions = result.questions || [];
+                return questions.some((q, qi) => 
+                    q.type === 'text' && 
+                    (!result.manualScores || result.manualScores[qi] === undefined || result.manualScores[qi] === null)
+                );
+            });
 
-            if (!confirm(`Akan mengoreksi ${totalEssays} soal esai dari ${targetResults.length} siswa menggunakan AI.\n\nProses ini mungkin membutuhkan waktu beberapa menit. Lanjutkan?`)) return;
+            // Count total uncorrected essays across the remaining target students
+            const totalEssays = targetResults.reduce((sum, { result }) => {
+                const questions = result.questions || [];
+                const uncorrectedCount = questions.filter((q, qi) => 
+                    q.type === 'text' && 
+                    (!result.manualScores || result.manualScores[qi] === undefined || result.manualScores[qi] === null)
+                ).length;
+                return sum + uncorrectedCount;
+            }, 0);
+
+            if (totalEssays === 0) {
+                alert('Semua soal esai untuk siswa dalam filter saat ini sudah pernah dikoreksi AI/Manual.');
+                return;
+            }
+
+            if (!confirm(`Terdapat ${totalEssays} soal esai yang belum dikoreksi dari ${targetResults.length} siswa.\n\nSistem akan mengoreksi hanya soal yang belum memiliki nilai. Lanjutkan?`)) return;
 
             // Show master progress overlay
             const overlay = document.createElement('div');
@@ -4812,7 +4832,16 @@ function showLoginForm(type) {
                 const { resultIdx, result } = targetResults[si];
                 const questions = result.questions || [];
                 const answers = result.answers || [];
-                const essayIndices = questions.reduce((acc, q, i) => { if (q.type === 'text') acc.push(i); return acc; }, []);
+                
+                // Only identify essay indices that are NOT yet corrected
+                const essayIndices = questions.reduce((acc, q, i) => { 
+                    if (q.type === 'text' && (!result.manualScores || result.manualScores[i] === undefined || result.manualScores[i] === null)) {
+                        acc.push(i); 
+                    }
+                    return acc; 
+                }, []);
+
+                if (essayIndices.length === 0) continue; // Should already be handled by filter above, but for safety
 
                 if (studentLabel) studentLabel.textContent = `Siswa ${si + 1}/${targetResults.length}: ${result.studentName}`;
 
@@ -4899,7 +4928,7 @@ function showLoginForm(type) {
             else if (teacherDash && !teacherDash.classList.contains('hidden')) renderTeacherResults();
 
             const msg = totalError === 0
-                ? `✅ Selesai! ${totalSuccess} soal esai dari ${targetResults.length} siswa berhasil dikoreksi AI.`
+                ? `✅ Selesai! ${totalSuccess} soal esai baru berhasil dikoreksi AI.`
                 : `⚠️ ${totalSuccess} berhasil, ${totalError} gagal dari total ${totalEssays} soal esai.`;
             alert(msg);
         }
