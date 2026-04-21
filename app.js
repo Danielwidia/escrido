@@ -4800,7 +4800,7 @@ function showLoginForm(type) {
             const uniqueQuestionsCount = groupsMap.size;
             const totalTasks = workItems.length;
 
-            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 5 siswa secara bersamaan.\n\nLanjutkan?`)) return;
+            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 10 siswa secara bersamaan.\n\nLanjutkan?`)) return;
 
             // Show progress overlay
             const overlay = document.createElement('div');
@@ -4840,13 +4840,13 @@ function showLoginForm(type) {
 
                 // Split items into chunks of 5 (requested limit)
                 const chunks = [];
-                for (let i = 0; i < items.length; i += 5) {
-                    chunks.push(items.slice(i, i + 5));
+                for (let i = 0; i < items.length; i += 10) {
+                    chunks.push(items.slice(i, i + 10));
                 }
 
                 for (let ci = 0; ci < chunks.length; ci++) {
                     const chunk = chunks[ci];
-                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 5 + 1} - ${Math.min((ci + 1) * 5, items.length)} dari ${items.length}...`;
+                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 10 + 1} - ${Math.min((ci + 1) * 10, items.length)} dari ${items.length}...`;
 
                     // Run parallel fetches for this chunk
                     const promises = chunk.map(async (item) => {
