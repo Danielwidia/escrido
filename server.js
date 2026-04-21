@@ -401,24 +401,62 @@ function fullNormalizeQuestion(q, mapel, rombel) {
 }
 
 // ─── Data Layer (Supabase Native + Fallback) ──────────────────────────────────
+
+// Maximum number of results fetched per query (prevents statement timeout on large tables)
+const RESULT_FETCH_LIMIT = parseInt(process.env.RESULT_FETCH_LIMIT || '1000', 10);
+
+/**
+ * Retry a Supabase async call up to `maxAttempts` times.
+ * Backs off on statement-timeout errors (code 57014).
+ */
+async function withRetry(fn, label = 'supabase', maxAttempts = 3) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await fn();
+        } catch (e) {
+            lastError = e;
+            const isTimeout = e && (e.code === '57014' || (e.message && e.message.includes('statement timeout')));
+            if (isTimeout && attempt < maxAttempts) {
+                const delay = attempt * 1500; // 1.5s, 3s
+                console.warn(`[${label}] Statement timeout (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+            } else {
+                break;
+            }
+        }
+    }
+    throw lastError;
+}
+
 async function readDB() {
     if (USE_SUPABASE) {
-        const { data, error } = await supabase
-            .from('cbt_database')
-            .select('data')
-            .eq('id', 1)
-            .single();
-        if (error && error.code !== 'PGRST116') {
-            console.error('Supabase readDB error:', error);
+        let dbObj = null;
+        try {
+            const { data, error } = await supabase
+                .from('cbt_database')
+                .select('data')
+                .eq('id', 1)
+                .single();
+            if (error && error.code !== 'PGRST116') {
+                console.error('Supabase readDB error:', error);
+            }
+            dbObj = data ? data.data : null;
+        } catch (e) {
+            console.error('Supabase readDB fetch error:', e.message);
         }
-        let dbObj = data ? data.data : null;
+
         if (dbObj) {
-            // Also fetch results separately and merge them into the database object
+            // Fetch results separately and merge; fall back to [] on timeout/error
             try {
-                const results = await readResults();
+                const results = await withRetry(() => readResults(), 'readResults');
                 dbObj.results = results || [];
             } catch (e) {
-                console.error('Error fetching results in readDB:', e.message);
+                const isTimeout = e && (e.code === '57014' || (e.message && e.message.includes('statement timeout')));
+                console.error(`Error fetching results in readDB (${isTimeout ? 'TIMEOUT' : e.code || 'ERR'}):`, e.message);
+                if (isTimeout) {
+                    console.warn('[readDB] Results query timed out — returning empty results array to avoid crashing. Consider increasing RESULT_FETCH_LIMIT or cleaning old data.');
+                }
                 if (!dbObj.results) dbObj.results = [];
             }
         }
@@ -446,10 +484,14 @@ async function readResults() {
         const { data, error } = await supabase
             .from('cbt_results')
             .select('data')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(RESULT_FETCH_LIMIT);
         if (error) {
+            // Re-throw so withRetry / callers can handle it
+            const err = new Error(error.message || 'Supabase readResults error');
+            err.code = error.code;
             console.error('Supabase readResults error:', error);
-            return [];
+            throw err;
         }
         return data.map(row => row.data);
     }
@@ -699,7 +741,7 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
 // ─── API: Results ─────────────────────────────────────────────────────────────
 app.get('/api/results', async (req, res) => {
     try {
-        return res.json(await readResults());
+        return res.json(await withRetry(() => readResults(), 'GET /api/results'));
     } catch (e) {
         console.error('GET /api/results error:', e.message);
         return res.status(500).json({ error: e.message });
