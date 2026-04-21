@@ -7558,7 +7558,10 @@ function showLoginForm(type) {
         async function openQuizzAiModal() {
             let mapelOpts = '<option value="">--Pilih Mapel--</option>';
             if (db.subjects) {
-                db.subjects.forEach(m => mapelOpts += `<option value="${m.name}">${m.name}</option>`);
+                db.subjects.forEach(m => {
+                    const mName = typeof m === 'string' ? m : m.name;
+                    mapelOpts += `<option value="${mName}">${mName}</option>`;
+                });
             }
             let rombelOpts = '<option value="">--Pilih Rombel--</option>';
             if (db.rombels) {
@@ -7638,7 +7641,10 @@ function showLoginForm(type) {
         async function openQuizzModal() {
             let mapelOpts = '<option value="">--Pilih Mapel--</option>';
             if (db.subjects) {
-                db.subjects.forEach(m => mapelOpts += `<option value="${m.name}">${m.name}</option>`);
+                db.subjects.forEach(m => {
+                    const mName = typeof m === 'string' ? m : m.name;
+                    mapelOpts += `<option value="${mName}">${mName}</option>`;
+                });
             }
             let rombelOpts = '<option value="">--Pilih Rombel--</option>';
             if (db.rombels) {
@@ -7723,8 +7729,9 @@ function showLoginForm(type) {
         function populateQuizzFilters(mapelSelect, rombelSelect) {
             if (mapelSelect && mapelSelect.options.length <= 1 && db.subjects) {
                 db.subjects.forEach(m => {
+                    const mName = typeof m === 'string' ? m : m.name;
                     const opt = document.createElement('option');
-                    opt.value = opt.textContent = m.name;
+                    opt.value = opt.textContent = mName;
                     mapelSelect.appendChild(opt);
                 });
             }
