@@ -4727,6 +4727,14 @@ function showLoginForm(type) {
         }
 
         async function batchAiCorrectAllStudents() {
+            // Ensure server is reachable before starting
+            const serverOk = await pingBackend();
+            if (!serverOk) {
+                const currentBase = getApiBaseUrl() || window.location.origin;
+                alert(`⚠️ Gagal terhubung ke server!\n\nAlamat: ${currentBase}\n\nPastikan server aktif dan alamat server di Pengaturan Admin sudah benar.`);
+                return;
+            }
+
             // Determine which results are currently visible
             const isTeacher = document.getElementById('teacher-dashboard') && !document.getElementById('teacher-dashboard').classList.contains('hidden');
             let poolResults = []; // { resultIdx, result }
