@@ -445,21 +445,6 @@ async function readDB() {
         } catch (e) {
             console.error('Supabase readDB fetch error:', e.message);
         }
-
-        if (dbObj) {
-            // Fetch results separately and merge; fall back to [] on timeout/error
-            try {
-                const results = await withRetry(() => readResults(), 'readResults');
-                dbObj.results = results || [];
-            } catch (e) {
-                const isTimeout = e && (e.code === '57014' || (e.message && e.message.includes('statement timeout')));
-                console.error(`Error fetching results in readDB (${isTimeout ? 'TIMEOUT' : e.code || 'ERR'}):`, e.message);
-                if (isTimeout) {
-                    console.warn('[readDB] Results query timed out — returning empty results array to avoid crashing. Consider increasing RESULT_FETCH_LIMIT or cleaning old data.');
-                }
-                if (!dbObj.results) dbObj.results = [];
-            }
-        }
         return dbObj;
     }
     try {
@@ -668,8 +653,18 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/db', async (req, res) => {
     try {
         const data = await readDB();
-        if (data) return res.json(data);
-        return res.status(404).json({ error: 'Database not found' });
+        if (!data) return res.status(404).json({ error: 'Database not found' });
+
+        // Explicitly fetch results for full export
+        try {
+            const results = await readResults();
+            data.results = results || [];
+        } catch (e) {
+            console.error('Error fetching results for export:', e.message);
+            data.results = [];
+        }
+
+        return res.json(data);
     } catch (e) {
         console.error('GET /api/db error:', e.message);
         return res.status(500).json({ error: e.message });
@@ -899,10 +894,10 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
         // 1. If it's a 402/Quota issue (Insufficient Balance), lock for 1 hour
         // 2. If it's a 429 Rate Limit issue, lock for 5 minutes
         // 3. Default (unknown) lock for 2 minutes
-        
+
         let waitTime = 120000; // Default 2m
         const note = (entry.note || '').toLowerCase();
-        
+
         if (note.includes('quota') || note.includes('balance') || note.includes('insufficient') || note.includes('402')) {
             waitTime = 3600000; // 1 hour
         } else if (note.includes('limit') || note.includes('429')) {
@@ -910,10 +905,10 @@ async function discoverAllAPIKeys(provider, teacherId = null) {
         }
 
         if (now - exhaustedAt > waitTime) {
-            console.log(`[AI] Auto-reviving key ...${hash} (Lockout expired after ${waitTime/1000}s)`);
+            console.log(`[AI] Auto-reviving key ...${hash} (Lockout expired after ${waitTime / 1000}s)`);
             return false;
         }
-        
+
         return true;
     };
 
@@ -1001,7 +996,7 @@ async function markApiKeyStatus(key, status, note = '', provider = '', teacherId
             if (entry.key && entry.key.trim() === key.trim()) {
                 entry.status = status;
                 entry.updatedAt = now;
-                entry.exhaustedAt = now; 
+                entry.exhaustedAt = now;
                 entry.note = note;
                 if (provider) entry.provider = provider;
             }
@@ -1044,14 +1039,14 @@ async function markApiKeyStatus(key, status, note = '', provider = '', teacherId
             // Update individual key in global_api_keys table
             const { error: gError } = await supabase
                 .from('global_api_keys')
-                .update({ 
-                    status: status, 
-                    updated_at: now, 
+                .update({
+                    status: status,
+                    updated_at: now,
                     exhausted_at: now,
-                    note: note 
+                    note: note
                 })
                 .eq('key', key.trim());
-            
+
             if (gError) {
                 console.warn(`[AI] Info: Key not found in global_api_keys table (might be Env Var or Teacher key), skipping direct update.`);
             } else {
@@ -1132,7 +1127,7 @@ async function callGeminiAI(prompt, teacherId = null) {
                         console.warn(`[AI] ⚠️ Quota exceeded for model: ${model}`);
                         await markApiKeyStatus(key, 'exhausted', `Gemini Quota Exceeded (${model})`, 'Google Gemini', teacherId);
                         sessionBadKeys.add(key);
-                        continue; 
+                        continue;
                     } else if (response.status === 404) {
                         lastError = `${model} (${version}): HTTP 404 - Model tidak ditemukan.`;
                         console.error(`[AI] ❌ Model ${model} not available on ${version}`);
@@ -1141,8 +1136,8 @@ async function callGeminiAI(prompt, teacherId = null) {
                         lastError = `${model} (${version}): HTTP ${response.status} - ${errMsg}`;
                         console.error(`[AI] ❌ Model ${model} (${version}) error: ${response.status} ${errMsg}`);
                         if (response.status === 400 && (errMsg.includes('API_KEY_INVALID') || errMsg.includes('invalid'))) {
-                             await markApiKeyStatus(key, 'exhausted', `Gemini Invalid Key`, 'Google Gemini', teacherId);
-                             sessionBadKeys.add(key);
+                            await markApiKeyStatus(key, 'exhausted', `Gemini Invalid Key`, 'Google Gemini', teacherId);
+                            sessionBadKeys.add(key);
                         }
                     }
 
@@ -1208,10 +1203,10 @@ async function callOpenAI(prompt, teacherId = null) {
                 if (response.status === 429 || response.status === 402 || errCode === 'insufficient_quota') {
                     const isQuota = response.status === 402 || errCode === 'insufficient_quota' || errMsg.toLowerCase().includes('quota');
                     const reason = isQuota ? 'Quota/Balance Exceeded (402)' : 'Rate Limit Exceeded (429)';
-                    
+
                     lastError = `[${reason}] pada model OpenAI ${model}.`;
                     console.warn(`[AI] ⚠️ OpenAI ${reason} for model: ${model}`);
-                    
+
                     await markApiKeyStatus(key, 'exhausted', `OpenAI ${reason} (${model})`, 'OpenAI', teacherId);
                     sessionBadKeys.add(key); // Mark for skip in this session
                     continue;
@@ -1413,7 +1408,7 @@ async function uploadImageUrlToSupabase(url) {
         console.log(`[STORAGE] Auto-migrating external image to Supabase: ${url}`);
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
-        
+
         const buffer = await response.arrayBuffer();
         const contentType = response.headers.get('content-type') || 'image/jpeg';
         const ext = contentType.split('/')[1] || 'jpg';
@@ -1446,13 +1441,13 @@ async function uploadImageUrlToSupabase(url) {
  */
 async function processImagesInQuestions(questions) {
     if (!Array.isArray(questions)) return questions;
-    
+
     for (const q of questions) {
         // Handle q.image (legacy)
         if (q.image && typeof q.image === 'string' && q.image.includes('pollinations.ai')) {
             q.image = await uploadImageUrlToSupabase(q.image);
         }
-        
+
         // Handle q.images (array)
         if (Array.isArray(q.images)) {
             for (let i = 0; i < q.images.length; i++) {
@@ -1461,7 +1456,7 @@ async function processImagesInQuestions(questions) {
                 }
             }
         }
-        
+
         // Handle images embedded in question text
         if (q.text && q.text.includes('<img')) {
             const imgRegex = /<img[^>]+src="([^">]+)"/g;
@@ -1472,7 +1467,7 @@ async function processImagesInQuestions(questions) {
                     urlsToReplace.push(match[1]);
                 }
             }
-            
+
             for (const oldUrl of urlsToReplace) {
                 const newUrl = await uploadImageUrlToSupabase(oldUrl);
                 q.text = q.text.split(oldUrl).join(newUrl);
@@ -1487,7 +1482,7 @@ async function processImagesInQuestions(questions) {
  */
 async function processImagesInHtml(html) {
     if (!html || typeof html !== 'string' || !html.includes('<img')) return html;
-    
+
     const imgRegex = /<img[^>]+src="([^">]+)"/g;
     let match;
     const urlsToReplace = [];
@@ -1496,7 +1491,7 @@ async function processImagesInHtml(html) {
             urlsToReplace.push(match[1]);
         }
     }
-    
+
     let processedHtml = html;
     for (const oldUrl of urlsToReplace) {
         const newUrl = await uploadImageUrlToSupabase(oldUrl);
@@ -1771,7 +1766,7 @@ DILARANG memberikan kalimat pembuka atau penutup di luar tag HTML. DILARANG meng
             if (match && match[1]) {
                 try {
                     parsedQuestions = JSON.parse(match[1].trim());
-                    
+
                     // Inject basic standard properties and full normalization
                     parsedQuestions = parsedQuestions.map(q => fullNormalizeQuestion(q, mapel, fase));
 
@@ -1892,11 +1887,11 @@ INSTRUKSI PENILAIAN:
   - 3 = Jawaban cukup, memahami sebagian besar konsep tapi ada kekurangan
   - 4 = Jawaban baik, hampir lengkap dan tepat dengan kekurangan minor
   - 5 = Jawaban sangat baik, lengkap, tepat, dan jelas
-- Berikan umpan balik singkat dalam Bahasa Indonesia (1-3 kalimat) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
+- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 10 KATA) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
 - Jika tidak ada kunci jawaban, nilai berdasarkan kelengkapan, kejelasan, dan relevansi jawaban terhadap soal.
 
-BALAS HANYA dengan JSON format berikut, tanpa teks lain:
-{"score": 3.5, "feedback": "Jawaban siswa sudah memahami konsep dasar namun belum menjelaskan secara lengkap. Perlu menambahkan contoh konkret untuk memperkuat argumen."}`;
+BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 10 kata), tanpa teks lain:
+{"score": 3.5, "feedback": "Jawaban cukup baik namun kurang menjelaskan contoh konkret."}`;
 
     try {
         let text = await callAI(prompt, teacherId);
@@ -2416,7 +2411,7 @@ app.get('/api/admin/global-api-keys', async (req, res) => {
 
         // Combine all
         const allCombinedRaw = [...keys, ...teacherKeysRaw, ...envKeysRaw];
-        
+
         // Final normalization for the UI (apply auto-revive)
         const allCombined = allCombinedRaw.map(k => {
             if (k.status === 'exhausted' && k.updatedAt) {

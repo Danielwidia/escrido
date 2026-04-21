@@ -4779,7 +4779,7 @@ function showLoginForm(type) {
                 const questions = result.questions || [];
                 const answers = result.answers || [];
                 questions.forEach((q, qi) => {
-                    if (q.type === 'text' && (!result.manualScores || result.manualScores[qi] === undefined || result.manualScores[qi] === null)) {
+                    if (q.type === 'text' && (!result.manualScores || result.manualScores[qi] === undefined || result.manualScores[qi] === null) && (!result.aiEssayFeedback || result.aiEssayFeedback[qi] === undefined || result.aiEssayFeedback[qi] === null)) {
                         workItems.push({
                             resultIdx,
                             result,
@@ -4808,7 +4808,7 @@ function showLoginForm(type) {
             const uniqueQuestionsCount = groupsMap.size;
             const totalTasks = workItems.length;
 
-            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 10 siswa secara bersamaan.\n\nLanjutkan?`)) return;
+            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 3 siswa secara bersamaan.\n\nLanjutkan?`)) return;
 
             // Show progress overlay
             const overlay = document.createElement('div');
@@ -4846,15 +4846,15 @@ function showLoginForm(type) {
                 const first = items[0];
                 if (qLabel) qLabel.textContent = `Soal ${gi + 1}/${uniqueQuestionsCount}: "${first.qText.substring(0, 50)}..."`;
 
-                // Split items into chunks of 5 (requested limit)
+                // Split items into chunks of 3 (requested limit)
                 const chunks = [];
-                for (let i = 0; i < items.length; i += 10) {
-                    chunks.push(items.slice(i, i + 10));
+                for (let i = 0; i < items.length; i += 3) {
+                    chunks.push(items.slice(i, i + 3));
                 }
 
                 for (let ci = 0; ci < chunks.length; ci++) {
                     const chunk = chunks[ci];
-                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 10 + 1} - ${Math.min((ci + 1) * 10, items.length)} dari ${items.length}...`;
+                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 3 + 1} - ${Math.min((ci + 1) * 3, items.length)} dari ${items.length}...`;
 
                     // Run parallel fetches for this chunk
                     const promises = chunk.map(async (item) => {
