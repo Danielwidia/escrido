@@ -4795,6 +4795,7 @@ function showLoginForm(type) {
                         workItems.push({
                             resultIdx,
                             result,
+                            studentId: result.studentId || (`STUDENT_${resultIdx}`),
                             qi,
                             qText: q.text || '',
                             refAns: q.correct || '',
@@ -4820,7 +4821,7 @@ function showLoginForm(type) {
             const uniqueQuestionsCount = groupsMap.size;
             const totalTasks = workItems.length;
 
-            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 3 siswa secara bersamaan.\n\nLanjutkan?`)) return;
+            if (!confirm(`Terdapat ${totalTasks} tugas koreksi esai dari ${poolResults.length} siswa.\n\nSistem mengelompokkan ${uniqueQuestionsCount} jenis soal dan akan mengoreksi maksimal 5 siswa secara bersamaan dalam satu permintaan API (SANGAT CEPAT).\n\nLanjutkan?`)) return;
 
             // Show progress overlay
             const overlay = document.createElement('div');
@@ -4858,53 +4859,61 @@ function showLoginForm(type) {
                 const first = items[0];
                 if (qLabel) qLabel.textContent = `Soal ${gi + 1}/${uniqueQuestionsCount}: "${first.qText.substring(0, 50)}..."`;
 
-                // Split items into chunks of 3 (requested limit)
+                // Split items into chunks of 5 (requested limit for batch processing)
                 const chunks = [];
-                for (let i = 0; i < items.length; i += 3) {
-                    chunks.push(items.slice(i, i + 3));
+                for (let i = 0; i < items.length; i += 5) {
+                    chunks.push(items.slice(i, i + 5));
                 }
 
                 for (let ci = 0; ci < chunks.length; ci++) {
                     const chunk = chunks[ci];
-                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 3 + 1} - ${Math.min((ci + 1) * 3, items.length)} dari ${items.length}...`;
+                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 5 + 1} - ${Math.min((ci + 1) * 5, items.length)} dari ${items.length}...`;
 
-                    // Run parallel fetches for this chunk
-                    const promises = chunk.map(async (item) => {
-                        try {
-                            const res = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    questionText: item.qText,
-                                    studentAnswer: typeof item.studentAns === 'string' ? item.studentAns : '',
-                                    referenceAnswer: item.refAns,
-                                    teacherId: currentSiswa ? currentSiswa.id : null
-                                })
+                    try {
+                        // Use the new batch correction API
+                        const res = await fetch(getApiBaseUrl() + '/api/ai-batch-correct', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                questionText: first.qText,
+                                referenceAnswer: first.refAns,
+                                students: chunk.map(item => ({
+                                    studentId: item.studentId, // We need to ensure item has studentId
+                                    answer: typeof item.studentAns === 'string' ? item.studentAns : ''
+                                })),
+                                teacherId: currentSiswa ? currentSiswa.id : null
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (res.ok && data.ok && Array.isArray(data.results)) {
+                            data.results.forEach(batchResult => {
+                                // Find the corresponding item in the current chunk
+                                const item = chunk.find(c => String(c.studentId) === String(batchResult.studentId));
+                                if (item) {
+                                    if (!item.result.manualScores) item.result.manualScores = {};
+                                    if (!item.result.aiEssayFeedback) item.result.aiEssayFeedback = {};
+                                    item.result.manualScores[item.qi] = batchResult.score;
+                                    item.result.aiEssayFeedback[item.qi] = batchResult.feedback;
+                                    successTotal++;
+                                }
                             });
-                            const data = await res.json();
-                            if (res.ok && data.ok) {
-                                if (!item.result.manualScores) item.result.manualScores = {};
-                                if (!item.result.aiEssayFeedback) item.result.aiEssayFeedback = {};
-                                item.result.manualScores[item.qi] = data.score;
-                                item.result.aiEssayFeedback[item.qi] = data.feedback;
-                                successTotal++;
-                            } else {
-                                errorTotal++;
-                            }
-                        } catch (e) {
-                            console.error(`[AI-Group] Error for student result ${item.resultIdx}:`, e.message);
-                            errorTotal++;
-                        } finally {
-                            finishedCount++;
-                            affectedResultIndices.add(item.resultIdx);
-                            // Update individual progress inside Promise
-                            const pct = Math.round((finishedCount / totalTasks) * 100);
-                            if (progressBar) progressBar.style.width = pct + '%';
-                            if (counterEl) counterEl.textContent = `${finishedCount} / ${totalTasks} jawaban`;
+                        } else {
+                            console.error('[AI-Batch] API error:', data.error || 'Unknown error');
+                            errorTotal += chunk.length;
                         }
-                    });
+                    } catch (e) {
+                        console.error(`[AI-Batch] Connection error:`, e.message);
+                        errorTotal += chunk.length;
+                    } finally {
+                        finishedCount += chunk.length;
+                        chunk.forEach(item => affectedResultIndices.add(item.resultIdx));
 
-                    await Promise.all(promises);
+                        // Update progress
+                        const pct = Math.round((finishedCount / totalTasks) * 100);
+                        if (progressBar) progressBar.style.width = pct + '%';
+                        if (counterEl) counterEl.textContent = `${Math.min(finishedCount, totalTasks)} / ${totalTasks} jawaban`;
+                    }
                 }
             }
 

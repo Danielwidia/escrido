@@ -704,7 +704,7 @@ app.post('/api/db/questions/chunk', async (req, res) => {
             currentDB.questions = questions;
         } else {
             if (!Array.isArray(currentDB.questions)) currentDB.questions = [];
-            
+
             // Deduplicate based on some unique criteria if possible, or just append
             // Assuming the client sends clean chunks.
             currentDB.questions.push(...questions);
@@ -714,10 +714,10 @@ app.post('/api/db/questions/chunk', async (req, res) => {
         // even if the aggregate is large (Vercel outgoing to Supabase has higher limits)
         await writeDB(currentDB);
 
-        return res.json({ 
-            ok: true, 
-            received: questions.length, 
-            total_now: currentDB.questions.length 
+        return res.json({
+            ok: true,
+            received: questions.length,
+            total_now: currentDB.questions.length
         });
     } catch (e) {
         console.error('POST /api/db/questions/chunk error:', e.message);
@@ -1919,17 +1919,11 @@ ${studentAnswer}
 
 INSTRUKSI PENILAIAN:
 - Berikan skor antara 0 sampai 5 (bilangan bulat atau desimal dengan 1 angka di belakang koma).
-  - 0 = Tidak menjawab atau jawaban sama sekali tidak relevan
-  - 1 = Jawaban sangat kurang, hampir tidak memahami materi
-  - 2 = Jawaban kurang, ada sedikit pemahaman tapi banyak yang keliru
-  - 3 = Jawaban cukup, memahami sebagian besar konsep tapi ada kekurangan
-  - 4 = Jawaban baik, hampir lengkap dan tepat dengan kekurangan minor
-  - 5 = Jawaban sangat baik, lengkap, tepat, dan jelas
-- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 10 KATA) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
+- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 5 KATA) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
 - Jika tidak ada kunci jawaban, nilai berdasarkan kelengkapan, kejelasan, dan relevansi jawaban terhadap soal.
 
-BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 10 kata), tanpa teks lain:
-{"score": 3.5, "feedback": "Jawaban cukup baik namun kurang menjelaskan contoh konkret."}`;
+BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 5 kata), tanpa teks lain:
+{"score": 3.5, "feedback": "Jawaban cukup baik."}`;
 
     try {
         let text = await callAI(prompt, teacherId);
@@ -1951,6 +1945,68 @@ BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 10 kata), tanp
         return res.json({ ok: true, score, feedback });
     } catch (e) {
         console.error('[/api/ai-correct-essay] Fatal error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── API: AI Batch Essay Correction (5 Students) ─────────────────────────────
+app.post('/api/ai-batch-correct', async (req, res) => {
+    const { questionText, referenceAnswer, students, teacherId = null } = req.body;
+
+    if (!questionText || !Array.isArray(students) || students.length === 0) {
+        return res.status(400).json({ error: 'questionText dan array students diperlukan' });
+    }
+
+    const studentsList = students.map((s, i) => `SISWA ${i + 1} (ID: ${s.studentId}):\n${s.answer}`).join('\n\n');
+
+    const prompt = `Kamu adalah guru pengoreksi soal esai yang berpengalaman. Berikan penilaian objektif terhadap jawaban dari ${students.length} siswa untuk soal yang sama.
+
+SOAL:
+${questionText}
+
+${referenceAnswer ? `KUNCI JAWABAN / JAWABAN REFERENSI:\n${referenceAnswer}\n\n` : ''}DAFTAR JAWABAN SISWA:
+${studentsList}
+
+INSTRUKSI PENILAIAN:
+- Berikan skor antara 0 sampai 5.
+- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 5 KATA) per siswa.
+- Jika siswa tidak menjawab (kosong), berikan skor 0 dan feedback "Tidak memberikan jawaban."
+
+WAJIB BALAS HANYA dengan JSON array of objects dengan format berikut (Gunakan feedback maksimal 5 kata):
+[
+  {"studentId": "id_siswa_1", "score": 4.5, "feedback": "Jawaban sangat tepat dan lengkap."},
+  {"studentId": "id_siswa_2", "score": 2.0, "feedback": "Jawaban kurang lengkap."}
+]`;
+
+    try {
+        let text = await callAI(prompt, teacherId);
+        text = text.replace(/```json\n?|```/g, '').trim();
+
+        const match = text.match(/\[[\s\S]*\]/);
+        if (!match) {
+            console.error('[/api/ai-batch-correct] No JSON array in response:', text.substring(0, 500));
+            return res.status(500).json({ error: 'AI tidak memberikan respons batch yang valid.' });
+        }
+
+        let results = JSON.parse(match[0]);
+
+        // Normalize results to ensure all students have a record
+        results = students.map(s => {
+            const found = results.find(r => String(r.studentId) === String(s.studentId));
+            if (found) {
+                return {
+                    studentId: s.studentId,
+                    score: Math.min(5, Math.max(0, parseFloat(found.score) || 0)),
+                    feedback: typeof found.feedback === 'string' ? found.feedback : 'Selesai dikoreksi.'
+                };
+            }
+            return { studentId: s.studentId, score: 0, feedback: 'Gagal koreksi AI.' };
+        });
+
+        console.log(`[/api/ai-batch-correct] Success: corrected ${results.length} students`);
+        return res.json({ ok: true, results });
+    } catch (e) {
+        console.error('[/api/ai-batch-correct] Fatal error:', e.message);
         return res.status(500).json({ error: e.message });
     }
 });
