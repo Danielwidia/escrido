@@ -5306,6 +5306,9 @@ function showLoginForm(type) {
 
             // Filter the results using the same logic as renderAdminResults
             const filteredResults = db.results.filter(r => {
+                // Filter out deleted results
+                if (r.deleted) return false;
+
                 const rombelFilter = document.getElementById('results-filter-rombel')?.value;
                 const mapelFilter = document.getElementById('results-filter-mapel')?.value;
 

@@ -491,40 +491,20 @@ async function readResults() {
 
 async function writeResults(results) {
     if (USE_SUPABASE) {
-        // Separate deleted and active results
-        const toDelete = results.filter(r => r.deleted === true);
-        const active = results.filter(r => r.deleted !== true);
-
-        // 1. Physically delete from Supabase if marked for deletion
-        if (toDelete.length > 0) {
-            console.log(`🗑️ Deleting ${toDelete.length} results from Supabase...`);
-            for (const r of toDelete) {
-                const { error } = await supabase
-                    .from('cbt_results')
-                    .delete()
-                    .match({
-                        student_id: r.studentId || '',
-                        mapel: r.mapel || '',
-                        rombel: r.rombel || '',
-                        date: r.date || ''
-                    });
-                if (error) console.error('Supabase deletion error:', error.message);
-            }
-        }
-
-        // 2. Sync active results (Manual Upsert logic to handle custom/composite unique constraints)
-        if (active.length > 0) {
-            for (const r of active) {
+        // Process all results (active and logically deleted)
+        if (results.length > 0) {
+            console.log(`🔄 Syncing ${results.length} results (including potential deletions) to Supabase...`);
+            for (const r of results) {
                 const record = {
                     student_id: r.studentId || '',
                     mapel: r.mapel || '',
                     rombel: r.rombel || '',
                     date: r.date || new Date().toISOString(),
                     score: typeof r.score === 'string' ? parseFloat(r.score) : (r.score || 0),
-                    data: r
+                    data: r // The 'deleted' flag is inside this JSONB data blob
                 };
 
-                // Check for existing record by identity match (to simulate upsert if index is missing)
+                // Match record by business keys
                 const { data: existing } = await supabase
                     .from('cbt_results')
                     .select('id')
@@ -552,55 +532,40 @@ async function writeResults(results) {
 
 async function insertResultSingle(resultObj) {
     if (USE_SUPABASE) {
-        if (resultObj.deleted) {
-            const { error } = await supabase
+        const record = {
+            student_id: resultObj.studentId || '',
+            mapel: resultObj.mapel || '',
+            rombel: resultObj.rombel || '',
+            date: resultObj.date || new Date().toISOString(),
+            score: typeof resultObj.score === 'string' ? parseFloat(resultObj.score) : (resultObj.score || 0),
+            data: resultObj // The 'deleted' flag is preserved here
+        };
+
+        // Manual Upsert Logic
+        const { data: existing, error: fetchError } = await supabase
+            .from('cbt_results')
+            .select('id')
+            .match({
+                student_id: record.student_id,
+                mapel: record.mapel,
+                rombel: record.rombel,
+                date: record.date
+            })
+            .maybeSingle();
+
+        if (fetchError) throw new Error(`Supabase lookup error: ${fetchError.message}`);
+
+        if (existing) {
+            const { error: updateError } = await supabase
                 .from('cbt_results')
-                .delete()
-                .match({
-                    student_id: resultObj.studentId || '',
-                    mapel: resultObj.mapel || '',
-                    rombel: resultObj.rombel || '',
-                    date: resultObj.date || ''
-                });
-            if (error) throw new Error('Supabase insertResultSingle(delete) error: ' + error.message);
+                .update(record)
+                .eq('id', existing.id);
+            if (updateError) throw new Error(`Supabase update error: ${updateError.message}`);
         } else {
-            const record = {
-                student_id: resultObj.studentId || '',
-                mapel: resultObj.mapel || '',
-                rombel: resultObj.rombel || '',
-                date: resultObj.date || new Date().toISOString(),
-                score: typeof resultObj.score === 'string' ? parseFloat(resultObj.score) : (resultObj.score || 0),
-                data: resultObj
-            };
-
-            // Manual Upsert Logic (Check existence first to bypass conflict spec issues)
-            const { data: existing, error: fetchError } = await supabase
+            const { error: insertError } = await supabase
                 .from('cbt_results')
-                .select('id')
-                .match({
-                    student_id: record.student_id,
-                    mapel: record.mapel,
-                    rombel: record.rombel,
-                    date: record.date
-                })
-                .maybeSingle();
-
-            if (fetchError) throw new Error(`Supabase lookup error: ${fetchError.message}`);
-
-            if (existing) {
-                // Update existing record
-                const { error: updateError } = await supabase
-                    .from('cbt_results')
-                    .update(record)
-                    .eq('id', existing.id);
-                if (updateError) throw new Error(`Supabase update error: ${updateError.message}`);
-            } else {
-                // Insert new record
-                const { error: insertError } = await supabase
-                    .from('cbt_results')
-                    .insert(record);
-                if (insertError) throw new Error(`Supabase insert error: ${insertError.message}`);
-            }
+                .insert(record);
+            if (insertError) throw new Error(`Supabase insert error: ${insertError.message}`);
         }
     } else {
         const merged = mergeResults(await readResults(), [resultObj]);
