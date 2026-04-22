@@ -1119,6 +1119,7 @@ function showLoginForm(type) {
          * @param {boolean} options.refreshBeforeSave If true, fetches latest data from server 
          *                                           and merges local changes before pushing.
          * @param {boolean} options.forceServerSave If true, pushes to server even if the user is a student.
+         * @param {boolean} options.includeResults If true, also pushes all results to the /api/results endpoint.
          */
         async function save(options = {}) {
             // Students should not overwrite the entire DB structure via /api/db 
@@ -1210,9 +1211,29 @@ function showLoginForm(type) {
 
             if (serverSaveSuccess) {
                 showToast('Perubahan tersimpan ke server!', 'success');
+                
+                // If requested, also push results to the results API
+                if (options.includeResults && db.results && db.results.length > 0) {
+                    showToast(`Sinkronisasi ${db.results.length} hasil ujian...`, 'info');
+                    try {
+                        // Chunking to avoid large payload limits
+                        for (let i = 0; i < db.results.length; i += 500) {
+                            const chunk = db.results.slice(i, i + 500);
+                            await fetch(getApiBaseUrl() + '/api/results', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(chunk)
+                            });
+                        }
+                        console.log('Results sync complete.');
+                    } catch (e) {
+                        console.error('Results sync failed during save:', e.message);
+                        showToast('Struktur tersimpan, tapi gagal sinkronisasi hasil.', 'warning');
+                    }
+                }
             } else {
                 console.error('PERINGATAN: Gagal menyimpan ke server setelah 3 percobaan!');
-                showToast('Gagal menyimpan ke server! Periksa koneksi.', 'error');
+                showToast('Gagal menyimpan ke server! Perika koneksi.', 'error');
             }
 
             try {
@@ -4084,9 +4105,12 @@ function showLoginForm(type) {
                     const parsed = JSON.parse(e.target.result);
                     if (parsed && typeof parsed === 'object') {
                         db = parsed;
-                        save();
-                        alert('Restore berhasil. Halaman akan dimuat ulang.');
-                        location.reload();
+                        showToast('Memulai restore database...', 'info');
+                        // Use includeResults true to ensure results are also pushed to Supabase
+                        save({ includeResults: true }).then(() => {
+                            alert('Restore berhasil (termasuk hasil ujian). Halaman akan dimuat ulang.');
+                            location.reload();
+                        });
                     } else {
                         alert('Format file tidak valid.');
                     }
@@ -4270,7 +4294,9 @@ function showLoginForm(type) {
         // --- EXPLICIT SAVE / LOAD DB (admin actions) ---
         async function saveDatabaseToServer() {
             try {
-                // Exclude results from main DB save to keep payload small
+                showToast('Menyimpan database & hasil ujian...', 'info');
+                
+                // 1. Send main DB structure (excluding results for payload size)
                 const { results, ...dbOnly } = db;
                 const payload = JSON.stringify(dbOnly);
                 const sizeInMb = payload.length / (1024 * 1024);
@@ -4281,13 +4307,30 @@ function showLoginForm(type) {
                     headers: { 'Content-Type': 'application/json' },
                     body: payload
                 });
-                if (res.ok) {
-                    alert('Database berhasil disimpan ke server.');
-                } else {
+
+                if (!res.ok) {
                     const txt = await res.text();
-                    alert('Gagal menyimpan ke server: ' + (txt || res.statusText));
+                    throw new Error('Gagal simpan struktur: ' + (txt || res.statusText));
                 }
+
+                // 2. Explicitly send results in chunks to avoid payload limits
+                if (db.results && db.results.length > 0) {
+                    const totalResults = db.results.length;
+                    for (let i = 0; i < totalResults; i += 500) {
+                        const chunk = db.results.slice(i, i + 500);
+                        showToast(`Mengunggah hasil (${i + chunk.length}/${totalResults})...`, 'info');
+                        const resResults = await fetch(getApiBaseUrl() + '/api/results', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(chunk)
+                        });
+                        if (!resResults.ok) throw new Error('Gagal simpan hasil ujian di chunk ' + (i/500 + 1));
+                    }
+                }
+
+                alert('Database dan hasil ujian berhasil disimpan ke server.');
             } catch (err) {
+                console.error('Manual Save Error:', err);
                 alert('Error saat menyimpan ke server: ' + (err.message || err));
             }
         }
