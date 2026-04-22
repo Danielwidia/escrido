@@ -150,7 +150,7 @@ async function extractTextFromImage(base64Data, mimeType) {
         return "[Gambar diunggah, tapi API Key Gemini belum dikonfigurasi untuk membaca isinya]";
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const models = ['gemini-3.1-flash', 'gemini-3.1-flash-lite', 'gemini-3.0-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     const prompt = "Ini adalah foto atau scan dokumen kisi-kisi / soal ujian. Tolong baca dan ekstrak SELURUH teks yang terlihat dalam gambar ini secara akurat. Jika ada tabel, pertahankan strukturnya. Jangan tambahkan komentar, langsung tulis teks yang ada di gambar saja.";
 
     for (const model of models) {
@@ -1110,6 +1110,16 @@ async function callGeminiAI(prompt, teacherId = null) {
 
     // Super-charged model list for maximum resilience (including next-gen models)
     const models = [
+        { name: 'gemini-3.1-pro', version: 'v1' },
+        { name: 'gemini-3.1-flash', version: 'v1' },
+        { name: 'gemini-3.1-flash-lite', version: 'v1' },
+        { name: 'gemini-3.0-pro', version: 'v1' },
+        { name: 'gemini-3.0-flash', version: 'v1' },
+        { name: 'gemini-3.1-pro', version: 'v1beta' },
+        { name: 'gemini-3.1-flash', version: 'v1beta' },
+        { name: 'gemini-3.1-flash-lite', version: 'v1beta' },
+        { name: 'gemini-3.0-pro', version: 'v1beta' },
+        { name: 'gemini-3.0-flash', version: 'v1beta' },
         { name: 'gemini-2.5-flash', version: 'v1' },
         { name: 'gemini-2.5-pro', version: 'v1' },
         { name: 'gemini-2.5-flash', version: 'v1beta' },
@@ -1274,6 +1284,11 @@ async function callOpenRouterAI(prompt, teacherId = null) {
     if (keys.length === 0) throw new Error('API Key OpenRouter tidak ditemukan atau kuota habis di semua sumber.');
 
     const models = [
+        'google/gemini-3.1-pro-preview',
+        'google/gemini-3.1-flash-preview',
+        'google/gemini-3.1-flash-lite-preview',
+        'google/gemini-3-flash-preview',
+        'openai/gpt-5.4-mini',
         'openai/gpt-4o-mini',
         'openai/gpt-4o',
         'anthropic/claude-3.7-sonnet',
