@@ -687,6 +687,44 @@ app.post('/api/db', async (req, res) => {
     }
 });
 
+// ─── API: Chunked Questions Sync (Bypasses Vercel 4.5MB Limit) ────────────────
+app.post('/api/db/questions/chunk', async (req, res) => {
+    try {
+        const { questions, isFirstChunk, isLastChunk } = req.body;
+        if (!Array.isArray(questions)) return res.status(400).json({ error: 'Questions array required' });
+
+        console.log(`[CHUNK] Received ${questions.length} questions. First: ${isFirstChunk}, Last: ${isLastChunk}`);
+
+        let currentDB = await readDB();
+        if (!currentDB) {
+            currentDB = JSON.parse(JSON.stringify(DEFAULT_DB));
+        }
+
+        if (isFirstChunk) {
+            currentDB.questions = questions;
+        } else {
+            if (!Array.isArray(currentDB.questions)) currentDB.questions = [];
+            
+            // Deduplicate based on some unique criteria if possible, or just append
+            // Assuming the client sends clean chunks.
+            currentDB.questions.push(...questions);
+        }
+
+        // We save the database at every chunk to ensure persistence 
+        // even if the aggregate is large (Vercel outgoing to Supabase has higher limits)
+        await writeDB(currentDB);
+
+        return res.json({ 
+            ok: true, 
+            received: questions.length, 
+            total_now: currentDB.questions.length 
+        });
+    } catch (e) {
+        console.error('POST /api/db/questions/chunk error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── API: Upload Image to Supabase Storage ─────────────────────────────────────
 app.post('/api/upload-image', upload.single('image'), async (req, res) => {
     try {

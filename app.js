@@ -1158,33 +1158,54 @@ function showLoginForm(type) {
             showToast('Menyimpan ke server...', 'info');
             while (retries > 0 && !serverSaveSuccess) {
                 try {
-                    // Images are now synced with server to fix broken images in Supabase cross-device.
-                    const dbForServer = db;
-                    const payload = JSON.stringify(dbForServer);
-                    const sizeInMb = payload.length / (1024 * 1024);
-                    console.log(`[SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
+                    // Split questions from metadata for chunked upload
+                    const { questions, ...metadata } = db;
+                    const jsonQuestions = JSON.stringify(questions);
+                    const questionsSize = jsonQuestions.length / (1024 * 1024);
+                    
+                    console.log(`[SAVE] Total questions size: ${questionsSize.toFixed(2)} MB (${questions.length} items)`);
 
-                    // Vercel Serverless Function payload limit is 4.5MB
-                    if (sizeInMb > 4.2) {
-                        showToast(`Peringatan: Ukuran data (${sizeInMb.toFixed(2)}MB) hampir melebihi batas server (4.5MB).`, 'warning');
-                    }
-
-                    const res = await fetch(getApiBaseUrl() + '/api/db', {
+                    // 1. Send metadata first
+                    const metaRes = await fetch(getApiBaseUrl() + '/api/db', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: payload
+                        body: JSON.stringify(metadata)
                     });
+                    if (!metaRes.ok) throw new Error('Gagal sync metadata');
 
-                    if (res.ok) {
-                        serverSaveSuccess = true;
-                        console.log('Database berhasil disimpan ke server');
+                    // 2. Send questions in chunks if any
+                    const chunkSize = 50;
+                    if (questions.length === 0) {
+                        const res = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ questions: [], isFirstChunk: true, isLastChunk: true })
+                        });
+                        if (!res.ok) throw new Error('Gagal reset soal');
                     } else {
-                        console.warn(`Gagal menyimpan ke server (attempt ${4 - retries}):`, res.statusText);
-                        retries--;
-                        if (retries > 0) {
-                            await new Promise(r => setTimeout(r, 500));
+                        for (let i = 0; i < questions.length; i += chunkSize) {
+                            const chunk = questions.slice(i, i + chunkSize);
+                            const isFirst = (i === 0);
+                            const isLast = (i + chunkSize >= questions.length);
+                            const progress = Math.round(((i + chunk.length) / questions.length) * 100);
+                            
+                            showToast(`Sync Soal: ${progress}%...`, 'info');
+                            
+                            const chunkRes = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                    questions: chunk, 
+                                    isFirstChunk: isFirst, 
+                                    isLastChunk: isLast 
+                                })
+                            });
+                            if (!chunkRes.ok) throw new Error(`Gagal sync soal batch ${Math.floor(i/chunkSize)+1}`);
                         }
                     }
+
+                    serverSaveSuccess = true;
+                    console.log('Database (Chunked) berhasil disimpan ke server');
                 } catch (err) {
                     console.warn(`Error saat menyimpan ke server (attempt ${4 - retries}):`, err.message || err);
                     retries--;
@@ -4238,17 +4259,8 @@ function showLoginForm(type) {
         // --- EXPLICIT SAVE / LOAD DB (admin actions) ---
         async function saveDatabaseToServer() {
             try {
-                const res = await fetch(getApiBaseUrl() + '/api/db', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(db)
-                });
-                if (res.ok) {
-                    alert('Database berhasil disimpan ke server.');
-                } else {
-                    const txt = await res.text();
-                    alert('Gagal menyimpan ke server: ' + (txt || res.statusText));
-                }
+                await save({ forceServerSave: true });
+                alert('Database berhasil disimpan ke server.');
             } catch (err) {
                 alert('Error saat menyimpan ke server: ' + (err.message || err));
             }
