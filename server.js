@@ -10,7 +10,10 @@ const mammoth = require('mammoth');
 const xlsx = require('xlsx');
 const pdf = require('pdf-parse');
 
+const compression = require('compression');
+
 const app = express();
+app.use(compression());
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 50 * 1024 * 1024 } // Increase limit for blueprints
@@ -655,14 +658,9 @@ app.get('/api/db', async (req, res) => {
         const data = await readDB();
         if (!data) return res.status(404).json({ error: 'Database not found' });
 
-        // Explicitly fetch results for full export
-        try {
-            const results = await readResults();
-            data.results = results || [];
-        } catch (e) {
-            console.error('Error fetching results for export:', e.message);
-            data.results = [];
-        }
+        // REMOVED: results are now fetched separately via /api/results 
+        // to avoid Vercel 4.5MB payload limits.
+        data.results = [];
 
         return res.json(data);
     } catch (e) {

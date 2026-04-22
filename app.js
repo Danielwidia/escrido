@@ -878,8 +878,16 @@ function showLoginForm(type) {
                 if (res.ok) {
                     const serverDb = await res.json();
                     if (serverDb && serverDb.students) {
+                        const resultsBefore = db.results || [];
                         db = normalizeDb(serverDb);
+                        // Results are now fetched separately via /api/results to stay under 4.5MB
+                        db.results = mergeResults(resultsBefore, serverDb.results || []);
                         console.log('Database synced with server:', db.students.length, 'students');
+                        
+                        // Force a results refresh if we are admin/teacher to get latest scores
+                        if (currentSiswa && (currentSiswa.role === 'admin' || currentSiswa.role === 'teacher')) {
+                            fetchAndMerge();
+                        }
                     }
                 }
             } catch (err) {
@@ -1159,10 +1167,12 @@ function showLoginForm(type) {
             while (retries > 0 && !serverSaveSuccess) {
                 try {
                     // Images are now synced with server to fix broken images in Supabase cross-device.
-                    const dbForServer = db;
-                    const payload = JSON.stringify(dbForServer);
+                    // Stripping results to keep payload small and stay under Vercel 4.5MB limit.
+                    // Results are managed via separate endpoints (/api/result or /api/results).
+                    const { results, ...dbOnly } = db;
+                    const payload = JSON.stringify(dbOnly);
                     const sizeInMb = payload.length / (1024 * 1024);
-                    console.log(`[SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
+                    console.log(`[SAVE] Payload size (excluding results): ${sizeInMb.toFixed(2)} MB`);
 
                     // Vercel Serverless Function payload limit is 4.5MB
                     if (sizeInMb > 4.2) {
@@ -4238,10 +4248,16 @@ function showLoginForm(type) {
         // --- EXPLICIT SAVE / LOAD DB (admin actions) ---
         async function saveDatabaseToServer() {
             try {
+                // Exclude results from main DB save to keep payload small
+                const { results, ...dbOnly } = db;
+                const payload = JSON.stringify(dbOnly);
+                const sizeInMb = payload.length / (1024 * 1024);
+                console.log(`[MANUAL SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
+
                 const res = await fetch(getApiBaseUrl() + '/api/db', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(db)
+                    body: payload
                 });
                 if (res.ok) {
                     alert('Database berhasil disimpan ke server.');
