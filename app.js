@@ -4858,53 +4858,58 @@ function showLoginForm(type) {
                 const first = items[0];
                 if (qLabel) qLabel.textContent = `Soal ${gi + 1}/${uniqueQuestionsCount}: "${first.qText.substring(0, 50)}..."`;
 
-                // Split items into chunks of 3 (requested limit)
+                // Split items into chunks of 5 (requested limit)
                 const chunks = [];
-                for (let i = 0; i < items.length; i += 3) {
-                    chunks.push(items.slice(i, i + 3));
+                for (let i = 0; i < items.length; i += 5) {
+                    chunks.push(items.slice(i, i + 5));
                 }
 
                 for (let ci = 0; ci < chunks.length; ci++) {
                     const chunk = chunks[ci];
-                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 3 + 1} - ${Math.min((ci + 1) * 3, items.length)} dari ${items.length}...`;
+                    if (sLabel) sLabel.textContent = `Memproses kelompok siswa ${ci * 5 + 1} - ${Math.min((ci + 1) * 5, items.length)} dari ${items.length}...`;
 
-                    // Run parallel fetches for this chunk
-                    const promises = chunk.map(async (item) => {
-                        try {
-                            const res = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    questionText: item.qText,
-                                    studentAnswer: typeof item.studentAns === 'string' ? item.studentAns : '',
-                                    referenceAnswer: item.refAns,
-                                    teacherId: currentSiswa ? currentSiswa.id : null
-                                })
+                    try {
+                        const res = await fetch(getApiBaseUrl() + '/api/ai-batch-correct', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                items: chunk.map((item, idx) => ({
+                                    id: idx, // local idx for mapping back
+                                    qText: item.qText,
+                                    refAns: item.refAns,
+                                    studentAns: String(item.studentAns || '')
+                                })),
+                                teacherId: currentSiswa ? currentSiswa.id : null
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (res.ok && data.ok && Array.isArray(data.results)) {
+                            data.results.forEach((rObj, idx) => {
+                                const item = chunk[idx];
+                                if (item) {
+                                    if (!item.result.manualScores) item.result.manualScores = {};
+                                    if (!item.result.aiEssayFeedback) item.result.aiEssayFeedback = {};
+                                    item.result.manualScores[item.qi] = rObj.score;
+                                    item.result.aiEssayFeedback[item.qi] = rObj.feedback;
+                                    successTotal++;
+                                }
                             });
-                            const data = await res.json();
-                            if (res.ok && data.ok) {
-                                if (!item.result.manualScores) item.result.manualScores = {};
-                                if (!item.result.aiEssayFeedback) item.result.aiEssayFeedback = {};
-                                item.result.manualScores[item.qi] = data.score;
-                                item.result.aiEssayFeedback[item.qi] = data.feedback;
-                                successTotal++;
-                            } else {
-                                errorTotal++;
-                            }
-                        } catch (e) {
-                            console.error(`[AI-Group] Error for student result ${item.resultIdx}:`, e.message);
-                            errorTotal++;
-                        } finally {
-                            finishedCount++;
-                            affectedResultIndices.add(item.resultIdx);
-                            // Update individual progress inside Promise
-                            const pct = Math.round((finishedCount / totalTasks) * 100);
-                            if (progressBar) progressBar.style.width = pct + '%';
-                            if (counterEl) counterEl.textContent = `${finishedCount} / ${totalTasks} jawaban`;
+                        } else {
+                            errorTotal += chunk.length;
                         }
-                    });
-
-                    await Promise.all(promises);
+                    } catch (e) {
+                        console.error(`[AI-Batch] Error:`, e.message);
+                        errorTotal += chunk.length;
+                    } finally {
+                        finishedCount += chunk.length;
+                        chunk.forEach(item => affectedResultIndices.add(item.resultIdx));
+                        
+                        // Update progress
+                        const pct = Math.round((finishedCount / totalTasks) * 100);
+                        if (progressBar) progressBar.style.width = pct + '%';
+                        if (counterEl) counterEl.textContent = `${Math.min(finishedCount, totalTasks)} / ${totalTasks} jawaban`;
+                    }
                 }
             }
 
@@ -5013,38 +5018,40 @@ function showLoginForm(type) {
             if (!result.manualScores) result.manualScores = {};
             if (!result.aiEssayFeedback) result.aiEssayFeedback = {};
 
-            for (let idx = 0; idx < essayIndices.length; idx++) {
-                const qi = essayIndices[idx];
-                const q = questions[qi];
-                const studentAnswer = answers[qi];
+            // OPTIMIZED: Send ALL essays for this student in ONE batch request
+            try {
+                if (statusEl) statusEl.textContent = `Mengoreksi ${essayIndices.length} soal esai sekaligus...`;
+                if (progressEl) progressEl.style.width = '50%';
 
-                if (statusEl) statusEl.textContent = `Mengoreksi soal ${idx + 1} dari ${essayIndices.length}...`;
-                if (progressEl) progressEl.style.width = `${((idx) / essayIndices.length) * 100}%`;
-                if (counterEl) counterEl.textContent = `${idx} / ${essayIndices.length} soal selesai`;
+                const response = await fetch(getApiBaseUrl() + '/api/ai-batch-correct', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: essayIndices.map(qi => ({
+                            id: qi, // using question index as ID to map back
+                            qText: questions[qi].text || '',
+                            refAns: questions[qi].correct || '',
+                            studentAns: String(answers[qi] || '')
+                        })),
+                        teacherId: currentSiswa ? currentSiswa.id : null
+                    })
+                });
 
-                try {
-                    const response = await fetch(getApiBaseUrl() + '/api/ai-correct-essay', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            questionText: q.text || '',
-                            studentAnswer: typeof studentAnswer === 'string' ? studentAnswer : '',
-                            referenceAnswer: q.correct || '',
-                            teacherId: currentSiswa ? currentSiswa.id : null
-                        })
-                    });
-                    const data = await response.json();
-                    if (response.ok && data.ok) {
-                        result.manualScores[qi] = data.score;
-                        result.aiEssayFeedback[qi] = data.feedback;
+                const data = await response.json();
+                if (response.ok && data.ok && Array.isArray(data.results)) {
+                    data.results.forEach(rObj => {
+                        const qi = rObj.id;
+                        result.manualScores[qi] = rObj.score;
+                        result.aiEssayFeedback[qi] = rObj.feedback;
                         successCount++;
-                    } else {
-                        errorCount++;
-                    }
-                } catch (e) {
-                    console.error(`[batchAiCorrect] Error on question ${qi}:`, e.message);
-                    errorCount++;
+                    });
+                } else {
+                    errorCount = essayIndices.length;
+                    alert('Gagal koreksi AI Batch: ' + (data.error || 'Kesalahan Server'));
                 }
+            } catch (e) {
+                console.error(`[batchAiCorrect] Error:`, e.message);
+                errorCount = essayIndices.length;
             }
 
             // Final progress

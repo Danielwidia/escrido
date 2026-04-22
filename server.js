@@ -704,7 +704,7 @@ app.post('/api/db/questions/chunk', async (req, res) => {
             currentDB.questions = questions;
         } else {
             if (!Array.isArray(currentDB.questions)) currentDB.questions = [];
-            
+
             // Deduplicate based on some unique criteria if possible, or just append
             // Assuming the client sends clean chunks.
             currentDB.questions.push(...questions);
@@ -714,10 +714,10 @@ app.post('/api/db/questions/chunk', async (req, res) => {
         // even if the aggregate is large (Vercel outgoing to Supabase has higher limits)
         await writeDB(currentDB);
 
-        return res.json({ 
-            ok: true, 
-            received: questions.length, 
-            total_now: currentDB.questions.length 
+        return res.json({
+            ok: true,
+            received: questions.length,
+            total_now: currentDB.questions.length
         });
     } catch (e) {
         console.error('POST /api/db/questions/chunk error:', e.message);
@@ -1115,15 +1115,21 @@ async function callGeminiAI(prompt, teacherId = null) {
         { name: 'gemini-2.5-flash', version: 'v1beta' },
         { name: 'gemini-2.5-pro', version: 'v1beta' },
         { name: 'gemini-2.0-flash', version: 'v1' },
+        { name: 'gemini-2.0-pro', version: 'v1' },
+        { name: 'gemini-2.0-flash-lite', version: 'v1' },
+        { name: 'gemini-2.0-pro-lite', version: 'v1' },
+        { name: 'gemini-2.0-flash', version: 'v1beta' },
+        { name: 'gemini-2.0-pro', version: 'v1beta' },
+        { name: 'gemini-2.0-flash-lite', version: 'v1beta' },
+        { name: 'gemini-2.0-pro-lite', version: 'v1beta' },
         { name: 'gemini-1.5-flash', version: 'v1' },
         { name: 'gemini-1.5-flash-latest', version: 'v1' },
         { name: 'gemini-1.5-flash-latest', version: 'v1beta' },
         { name: 'gemini-1.5-flash-8b', version: 'v1' },
-        { name: 'gemini-2.0-flash-lite-preview-02-05', version: 'v1' },
-        { name: 'gemini-2.0-flash-lite-preview-02-05', version: 'v1beta' },
         { name: 'gemini-1.5-pro', version: 'v1' },
         { name: 'gemini-1.5-pro-latest', version: 'v1' },
         { name: 'gemini-1.5-pro-latest', version: 'v1beta' },
+        { name: 'gemini-1.0-flash', version: 'v1' },
         { name: 'gemini-1.0-pro', version: 'v1' }
     ];
 
@@ -1918,18 +1924,12 @@ ${referenceAnswer ? `KUNCI JAWABAN / JAWABAN REFERENSI:\n${referenceAnswer}\n\n`
 ${studentAnswer}
 
 INSTRUKSI PENILAIAN:
-- Berikan skor antara 0 sampai 5 (bilangan bulat atau desimal dengan 1 angka di belakang koma).
-  - 0 = Tidak menjawab atau jawaban sama sekali tidak relevan
-  - 1 = Jawaban sangat kurang, hampir tidak memahami materi
-  - 2 = Jawaban kurang, ada sedikit pemahaman tapi banyak yang keliru
-  - 3 = Jawaban cukup, memahami sebagian besar konsep tapi ada kekurangan
-  - 4 = Jawaban baik, hampir lengkap dan tepat dengan kekurangan minor
-  - 5 = Jawaban sangat baik, lengkap, tepat, dan jelas
-- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 10 KATA) yang menjelaskan kelebihan dan kekurangan jawaban siswa.
+- Berikan skor antara 0 sampai 5.
+- Berikan umpan balik singkat dalam Bahasa Indonesia (MAKSIMAL 5 KATA).
 - Jika tidak ada kunci jawaban, nilai berdasarkan kelengkapan, kejelasan, dan relevansi jawaban terhadap soal.
 
-BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 10 kata), tanpa teks lain:
-{"score": 3.5, "feedback": "Jawaban cukup baik namun kurang menjelaskan contoh konkret."}`;
+BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 5 kata), tanpa teks lain:
+{"score": 3.5, "feedback": "Jawaban baik dan lengkap."}`;
 
     try {
         let text = await callAI(prompt, teacherId);
@@ -1945,12 +1945,77 @@ BALAS HANYA dengan JSON format berikut (Gunakan feedback maksimal 10 kata), tanp
         const parsed = JSON.parse(match[0]);
         const rawScore = parseFloat(parsed.score);
         const score = isNaN(rawScore) ? 0 : Math.min(5, Math.max(0, rawScore));
-        const feedback = typeof parsed.feedback === 'string' ? parsed.feedback : 'Tidak ada umpan balik.';
+        const feedback = typeof parsed.feedback === 'string' ? parsed.feedback : 'Sangat baik.';
 
-        console.log(`[/api/ai-correct-essay] Score: ${score}, Feedback length: ${feedback.length}`);
+        console.log(`[/api/ai-correct-essay] Score: ${score}, Feedback: ${feedback}`);
         return res.json({ ok: true, score, feedback });
     } catch (e) {
         console.error('[/api/ai-correct-essay] Fatal error:', e.message);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── API: AI Batch Correction (Universal) ─────────────────────────────────────
+app.post('/api/ai-batch-correct', async (req, res) => {
+    const { items, teacherId = null } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'Array "items" diperlukan.' });
+    }
+
+    // Prepare content for prompt
+    let itemsText = "";
+    items.forEach((item, idx) => {
+        itemsText += `--- ITEM ${idx} ---\n`;
+        itemsText += `SOAL: ${item.qText}\n`;
+        if (item.refAns) itemsText += `KUNCI: ${item.refAns}\n`;
+        itemsText += `JAWABAN SISWA: ${item.studentAns || '(Tidak menjawab)'}\n\n`;
+    });
+
+    const prompt = `Kamu adalah guru pengoreksi ujian yang profesional. Berikan penilaian objektif untuk daftar jawaban esai berikut.
+
+${itemsText}
+
+INSTRUKSI PENTING:
+- Berikan skor 0-5 untuk setiap item.
+- Berikan feedback singkat (MAKSIMAL 5 KATA) untuk setiap item.
+- Balas HANYA dengan JSON array mengikuti format di bawah, tanpa markdown atau kata-kata tambahan.
+
+CONTOH OUTPUT:
+[
+  {"id": 0, "score": 4.5, "feedback": "Penjelasan sangat lengkap dan tepat."},
+  {"id": 1, "score": 2.0, "feedback": "Kurang lengkap, poin utama tertinggal."}
+]`;
+
+    try {
+        console.log(`[/api/ai-batch-correct] Processing ${items.length} items...`);
+        let text = await callAI(prompt, teacherId);
+        text = text.replace(/```json\n?|```/g, '').trim();
+
+        const match = text.match(/\[[\s\S]*\]/);
+        if (!match) {
+            console.error('[/api/ai-batch-correct] No JSON array in AI response:', text.substring(0, 200));
+            return res.status(500).json({ error: 'AI tidak memberikan respons batch yang valid.' });
+        }
+
+        const rawResults = JSON.parse(match[0]);
+
+        // Map results back to items by ID or position
+        const results = items.map((item, idx) => {
+            const found = rawResults.find(r => r.id === idx || r.id === String(idx));
+            const raw = found || rawResults[idx] || { score: 0, feedback: "Penilaian gagal." };
+
+            return {
+                id: item.id, // original ID from request
+                score: Math.min(5, Math.max(0, parseFloat(raw.score) || 0)),
+                feedback: (typeof raw.feedback === 'string' ? raw.feedback : 'Cukup baik.').substring(0, 100)
+            };
+        });
+
+        console.log(`[/api/ai-batch-correct] Success! Corrected ${results.length} items.`);
+        return res.json({ ok: true, results });
+    } catch (e) {
+        console.error('[/api/ai-batch-correct] Fatal error:', e.message);
         return res.status(500).json({ error: e.message });
     }
 });
