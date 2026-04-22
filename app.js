@@ -4467,13 +4467,26 @@ function showLoginForm(type) {
             renderAdminResults();
         }
 
-        function deleteResult(idx) {
+        async function deleteResult(idx) {
             if (!confirm('Hapus hasil ujian ini?')) return;
             if (!db.results[idx]) return;
-            db.results[idx].deleted = true;
-            db.results[idx].updatedAt = Date.now();
+            
+            const resultObj = db.results[idx];
+            resultObj.deleted = true;
+            resultObj.updatedAt = Date.now();
+            
             updateCompletionCharts();
-            save();
+            
+            // Explicitly push the deletion update to server results API
+            try {
+                showToast('Menghapus di server...', 'info');
+                await sendResult(resultObj);
+            } catch (e) {
+                console.error('Failed to sync deletion to server:', e.message);
+                showToast('Gagal menghapus di server, tapi ditandai untuk dihapus lokal.', 'warning');
+            }
+
+            save(); // Still save local state
 
             // Check which dashboard is currently active and render accordingly
             const adminDash = document.getElementById('admin-dashboard');
@@ -4486,7 +4499,7 @@ function showLoginForm(type) {
             }
         }
 
-        function clearAllResults() {
+        async function clearAllResults() {
             const activeResults = (db.results || []).filter(r => !r.deleted);
             if (activeResults.length === 0) {
                 alert('Tidak ada hasil ujian tersisa untuk dihapus.');
@@ -4496,12 +4509,35 @@ function showLoginForm(type) {
             if (!confirm('Anda yakin ingin menghapus semua data skor hasil ujian? Tindakan ini tidak dapat dibatalkan.')) return;
 
             const now = Date.now();
+            const toSync = [];
+            
             // Tandai semua hasil sebagai dihapus; ini penting agar merge server menyampaikan status deleted.
-            db.results = (db.results || []).map(r => ({
-                ...r,
-                deleted: true,
-                updatedAt: now
-            }));
+            db.results = (db.results || []).map(r => {
+                if (r.deleted) return r;
+                const updated = {
+                    ...r,
+                    deleted: true,
+                    updatedAt: now
+                };
+                toSync.push(updated);
+                return updated;
+            });
+
+            // Push all deletions to server
+            if (toSync.length > 0) {
+                showToast(`Menghapus ${toSync.length} data di server...`, 'info');
+                try {
+                    const res = await fetch(getApiBaseUrl() + '/api/results', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(toSync)
+                    });
+                    if (!res.ok) throw new Error(res.statusText);
+                } catch (e) {
+                    console.error('Mass deletion sync failed:', e.message);
+                    showToast('Gagal sinkronisasi hapus massal ke server.', 'warning');
+                }
+            }
 
             save();
             updateCompletionCharts();
