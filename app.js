@@ -878,16 +878,8 @@ function showLoginForm(type) {
                 if (res.ok) {
                     const serverDb = await res.json();
                     if (serverDb && serverDb.students) {
-                        const resultsBefore = db.results || [];
                         db = normalizeDb(serverDb);
-                        // Results are now fetched separately via /api/results to stay under 4.5MB
-                        db.results = mergeResults(resultsBefore, serverDb.results || []);
                         console.log('Database synced with server:', db.students.length, 'students');
-                        
-                        // Force a results refresh for all roles to get latest scores and sync deletions
-                        if (currentSiswa) {
-                            fetchAndMerge();
-                        }
                     }
                 }
             } catch (err) {
@@ -952,10 +944,6 @@ function showLoginForm(type) {
                     if (typeof requestFullscreen === 'function') {
                         requestFullscreen();
                     }
-
-                    // Start results polling for student to sync deletions/updates
-                    if (resultsPollInterval) clearInterval(resultsPollInterval);
-                    resultsPollInterval = setInterval(fetchAndMerge, 10000); // Check every 10s
                 } else if (currentSiswa.role === 'teacher') {
                     const teacherDash = document.getElementById('teacher-dashboard');
                     if (teacherDash) teacherDash.classList.remove('hidden');
@@ -1119,7 +1107,6 @@ function showLoginForm(type) {
          * @param {boolean} options.refreshBeforeSave If true, fetches latest data from server 
          *                                           and merges local changes before pushing.
          * @param {boolean} options.forceServerSave If true, pushes to server even if the user is a student.
-         * @param {boolean} options.includeResults If true, also pushes all results to the /api/results endpoint.
          */
         async function save(options = {}) {
             // Students should not overwrite the entire DB structure via /api/db 
@@ -1172,12 +1159,10 @@ function showLoginForm(type) {
             while (retries > 0 && !serverSaveSuccess) {
                 try {
                     // Images are now synced with server to fix broken images in Supabase cross-device.
-                    // Stripping results to keep payload small and stay under Vercel 4.5MB limit.
-                    // Results are managed via separate endpoints (/api/result or /api/results).
-                    const { results, ...dbOnly } = db;
-                    const payload = JSON.stringify(dbOnly);
+                    const dbForServer = db;
+                    const payload = JSON.stringify(dbForServer);
                     const sizeInMb = payload.length / (1024 * 1024);
-                    console.log(`[SAVE] Payload size (excluding results): ${sizeInMb.toFixed(2)} MB`);
+                    console.log(`[SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
 
                     // Vercel Serverless Function payload limit is 4.5MB
                     if (sizeInMb > 4.2) {
@@ -1211,29 +1196,9 @@ function showLoginForm(type) {
 
             if (serverSaveSuccess) {
                 showToast('Perubahan tersimpan ke server!', 'success');
-                
-                // If requested, also push results to the results API
-                if (options.includeResults && db.results && db.results.length > 0) {
-                    showToast(`Sinkronisasi ${db.results.length} hasil ujian...`, 'info');
-                    try {
-                        // Chunking to avoid large payload limits
-                        for (let i = 0; i < db.results.length; i += 500) {
-                            const chunk = db.results.slice(i, i + 500);
-                            await fetch(getApiBaseUrl() + '/api/results', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(chunk)
-                            });
-                        }
-                        console.log('Results sync complete.');
-                    } catch (e) {
-                        console.error('Results sync failed during save:', e.message);
-                        showToast('Struktur tersimpan, tapi gagal sinkronisasi hasil.', 'warning');
-                    }
-                }
             } else {
                 console.error('PERINGATAN: Gagal menyimpan ke server setelah 3 percobaan!');
-                showToast('Gagal menyimpan ke server! Perika koneksi.', 'error');
+                showToast('Gagal menyimpan ke server! Periksa koneksi.', 'error');
             }
 
             try {
@@ -2480,28 +2445,16 @@ function showLoginForm(type) {
                 if (res.ok) {
                     const serverResults = await res.json();
                     if (Array.isArray(serverResults)) {
-                        let merged = mergeResults(db.results, serverResults);
-
-                        // SPECIAL CLEANUP: If we are a student, remove any local result for OUR ID 
-                        // that is missing from the server results (meaning it was physically deleted by admin).
-                        if (currentSiswa && currentSiswa.role === 'student' && serverResults.length > 0) {
-                            const myId = currentSiswa.id;
-                            const makeKey = r => r.id || `${r.studentId || ''}-${r.mapel || ''}-${r.rombel || ''}-${r.date || ''}`;
-                            const serverKeys = new Set(serverResults.filter(r => r.studentId === myId).map(makeKey));
-                            
-                            merged = merged.filter(r => {
-                                if (r.studentId !== myId) return true;
-                                // Keep if server has it OR if it's already marked as deleted (logical delete)
-                                return serverKeys.has(makeKey(r)) || r.deleted;
-                            });
-                        }
-
+                        const merged = mergeResults(db.results, serverResults);
                         const dbJson = JSON.stringify(db.results || []);
                         const mergedJson = JSON.stringify(merged || []);
                         if (mergedJson !== dbJson) {
                             db.results = merged;
                             console.log(`[SYNC] Results updated from server. New count: ${db.results.length}`);
                             updateStats();
+                            // persist new merged data locally; this way reloading the
+                            // admin UI while offline still shows the most recent
+                            // scores fetched from the server.
                             try {
                                 await saveLocalDb();
                             } catch (e) {
@@ -2513,16 +2466,10 @@ function showLoginForm(type) {
                                 renderAdminResults();
                             }
 
-                            // Update Teacher View
+                            // Update Teacher View if active
                             if (document.getElementById('teacher-dashboard') &&
                                 !document.getElementById('teacher-dashboard').classList.contains('hidden')) {
                                 if (typeof renderTeacherResults === 'function') renderTeacherResults();
-                            }
-
-                            // Update Student View
-                            if (document.getElementById('student-dashboard') &&
-                                !document.getElementById('student-dashboard').classList.contains('hidden')) {
-                                if (typeof renderStudentExamList === 'function') renderStudentExamList();
                             }
                         }
                     }
@@ -4105,12 +4052,9 @@ function showLoginForm(type) {
                     const parsed = JSON.parse(e.target.result);
                     if (parsed && typeof parsed === 'object') {
                         db = parsed;
-                        showToast('Memulai restore database...', 'info');
-                        // Use includeResults true to ensure results are also pushed to Supabase
-                        save({ includeResults: true }).then(() => {
-                            alert('Restore berhasil (termasuk hasil ujian). Halaman akan dimuat ulang.');
-                            location.reload();
-                        });
+                        save();
+                        alert('Restore berhasil. Halaman akan dimuat ulang.');
+                        location.reload();
                     } else {
                         alert('Format file tidak valid.');
                     }
@@ -4294,43 +4238,18 @@ function showLoginForm(type) {
         // --- EXPLICIT SAVE / LOAD DB (admin actions) ---
         async function saveDatabaseToServer() {
             try {
-                showToast('Menyimpan database & hasil ujian...', 'info');
-                
-                // 1. Send main DB structure (excluding results for payload size)
-                const { results, ...dbOnly } = db;
-                const payload = JSON.stringify(dbOnly);
-                const sizeInMb = payload.length / (1024 * 1024);
-                console.log(`[MANUAL SAVE] Payload size: ${sizeInMb.toFixed(2)} MB`);
-
                 const res = await fetch(getApiBaseUrl() + '/api/db', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: payload
+                    body: JSON.stringify(db)
                 });
-
-                if (!res.ok) {
+                if (res.ok) {
+                    alert('Database berhasil disimpan ke server.');
+                } else {
                     const txt = await res.text();
-                    throw new Error('Gagal simpan struktur: ' + (txt || res.statusText));
+                    alert('Gagal menyimpan ke server: ' + (txt || res.statusText));
                 }
-
-                // 2. Explicitly send results in chunks to avoid payload limits
-                if (db.results && db.results.length > 0) {
-                    const totalResults = db.results.length;
-                    for (let i = 0; i < totalResults; i += 500) {
-                        const chunk = db.results.slice(i, i + 500);
-                        showToast(`Mengunggah hasil (${i + chunk.length}/${totalResults})...`, 'info');
-                        const resResults = await fetch(getApiBaseUrl() + '/api/results', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(chunk)
-                        });
-                        if (!resResults.ok) throw new Error('Gagal simpan hasil ujian di chunk ' + (i/500 + 1));
-                    }
-                }
-
-                alert('Database dan hasil ujian berhasil disimpan ke server.');
             } catch (err) {
-                console.error('Manual Save Error:', err);
                 alert('Error saat menyimpan ke server: ' + (err.message || err));
             }
         }
@@ -4510,26 +4429,13 @@ function showLoginForm(type) {
             renderAdminResults();
         }
 
-        async function deleteResult(idx) {
+        function deleteResult(idx) {
             if (!confirm('Hapus hasil ujian ini?')) return;
             if (!db.results[idx]) return;
-            
-            const resultObj = db.results[idx];
-            resultObj.deleted = true;
-            resultObj.updatedAt = Date.now();
-            
+            db.results[idx].deleted = true;
+            db.results[idx].updatedAt = Date.now();
             updateCompletionCharts();
-            
-            // Explicitly push the deletion update to server results API
-            try {
-                showToast('Menghapus di server...', 'info');
-                await sendResult(resultObj);
-            } catch (e) {
-                console.error('Failed to sync deletion to server:', e.message);
-                showToast('Gagal menghapus di server, tapi ditandai untuk dihapus lokal.', 'warning');
-            }
-
-            save(); // Still save local state
+            save();
 
             // Check which dashboard is currently active and render accordingly
             const adminDash = document.getElementById('admin-dashboard');
@@ -4542,7 +4448,7 @@ function showLoginForm(type) {
             }
         }
 
-        async function clearAllResults() {
+        function clearAllResults() {
             const activeResults = (db.results || []).filter(r => !r.deleted);
             if (activeResults.length === 0) {
                 alert('Tidak ada hasil ujian tersisa untuk dihapus.');
@@ -4552,35 +4458,12 @@ function showLoginForm(type) {
             if (!confirm('Anda yakin ingin menghapus semua data skor hasil ujian? Tindakan ini tidak dapat dibatalkan.')) return;
 
             const now = Date.now();
-            const toSync = [];
-            
             // Tandai semua hasil sebagai dihapus; ini penting agar merge server menyampaikan status deleted.
-            db.results = (db.results || []).map(r => {
-                if (r.deleted) return r;
-                const updated = {
-                    ...r,
-                    deleted: true,
-                    updatedAt: now
-                };
-                toSync.push(updated);
-                return updated;
-            });
-
-            // Push all deletions to server
-            if (toSync.length > 0) {
-                showToast(`Menghapus ${toSync.length} data di server...`, 'info');
-                try {
-                    const res = await fetch(getApiBaseUrl() + '/api/results', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(toSync)
-                    });
-                    if (!res.ok) throw new Error(res.statusText);
-                } catch (e) {
-                    console.error('Mass deletion sync failed:', e.message);
-                    showToast('Gagal sinkronisasi hapus massal ke server.', 'warning');
-                }
-            }
+            db.results = (db.results || []).map(r => ({
+                ...r,
+                deleted: true,
+                updatedAt: now
+            }));
 
             save();
             updateCompletionCharts();
@@ -5407,9 +5290,6 @@ function showLoginForm(type) {
 
             // Filter the results using the same logic as renderAdminResults
             const filteredResults = db.results.filter(r => {
-                // Filter out deleted results
-                if (r.deleted) return false;
-
                 const rombelFilter = document.getElementById('results-filter-rombel')?.value;
                 const mapelFilter = document.getElementById('results-filter-mapel')?.value;
 
