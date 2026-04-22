@@ -884,8 +884,8 @@ function showLoginForm(type) {
                         db.results = mergeResults(resultsBefore, serverDb.results || []);
                         console.log('Database synced with server:', db.students.length, 'students');
                         
-                        // Force a results refresh if we are admin/teacher to get latest scores
-                        if (currentSiswa && (currentSiswa.role === 'admin' || currentSiswa.role === 'teacher')) {
+                        // Force a results refresh for all roles to get latest scores and sync deletions
+                        if (currentSiswa) {
                             fetchAndMerge();
                         }
                     }
@@ -952,6 +952,10 @@ function showLoginForm(type) {
                     if (typeof requestFullscreen === 'function') {
                         requestFullscreen();
                     }
+
+                    // Start results polling for student to sync deletions/updates
+                    if (resultsPollInterval) clearInterval(resultsPollInterval);
+                    resultsPollInterval = setInterval(fetchAndMerge, 10000); // Check every 10s
                 } else if (currentSiswa.role === 'teacher') {
                     const teacherDash = document.getElementById('teacher-dashboard');
                     if (teacherDash) teacherDash.classList.remove('hidden');
@@ -2455,16 +2459,28 @@ function showLoginForm(type) {
                 if (res.ok) {
                     const serverResults = await res.json();
                     if (Array.isArray(serverResults)) {
-                        const merged = mergeResults(db.results, serverResults);
+                        let merged = mergeResults(db.results, serverResults);
+
+                        // SPECIAL CLEANUP: If we are a student, remove any local result for OUR ID 
+                        // that is missing from the server results (meaning it was physically deleted by admin).
+                        if (currentSiswa && currentSiswa.role === 'student' && serverResults.length > 0) {
+                            const myId = currentSiswa.id;
+                            const makeKey = r => r.id || `${r.studentId || ''}-${r.mapel || ''}-${r.rombel || ''}-${r.date || ''}`;
+                            const serverKeys = new Set(serverResults.filter(r => r.studentId === myId).map(makeKey));
+                            
+                            merged = merged.filter(r => {
+                                if (r.studentId !== myId) return true;
+                                // Keep if server has it OR if it's already marked as deleted (logical delete)
+                                return serverKeys.has(makeKey(r)) || r.deleted;
+                            });
+                        }
+
                         const dbJson = JSON.stringify(db.results || []);
                         const mergedJson = JSON.stringify(merged || []);
                         if (mergedJson !== dbJson) {
                             db.results = merged;
                             console.log(`[SYNC] Results updated from server. New count: ${db.results.length}`);
                             updateStats();
-                            // persist new merged data locally; this way reloading the
-                            // admin UI while offline still shows the most recent
-                            // scores fetched from the server.
                             try {
                                 await saveLocalDb();
                             } catch (e) {
@@ -2476,10 +2492,16 @@ function showLoginForm(type) {
                                 renderAdminResults();
                             }
 
-                            // Update Teacher View if active
+                            // Update Teacher View
                             if (document.getElementById('teacher-dashboard') &&
                                 !document.getElementById('teacher-dashboard').classList.contains('hidden')) {
                                 if (typeof renderTeacherResults === 'function') renderTeacherResults();
+                            }
+
+                            // Update Student View
+                            if (document.getElementById('student-dashboard') &&
+                                !document.getElementById('student-dashboard').classList.contains('hidden')) {
+                                if (typeof renderStudentExamList === 'function') renderStudentExamList();
                             }
                         }
                     }
