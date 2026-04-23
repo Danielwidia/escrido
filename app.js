@@ -1566,7 +1566,7 @@ function showLoginForm(type) {
             const id = "DRKS-" + Math.floor(1000 + Math.random() * 9000);
             db.students.push({ id, password: "escrido", name, rombel, role: "student" });
             updateCompletionCharts();
-            save();
+            save({ skipQuestions: true, refreshBeforeSave: true });
             renderAdminStudents();
             closeModals();
         }
@@ -1605,7 +1605,7 @@ function showLoginForm(type) {
             if (confirm("Hapus siswa ini?")) {
                 db.students = db.students.filter(x => x.id !== id);
                 updateCompletionCharts();
-                save();
+                save({ skipQuestions: true, refreshBeforeSave: true });
                 renderAdminStudents();
             }
         }
@@ -1624,7 +1624,7 @@ function showLoginForm(type) {
                 alert('Tidak ada hasil ujian aktif untuk siswa ini.');
                 return;
             }
-            save();
+            save({ skipQuestions: true, refreshBeforeSave: true });
             updateCompletionCharts();
             updateStats();
             renderAdminResults();
@@ -2402,7 +2402,7 @@ function showLoginForm(type) {
             db.schedules = newSchedules;
             
             // Save with mandatory refresh from server first to prevent overwriting other admins
-            await save({ refreshBeforeSave: true });
+            await save({ refreshBeforeSave: true, skipQuestions: true });
             
             closeModals();
             alert('Jadwal akses tersimpan!');
@@ -2451,7 +2451,7 @@ function showLoginForm(type) {
             db.timeLimits = newTimeLimits;
             
             // Save with refresh
-            await save({ refreshBeforeSave: true });
+            await save({ refreshBeforeSave: true, skipQuestions: true });
             
             closeModals();
             alert('Waktu pengerjaan tersimpan!');
@@ -2596,7 +2596,7 @@ function showLoginForm(type) {
         function deleteMapel(name) {
             if (confirm(`Hapus mata pelajaran "${name}"?`)) {
                 db.subjects = db.subjects.filter(s => getSubjectName(s) !== name);
-                save();
+                save({ skipQuestions: true, refreshBeforeSave: true });
                 renderRombelSection();
             }
         }
@@ -2604,7 +2604,7 @@ function showLoginForm(type) {
         function deleteRombel(name) {
             if (confirm(`Hapus rombel "${name}"?`)) {
                 db.rombels = db.rombels.filter(r => r !== name);
-                save();
+                save({ skipQuestions: true, refreshBeforeSave: true });
                 renderRombelSection();
             }
         }
@@ -5541,7 +5541,7 @@ function showLoginForm(type) {
             } else {
                 db.rombels.push(val);
             }
-            save();
+            save({ skipQuestions: true, refreshBeforeSave: true });
             closeModals();
             showAdminSection('rombel');
         }
