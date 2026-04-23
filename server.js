@@ -679,6 +679,17 @@ app.post('/api/db', async (req, res) => {
             await writeResults(payload.results);
         }
         const { results, ...dbOnly } = payload;
+
+        // PRESERVATION LOGIC: If questions are missing from the payload (metadata-only sync),
+        // we must preserve the existing questions to avoid erasing the entire question bank.
+        if (!dbOnly.questions) {
+            const current = await readDB();
+            if (current && Array.isArray(current.questions)) {
+                dbOnly.questions = current.questions;
+                console.log(`[SAVE] Preserving existing ${current.questions.length} questions for metadata-only update.`);
+            }
+        }
+
         await writeDB(dbOnly);
         return res.json({ ok: true });
     } catch (e) {

@@ -878,7 +878,16 @@ function showLoginForm(type) {
                 if (res.ok) {
                     const serverDb = await res.json();
                     if (serverDb && serverDb.students) {
-                        db = normalizeDb(serverDb);
+                        const newDb = normalizeDb(serverDb);
+                        
+                        // SAFETY CHECK: If server has 0 questions but local has questions, 
+                        // preserve local questions to prevent accidental wiping.
+                        if (newDb.questions.length === 0 && db.questions.length > 0) {
+                            console.warn('[INIT] Server returned empty questions, preserving local questions.');
+                            newDb.questions = db.questions;
+                        }
+                        
+                        db = newDb;
                         console.log('Database synced with server:', db.students.length, 'students');
                     }
                 }
