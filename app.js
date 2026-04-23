@@ -1174,9 +1174,9 @@ function showLoginForm(type) {
                     if (!metaRes.ok) throw new Error('Gagal sync metadata');
 
                     // 2. Send questions in chunks if any (Skip if requested)
-                    if (options.skipQuestions) {
+                    if (options.skipQuestions === true) {
                         console.log('[SAVE] Skipping question sync as requested');
-                        serverSaveSuccess = true;
+                        showToast('Sync Nilai...', 'info');
                     } else {
                         const chunkSize = 100;
                         if (questions.length === 0) {
@@ -1192,7 +1192,6 @@ function showLoginForm(type) {
                                 const isFirst = (i === 0);
                                 const isLast = (i + chunkSize >= questions.length);
                                 const progress = Math.round(((i + chunk.length) / questions.length) * 100);
-                                
                                 showToast(`Sync Soal: ${progress}%...`, 'info');
                                 
                                 const chunkRes = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
@@ -1208,7 +1207,7 @@ function showLoginForm(type) {
                             }
                         }
                     }
-
+                    
                     serverSaveSuccess = true;
                     console.log('Database (Chunked) berhasil disimpan ke server');
                 } catch (err) {
@@ -5117,8 +5116,8 @@ function showLoginForm(type) {
 
             // Save and close overlay
             try {
-                // Use sendResult instead of full save to only sync values, not questions
-                await sendResult(result);
+                // Use save({ skipQuestions: true }) for metadata-only sync
+                await save({ skipQuestions: true });
                 await saveLocalDb();
                 updateStats();
             } catch (e) {
@@ -5288,8 +5287,8 @@ function showLoginForm(type) {
 
             // Persist to backend
             try {
-                // Use sendResult instead of full save to only sync values, not questions
-                await sendResult(result);
+                // Use save({ skipQuestions: true }) for metadata-only sync
+                await save({ skipQuestions: true });
                 await saveLocalDb();
                 updateStats();
                 // Refresh score in modal badge
