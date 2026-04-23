@@ -1158,11 +1158,14 @@ function showLoginForm(type) {
             showToast('Menyimpan ke server...', 'info');
             while (retries > 0 && !serverSaveSuccess) {
                 try {
-                    // Target chunk size in items (100)
-                    const chunkSize = 100;
+                    // Split questions from metadata for chunked upload
+                    const { questions, ...metadata } = db;
+                    const jsonQuestions = JSON.stringify(questions);
+                    const questionsSize = jsonQuestions.length / (1024 * 1024);
+                    
+                    console.log(`[SAVE] Total questions size: ${questionsSize.toFixed(2)} MB (${questions.length} items)`);
 
-                    // 1. Send metadata first (exclude questions and results)
-                    const { questions, results, ...metadata } = db;
+                    // 1. Send metadata first
                     const metaRes = await fetch(getApiBaseUrl() + '/api/db', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1170,26 +1173,9 @@ function showLoginForm(type) {
                     });
                     if (!metaRes.ok) throw new Error('Gagal sync metadata');
 
-                    // 2. Send results in chunks if any (Fallback to standard results API)
-                    const resultsArray = Array.isArray(results) ? results : [];
-                    if (resultsArray.length > 0) {
-                        for (let i = 0; i < resultsArray.length; i += chunkSize) {
-                            const chunk = resultsArray.slice(i, i + chunkSize);
-                            const progress = Math.round(((i + chunk.length) / resultsArray.length) * 100);
-                            showToast(`Sync Hasil Ujian: ${progress}%...`, 'info');
-                            
-                            const resRes = await fetch(getApiBaseUrl() + '/api/results', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(chunk)
-                            });
-                            if (!resRes.ok) throw new Error(`Gagal sync hasil ujian batch ${Math.floor(i/chunkSize)+1}`);
-                        }
-                    }
-
-                    // 3. Send questions in chunks if any
-                    const questionsArray = Array.isArray(questions) ? questions : [];
-                    if (questionsArray.length === 0) {
+                    // 2. Send questions in chunks if any
+                    const chunkSize = 100;
+                    if (questions.length === 0) {
                         const res = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -1197,12 +1183,11 @@ function showLoginForm(type) {
                         });
                         if (!res.ok) throw new Error('Gagal reset soal');
                     } else {
-                        for (let i = 0; i < questionsArray.length; i += chunkSize) {
-                            const chunk = questionsArray.slice(i, i + chunkSize);
-                            
+                        for (let i = 0; i < questions.length; i += chunkSize) {
+                            const chunk = questions.slice(i, i + chunkSize);
                             const isFirst = (i === 0);
-                            const isLast = (i + chunkSize >= questionsArray.length);
-                            const progress = Math.round(((i + chunk.length) / questionsArray.length) * 100);
+                            const isLast = (i + chunkSize >= questions.length);
+                            const progress = Math.round(((i + chunk.length) / questions.length) * 100);
                             
                             showToast(`Sync Soal: ${progress}%...`, 'info');
                             
@@ -1220,7 +1205,7 @@ function showLoginForm(type) {
                     }
 
                     serverSaveSuccess = true;
-                    console.log('Database (Count-Based Chunked) berhasil disimpan ke server');
+                    console.log('Database (Chunked) berhasil disimpan ke server');
                 } catch (err) {
                     console.warn(`Error saat menyimpan ke server (attempt ${4 - retries}):`, err.message || err);
                     retries--;
