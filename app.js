@@ -5107,7 +5107,10 @@ function showLoginForm(type) {
 
             // Save and close overlay
             try {
-                await save();
+                // Use sendResult instead of full save to only sync values, not questions
+                await sendResult(result);
+                await saveLocalDb();
+                updateStats();
             } catch (e) {
                 console.error('[batchAiCorrect] Save error:', e.message);
             }
@@ -5275,7 +5278,10 @@ function showLoginForm(type) {
 
             // Persist to backend
             try {
-                await save();
+                // Use sendResult instead of full save to only sync values, not questions
+                await sendResult(result);
+                await saveLocalDb();
+                updateStats();
                 // Refresh score in modal badge
                 const panelEl = document.getElementById(`ai-essay-panel-${resultIdx}-${qIdx}`);
                 if (panelEl) {
