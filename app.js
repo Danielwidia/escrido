@@ -1165,7 +1165,7 @@ function showLoginForm(type) {
                     
                     console.log(`[SAVE] Total questions size: ${questionsSize.toFixed(2)} MB (${questions.length} items)`);
 
-                    // 1. Send metadata first
+                    // 1. Send metadata first (includes results, subjects, rombels, students, etc.)
                     const metaRes = await fetch(getApiBaseUrl() + '/api/db', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1173,34 +1173,39 @@ function showLoginForm(type) {
                     });
                     if (!metaRes.ok) throw new Error('Gagal sync metadata');
 
-                    // 2. Send questions in chunks if any
-                    const chunkSize = 100;
-                    if (questions.length === 0) {
-                        const res = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ questions: [], isFirstChunk: true, isLastChunk: true })
-                        });
-                        if (!res.ok) throw new Error('Gagal reset soal');
+                    // 2. Send questions in chunks if any (Skip if requested)
+                    if (options.skipQuestions) {
+                        console.log('[SAVE] Skipping question sync as requested');
+                        serverSaveSuccess = true;
                     } else {
-                        for (let i = 0; i < questions.length; i += chunkSize) {
-                            const chunk = questions.slice(i, i + chunkSize);
-                            const isFirst = (i === 0);
-                            const isLast = (i + chunkSize >= questions.length);
-                            const progress = Math.round(((i + chunk.length) / questions.length) * 100);
-                            
-                            showToast(`Sync Soal: ${progress}%...`, 'info');
-                            
-                            const chunkRes = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
+                        const chunkSize = 100;
+                        if (questions.length === 0) {
+                            const res = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ 
-                                    questions: chunk, 
-                                    isFirstChunk: isFirst, 
-                                    isLastChunk: isLast 
-                                })
+                                body: JSON.stringify({ questions: [], isFirstChunk: true, isLastChunk: true })
                             });
-                            if (!chunkRes.ok) throw new Error(`Gagal sync soal batch ${Math.floor(i/chunkSize)+1}`);
+                            if (!res.ok) throw new Error('Gagal reset soal');
+                        } else {
+                            for (let i = 0; i < questions.length; i += chunkSize) {
+                                const chunk = questions.slice(i, i + chunkSize);
+                                const isFirst = (i === 0);
+                                const isLast = (i + chunkSize >= questions.length);
+                                const progress = Math.round(((i + chunk.length) / questions.length) * 100);
+                                
+                                showToast(`Sync Soal: ${progress}%...`, 'info');
+                                
+                                const chunkRes = await fetch(getApiBaseUrl() + '/api/db/questions/chunk', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ 
+                                        questions: chunk, 
+                                        isFirstChunk: isFirst, 
+                                        isLastChunk: isLast 
+                                    })
+                                });
+                                if (!chunkRes.ok) throw new Error(`Gagal sync soal batch ${Math.floor(i/chunkSize)+1}`);
+                            }
                         }
                     }
 
@@ -4952,7 +4957,12 @@ function showLoginForm(type) {
             });
 
             if (qLabel) qLabel.textContent = 'Menyimpan ke database...';
-            try { await save(); } catch (e) { console.error('[AI-Group] Final save error:', e.message); }
+            try { 
+                // Use skipQuestions to avoid heavy question sync when only results changed
+                await save({ skipQuestions: true }); 
+            } catch (e) { 
+                console.error('[AI-Group] Final save error:', e.message); 
+            }
 
             overlay.remove();
 
