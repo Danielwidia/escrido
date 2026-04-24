@@ -505,8 +505,20 @@ function parseSingleTextQuestion(lines, startIndex, metadata, readingText = null
 }
 
 function parseOptionLine(line) {
-    const trimmed = line.trim();
+    let trimmed = line.trim();
     if (!trimmed) return null;
+
+    let hadCheckboxBullet = false;
+    // Clean up checkbox bullet points like '[ ]', 'o [ ]'
+    const beforeClean = trimmed;
+    trimmed = trimmed.replace(/^(?:[oO]\s*|[-*]\s*)?\[\s*\]\s*/i, '')
+                     .replace(/^[oO]\t+/i, '')
+                     .replace(/^[oO]\s+/i, '')
+                     .trim();
+    
+    if (beforeClean !== trimmed) {
+        hadCheckboxBullet = true;
+    }
 
     // Remove bullet points first
     const bulletMatch = trimmed.match(/^[\u2022\u2023\u25E6\u2043\u2219\-\*\+]\s*(.+)$/);
@@ -530,7 +542,7 @@ function parseOptionLine(line) {
     }
 
     // Accept pure bullet list items without labels as options too, but only if substantial
-    if (bulletMatch && candidate.length > 3) {
+    if ((bulletMatch || hadCheckboxBullet) && candidate.length > 0) {
         return { label: null, text: candidate };
     }
 

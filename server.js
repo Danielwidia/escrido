@@ -228,6 +228,17 @@ function fullNormalizeQuestion(q, mapel, rombel) {
         return false;
     };
 
+    // Clean up AI generated checkbox bullet points (e.g., 'o [ ] ', '[ ] ') from options
+    if (Array.isArray(normalized.options)) {
+        normalized.options = normalized.options.map(opt => {
+            if (typeof opt !== 'string') return opt;
+            return opt.replace(/^(?:[oO]\s*|[-*]\s*)?\[\s*\]\s*/i, '')
+                      .replace(/^[oO]\t+/i, '')
+                      .replace(/^[oO]\s+/i, '')
+                      .trim();
+        });
+    }
+
     // AUTO-DETECT TF: If it's single choice but options are just Benar/Salah
     if (normalized.type !== 'tf' && Array.isArray(normalized.options) && normalized.options.length > 0 && normalized.options.length <= 2) {
         if (normalized.options.every(isGenericOption)) {
@@ -372,13 +383,13 @@ function fullNormalizeQuestion(q, mapel, rombel) {
 
     // Normalize Multiple Choice
     if (normalized.type === 'multiple') {
-        if (!Array.isArray(normalized.options) || normalized.options.length !== 4) normalized.options = ['A', 'B', 'C', 'D'];
+        if (!Array.isArray(normalized.options) || normalized.options.length < 2) normalized.options = ['A', 'B', 'C', 'D'];
         if (!Array.isArray(normalized.correct)) normalized.correct = [normalized.correct];
         if (normalized.correct.length < 2) {
-            const available = [0, 1, 2, 3].filter(i => !normalized.correct.includes(i));
+            const available = Array.from({length: normalized.options.length}, (_, i) => i).filter(i => !normalized.correct.includes(i));
             while (normalized.correct.length < 2 && available.length > 0) normalized.correct.push(available.splice(Math.floor(Math.random() * available.length), 1)[0]);
-        } else if (normalized.correct.length > 3) normalized.correct = normalized.correct.slice(0, 3);
-        normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c <= 3);
+        } else if (normalized.correct.length > normalized.options.length) normalized.correct = normalized.correct.slice(0, normalized.options.length);
+        normalized.correct = normalized.correct.filter(c => typeof c === 'number' && c >= 0 && c < normalized.options.length);
     }
 
     // Normalize Matching
