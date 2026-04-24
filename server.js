@@ -228,11 +228,11 @@ function fullNormalizeQuestion(q, mapel, rombel) {
         return false;
     };
 
-    // Clean up AI generated checkbox bullet points (e.g., 'o [ ] ', '[ ] ') from options
+    // Clean up AI generated checkbox bullet points (e.g., 'o [ ] ', '[x] ', '☑') from options
     if (Array.isArray(normalized.options)) {
         normalized.options = normalized.options.map(opt => {
             if (typeof opt !== 'string') return opt;
-            return opt.replace(/^(?:[oO]\s*|[-*]\s*)?\[\s*\]\s*/i, '')
+            return opt.replace(/^(?:[oO]\s*|[-*]\s*)?(?:\[\s*[xXvV]?\s*\]|\(\s*[xXvV]?\s*\)|☑|☐|✅|❌|✓|✔|〇|⚪|🔘|🔳|🔲)\s*/i, '')
                       .replace(/^[oO]\t+/i, '')
                       .replace(/^[oO]\s+/i, '')
                       .trim();

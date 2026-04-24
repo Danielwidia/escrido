@@ -509,9 +509,9 @@ function parseOptionLine(line) {
     if (!trimmed) return null;
 
     let hadCheckboxBullet = false;
-    // Clean up checkbox bullet points like '[ ]', 'o [ ]'
+    // Clean up checkbox bullet points like '[ ]', 'o [x]', '☑'
     const beforeClean = trimmed;
-    trimmed = trimmed.replace(/^(?:[oO]\s*|[-*]\s*)?\[\s*\]\s*/i, '')
+    trimmed = trimmed.replace(/^(?:[oO]\s*|[-*]\s*)?(?:\[\s*[xXvV]?\s*\]|\(\s*[xXvV]?\s*\)|☑|☐|✅|❌|✓|✔|〇|⚪|🔘|🔳|🔲)\s*/i, '')
                      .replace(/^[oO]\t+/i, '')
                      .replace(/^[oO]\s+/i, '')
                      .trim();
