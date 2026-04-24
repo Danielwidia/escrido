@@ -1168,11 +1168,24 @@ function showLoginForm(type) {
             while (retries > 0 && !serverSaveSuccess) {
                 try {
                     // Split questions from metadata for chunked upload
-                    const { questions, ...metadata } = db;
-                    const jsonQuestions = JSON.stringify(questions);
+                    const { questions, results, ...metadata_raw } = db;
+                    const metadata = { ...metadata_raw };
+
+                    // Optimization: If only specific results are provided, only sync those
+                    // to avoid heavy loops on the server for the entire results history.
+                    if (options.onlyResults) {
+                        metadata.results = Array.isArray(options.onlyResults) ? options.onlyResults : [options.onlyResults];
+                        console.log(`[SAVE] Partial results sync: ${metadata.results.length} items`);
+                    } else {
+                        metadata.results = results || [];
+                    }
+                    
+                    const jsonQuestions = JSON.stringify(questions || []);
                     const questionsSize = jsonQuestions.length / (1024 * 1024);
                     
-                    console.log(`[SAVE] Total questions size: ${questionsSize.toFixed(2)} MB (${questions.length} items)`);
+                    if (!options.skipQuestions) {
+                        console.log(`[SAVE] Total questions size: ${questionsSize.toFixed(2)} MB (${(questions || []).length} items)`);
+                    }
 
                     // 1. Send metadata first (includes results, subjects, rombels, students, etc.)
                     const metaRes = await fetch(getApiBaseUrl() + '/api/db', {
@@ -1185,7 +1198,7 @@ function showLoginForm(type) {
                     // 2. Send questions in chunks if any (Skip if requested)
                     if (options.skipQuestions === true) {
                         console.log('[SAVE] Skipping question sync as requested');
-                        showToast('Sync Nilai...', 'info');
+                        showToast('Sync Hasil...', 'info');
                     } else {
                         const chunkSize = 100;
                         if (questions.length === 0) {
@@ -4460,7 +4473,7 @@ function showLoginForm(type) {
             db.results[idx].deleted = true;
             db.results[idx].updatedAt = Date.now();
             updateCompletionCharts();
-            save();
+            save({ skipQuestions: true, onlyResults: [db.results[idx]] });
 
             // Check which dashboard is currently active and render accordingly
             const adminDash = document.getElementById('admin-dashboard');
@@ -4490,7 +4503,7 @@ function showLoginForm(type) {
                 updatedAt: now
             }));
 
-            save();
+            save({ skipQuestions: true });
             updateCompletionCharts();
             renderAdminResults();
 
@@ -4967,7 +4980,8 @@ function showLoginForm(type) {
             if (qLabel) qLabel.textContent = 'Menyimpan ke database...';
             try { 
                 // Use skipQuestions to avoid heavy question sync when only results changed
-                await save({ skipQuestions: true }); 
+                const affectedResults = Array.from(affectedResultIndices).map(idx => db.results[idx]);
+                await save({ skipQuestions: true, onlyResults: affectedResults }); 
             } catch (e) { 
                 console.error('[AI-Group] Final save error:', e.message); 
             }
@@ -5126,7 +5140,7 @@ function showLoginForm(type) {
             // Save and close overlay
             try {
                 // Use save({ skipQuestions: true }) for metadata-only sync
-                await save({ skipQuestions: true });
+                await save({ skipQuestions: true, onlyResults: [result] });
                 await saveLocalDb();
                 updateStats();
             } catch (e) {
@@ -5297,7 +5311,7 @@ function showLoginForm(type) {
             // Persist to backend
             try {
                 // Use save({ skipQuestions: true }) for metadata-only sync
-                await save({ skipQuestions: true });
+                await save({ skipQuestions: true, onlyResults: [result] });
                 await saveLocalDb();
                 updateStats();
                 // Refresh score in modal badge
