@@ -5640,11 +5640,18 @@ function showLoginForm(type) {
         function startExam(mapel) {
             const qs = db.questions.filter(q => q.mapel === mapel && q.rombel === currentSiswa.rombel);
 
-            // PENTING: Normalisasi setiap soal (tambahkan type jika belum ada)
-            const normalizedQuestions = qs.map(q => ({
-                ...q,
-                type: q.type || 'single'  // Default ke 'single' jika tidak ada type
-            }));
+            // PENTING: Normalisasi setiap soal dengan deep copy untuk mencegah hilangnya gambar
+            const normalizedQuestions = qs.map(q => {
+                // Deep copy images array agar tidak kehilangan referensi setelah shuffle
+                const images = Array.isArray(q.images)
+                    ? q.images.map(img => typeof img === 'string' ? img : JSON.parse(JSON.stringify(img)))
+                    : [];
+                return {
+                    ...q,
+                    type: q.type || 'single',  // Default ke 'single' jika tidak ada type
+                    images: images,             // Pastikan images selalu array
+                };
+            });
 
             // initialise answers based on question type (multiple => [], text => "", single => null)
             const answers = normalizedQuestions.map(q => {
@@ -5693,29 +5700,41 @@ function showLoginForm(type) {
             // refresh progress display (including type)
             updateProgress();
 
+            // Helper: ekstrak src dari berbagai format gambar (string URL, base64, objek)
+            function getImgSrc(img) {
+                if (typeof img === 'string' && img.trim() !== '') return img;
+                if (img && typeof img === 'object') {
+                    return img.url || img.data || img.src || '';
+                }
+                return '';
+            }
+
             // show images if available
             const imgContainer = document.getElementById('exam-images');
             imgContainer.innerHTML = '';
-            if (q.images && Array.isArray(q.images) && q.images.length > 0) {
-                q.images.forEach((img, imgIdx) => {
-                    const imgSrc = typeof img === 'string' ? img : (img.data || '');
+
+            // Gabungkan sumber gambar: q.images (array) atau q.image (tunggal)
+            let allImages = [];
+            if (Array.isArray(q.images) && q.images.length > 0) {
+                allImages = q.images;
+            } else if (q.image) {
+                allImages = [q.image];
+            }
+
+            // Filter hanya gambar yang memiliki src valid
+            const validImages = allImages.filter(img => getImgSrc(img) !== '');
+
+            if (validImages.length > 0) {
+                validImages.forEach((img, imgIdx) => {
+                    const imgSrc = getImgSrc(img);
                     imgContainer.innerHTML += `<div class="relative w-full cursor-pointer group hover:opacity-90 transition-opacity" onclick="openImageZoom(${idx}, ${imgIdx})">
-                        <img src="${imgSrc}" alt="Gambar soal ${imgIdx + 1}" class="w-full h-auto rounded-lg border border-slate-300 shadow-sm object-contain" loading="lazy">
+                        <img src="${imgSrc}" alt="Gambar soal ${imgIdx + 1}" class="w-full h-auto rounded-lg border border-slate-300 shadow-sm object-contain" loading="lazy" onerror="this.parentElement.style.display='none'">
                         <span class="absolute top-2 right-2 bg-sky-600 text-white text-xs font-bold px-2 py-1 rounded">${imgIdx + 1}</span>
                         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
                             <i class="fas fa-search-plus text-white text-3xl"></i>
                         </div>
                     </div>`;
                 });
-                imgContainer.classList.remove('hidden');
-            } else if (q.image) {
-                const imgSrcSingle = typeof q.image === 'string' ? q.image : (q.image.data || '');
-                imgContainer.innerHTML = `<div class="relative w-full cursor-pointer group hover:opacity-90 transition-opacity" onclick="openImageZoom(${idx}, 0)">
-                    <img src="${imgSrcSingle}" alt="Gambar soal" class="w-full h-auto rounded-lg border border-slate-300 shadow-sm object-contain" loading="lazy">
-                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <i class="fas fa-search-plus text-white text-3xl"></i>
-                    </div>
-                </div>`;
                 imgContainer.classList.remove('hidden');
             } else {
                 imgContainer.classList.add('hidden');
@@ -6326,6 +6345,27 @@ function showLoginForm(type) {
         let currentZoomQuestion = null;
         let currentZoomImageIndex = 0;
 
+        // Helper: ekstrak src dari gambar untuk Zoom (mendukung string URL, base64, objek)
+        function getZoomImgSrc(img) {
+            if (typeof img === 'string' && img.trim() !== '') return img;
+            if (img && typeof img === 'object') {
+                return img.url || img.data || img.src || '';
+            }
+            return '';
+        }
+
+        // Helper: ambil semua gambar dari soal (gabung images array + image tunggal)
+        function getQuestionImages(q) {
+            if (!q) return [];
+            if (Array.isArray(q.images) && q.images.length > 0) {
+                return q.images.filter(img => getZoomImgSrc(img) !== '');
+            }
+            if (q.image && getZoomImgSrc(q.image) !== '') {
+                return [q.image];
+            }
+            return [];
+        }
+
         function openImageZoom(qIdx, imgIdx) {
             try {
                 currentZoomQuestion = qIdx;
@@ -6335,7 +6375,7 @@ function showLoginForm(type) {
                     console.warn('Question not found at index:', qIdx);
                     return;
                 }
-                const images = q.images && Array.isArray(q.images) ? q.images : (q.image ? [q.image] : []);
+                const images = getQuestionImages(q);
 
                 if (images.length > 0) {
                     const zoomModal = document.getElementById('image-zoom-modal');
@@ -6347,12 +6387,14 @@ function showLoginForm(type) {
                         return;
                     }
 
-                    const zoomImgSrc = typeof images[imgIdx] === 'string' ? images[imgIdx] : (images[imgIdx].data || '');
+                    const safeIdx = Math.min(imgIdx, images.length - 1);
+                    currentZoomImageIndex = safeIdx;
+                    const zoomImgSrc = getZoomImgSrc(images[safeIdx]);
                     zoomImage.src = zoomImgSrc;
-                    counter.textContent = `${imgIdx + 1}/${images.length}`;
+                    counter.textContent = `${safeIdx + 1}/${images.length}`;
                     zoomModal.classList.remove('hidden');
                     zoomModal.style.display = 'flex';
-                    console.log('Zoom modal opened for image', imgIdx + 1, 'of', images.length);
+                    console.log('Zoom modal opened for image', safeIdx + 1, 'of', images.length);
                 } else {
                     console.warn('No images found for question');
                 }
@@ -6375,23 +6417,23 @@ function showLoginForm(type) {
 
         function nextZoomImage() {
             const q = examData.questions[currentZoomQuestion];
-            const images = q.images && Array.isArray(q.images) ? q.images : (q.image ? [q.image] : []);
+            const images = getQuestionImages(q);
+            if (images.length === 0) return;
             currentZoomImageIndex = (currentZoomImageIndex + 1) % images.length;
             const zoomImage = document.getElementById('zoom-image-display');
             const counter = document.getElementById('zoom-image-counter');
-            const zoomImgSrc = typeof images[currentZoomImageIndex] === 'string' ? images[currentZoomImageIndex] : (images[currentZoomImageIndex].data || '');
-            zoomImage.src = zoomImgSrc;
+            zoomImage.src = getZoomImgSrc(images[currentZoomImageIndex]);
             counter.textContent = `${currentZoomImageIndex + 1}/${images.length}`;
         }
 
         function previousZoomImage() {
             const q = examData.questions[currentZoomQuestion];
-            const images = q.images && Array.isArray(q.images) ? q.images : (q.image ? [q.image] : []);
+            const images = getQuestionImages(q);
+            if (images.length === 0) return;
             currentZoomImageIndex = (currentZoomImageIndex - 1 + images.length) % images.length;
             const zoomImage = document.getElementById('zoom-image-display');
             const counter = document.getElementById('zoom-image-counter');
-            const zoomImgSrc = typeof images[currentZoomImageIndex] === 'string' ? images[currentZoomImageIndex] : (images[currentZoomImageIndex].data || '');
-            zoomImage.src = zoomImgSrc;
+            zoomImage.src = getZoomImgSrc(images[currentZoomImageIndex]);
             counter.textContent = `${currentZoomImageIndex + 1}/${images.length}`;
         }
 
