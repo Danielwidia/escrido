@@ -391,13 +391,13 @@ body {
 .login-card-container::before {
     background: conic-gradient(from var(--angle, 0deg),
             var(--cyan) 20deg 70deg,
-            transparent 80deg 110deg,
-            var(--orange) 120deg 160deg,
-            transparent 170deg 200deg,
-            var(--cyan) 210deg 250deg,
-            transparent 260deg 290deg,
-            var(--orange) 300deg 340deg,
-            transparent 350deg 360deg);
+            transparent 80deg 100deg,
+            var(--orange) 110deg 160deg,
+            transparent 170deg 190deg,
+            var(--cyan) 200deg 250deg,
+            transparent 260deg 280deg,
+            var(--orange) 290deg 340deg,
+            transparent 350deg 10deg);
     animation: spin-border var(--spin-speed) linear infinite;
     -webkit-mask:
         linear-gradient(#fff 0 0) content-box,
@@ -414,13 +414,13 @@ body {
 .login-card-container::after {
     background: conic-gradient(from var(--angle, 0deg),
             var(--cyan) 20deg 70deg,
-            transparent 80deg 110deg,
-            var(--orange) 120deg 160deg,
-            transparent 170deg 200deg,
-            var(--cyan) 210deg 250deg,
-            transparent 260deg 290deg,
-            var(--orange) 300deg 340deg,
-            transparent 350deg 360deg);
+            transparent 80deg 100deg,
+            var(--orange) 110deg 160deg,
+            transparent 170deg 190deg,
+            var(--cyan) 200deg 250deg,
+            transparent 260deg 280deg,
+            var(--orange) 290deg 340deg,
+            transparent 350deg 10deg);
     animation: spin-border var(--spin-speed) linear infinite;
     filter: blur(18px);
     opacity: 0.9;
