@@ -88,7 +88,6 @@ body {
 
 .login-card {
     background: #ced0d6;
-    /* Solid White for maximum legibility */
     border: 1px solid rgba(241, 245, 249, 1);
     border-radius: 2rem;
     box-shadow: 0 20px 50px rgba(1, 77, 255, 0.219), 0 4px 10px rgba(15, 23, 42, 0.05);
@@ -329,6 +328,7 @@ body {
     from {
         transform: rotate(0deg);
     }
+
     to {
         transform: rotate(360deg);
     }
@@ -340,9 +340,12 @@ body {
 
 /* Real-time Stats Pulse */
 @keyframes pulse-brief {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.6;
     }
@@ -352,65 +355,108 @@ body {
     animation: pulse-brief 0.3s ease-in-out;
 }
 
-/* Glowing Border with 4 Color Segments with Gaps */
+/* ============================================
+   SPINNING CONIC GRADIENT BORDER - LOGIN CARD
+   Inspired by: cyan (top) + pink/red (bottom)
+   ============================================ */
+
+
+
 .login-card-container {
     position: relative;
     width: 100%;
+    /* CSS custom property for spin speed */
+    --spin-speed: 8s;
+    --cyan: #1100ff;
+    --orange: #ff8800;
 }
 
+/* Hidden glow-border divs - no longer used visually */
 .glow-border {
-    position: absolute;
-    inset: -8px;
-    border-radius: 2rem;
-    padding: 3px;
-    pointer-events: none;
-    z-index: 0;
-    background: transparent;
-    mask: 
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    -webkit-mask: 
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
+    display: none;
 }
 
-.glow-border::before {
+/* The outer wrapper that clips the spinning gradient */
+.login-card-container::before,
+.login-card-container::after {
     content: '';
     position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    filter: blur(2px);
-    transform-origin: center;
+    inset: -8px;
+    border-radius: 2.5rem;
+    z-index: 0;
+    pointer-events: none;
 }
 
-/* Color 1 - Red top-right corner */
-.glow-border-1::before {
-    background: conic-gradient(from 330deg, transparent 0deg 330deg, #dc2626 330deg 30deg, transparent 30deg 360deg);
-    box-shadow: 0 0 25px rgba(220, 38, 38, 1);
-    animation: rotate-common 10s linear infinite;
+/* Layer 1: Spinning conic gradient (the actual border light segments) */
+.login-card-container::before {
+    background: conic-gradient(from var(--angle, 0deg),
+            var(--cyan) 20deg 70deg,
+            transparent 80deg 110deg,
+            var(--orange) 120deg 160deg,
+            transparent 170deg 200deg,
+            var(--cyan) 210deg 250deg,
+            transparent 260deg 290deg,
+            var(--orange) 300deg 340deg,
+            transparent 350deg 360deg);
+    animation: spin-border var(--spin-speed) linear infinite;
+    -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    padding: 3px;
 }
 
-/* Color 2 - Yellow bottom-right corner */
-.glow-border-2::before {
-    background: conic-gradient(from 30deg, transparent 0deg 30deg, #eab308 30deg 90deg, transparent 90deg 360deg);
-    box-shadow: 0 0 25px rgba(234, 179, 8, 1);
-    animation: rotate-common 10s linear infinite;
+/* Layer 2: Deeper Blurred glow for better bloom effect */
+.login-card-container::after {
+    background: conic-gradient(from var(--angle, 0deg),
+            var(--cyan) 20deg 70deg,
+            transparent 80deg 110deg,
+            var(--orange) 120deg 160deg,
+            transparent 170deg 200deg,
+            var(--cyan) 210deg 250deg,
+            transparent 260deg 290deg,
+            var(--orange) 300deg 340deg,
+            transparent 350deg 360deg);
+    animation: spin-border var(--spin-speed) linear infinite;
+    filter: blur(18px);
+    opacity: 0.9;
+    z-index: -1;
 }
 
-/* Color 3 - Lemon Yellow bottom-left corner */
-.glow-border-3::before {
-    background: conic-gradient(from 90deg, transparent 0deg 90deg, #facc15 90deg 150deg, transparent 150deg 360deg);
-    box-shadow: 0 0 25px rgba(250, 204, 21, 1);
-    animation: rotate-common 10s linear infinite;
+@property --angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
 }
 
-/* Color 4 - Cyan top-left corner */
-.glow-border-4::before {
-    background: conic-gradient(from 150deg, transparent 0deg 150deg, #06b6d4 150deg 210deg, transparent 210deg 360deg);
-    box-shadow: 0 0 25px rgba(6, 182, 212, 1);
-    animation: rotate-common 10s linear infinite;
+@keyframes spin-border {
+    to {
+        --angle: 360deg;
+    }
+}
+
+/* Fallback for browsers without @property support */
+@supports not (background: conic-gradient(from 1deg, red, blue)) {
+
+    .login-card-container::before,
+    .login-card-container::after {
+        background: linear-gradient(45deg, #00e5ff, #ff8800, #00e5ff);
+        animation: spin-fallback var(--spin-speed) linear infinite;
+    }
+
+    @keyframes spin-fallback {
+        0% {
+            filter: hue-rotate(0deg);
+        }
+
+        100% {
+            filter: hue-rotate(360deg);
+        }
+    }
 }
 
 .login-card {
@@ -422,6 +468,7 @@ body {
     0% {
         transform: rotate(0deg);
     }
+
     100% {
         transform: rotate(360deg);
     }
