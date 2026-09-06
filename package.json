@@ -1,0 +1,61 @@
+{
+  "name": "dr-cbt",
+  "version": "1.0.0",
+  "description": "CBT Exam Browser - Consolidated Root Version",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "node scripts/run-build.js",
+    "pack:exe": "npx pkg . --out-path dist",
+    "build:windows": "powershell -ExecutionPolicy Bypass -File build-windows.ps1",
+    "build:exe": "node scripts/run-build.js",
+    "build:setup": "node scripts/build-setup.js",
+    "build:deb": "node scripts/build-deb-flow.js",
+    "setup:vercel": "node setup-vercel-env.js",
+    "upload:github": "node upload-to-github.js",
+    "export-rescue": "node rescue-db.js",
+    "check:syntax": "node -c db.js && node -c server.js"
+  },
+  "pkg": {
+    "targets": [
+      "node20-win-x64"
+    ],
+    "assets": [
+      "wordParser.js",
+      "node_modules/mammoth/**/*",
+      "node_modules/pdf-parse/**/*",
+      "node_modules/xlsx/**/*"
+    ],
+    "scripts": [
+      "server.js"
+    ]
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.85.0",
+    "@supabase/supabase-js": "^2.101.1",
+    "ai": "^4.3.19",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^4.18.2",
+    "mammoth": "^1.6.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "1.1.1",
+    "pptxgenjs": "^3.12.0",
+    "socket.io": "^4.8.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^5.11.1",
+    "better-sqlite3": "^12.10.0",
+    "debian-packager": "^1.5.3",
+    "innosetup-compiler": "^6.3.1",
+    "resedit": "^3.0.2"
+  },
+  "author": "Daniel Widiatmoko",
+  "license": "ISC"
+}

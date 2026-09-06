@@ -1,0 +1,3 @@
+starting test
+worker created { threadId: 1 }
+about to query

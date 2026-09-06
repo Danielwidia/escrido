@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Interaktif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap');
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #f2f2f2;
+        }
+
+        .kahoot-bg {
+            background: #46178f; /* Classic Kahoot Purple */
+        }
+        
+        .answer-btn {
+            transition: transform 0.1s, filter 0.1s;
+        }
+        .answer-btn:hover {
+            filter: brightness(0.9);
+        }
+        .answer-btn:active {
+            transform: scale(0.98);
+        }
+
+        .shape-icon {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+        }
+
+        .triangle-up {
+            width: 0;
+            height: 0;
+            border-left: 16px solid transparent;
+            border-right: 16px solid transparent;
+            border-bottom: 28px solid white;
+        }
+
+        .diamond {
+            width: 24px;
+            height: 24px;
+            background: white;
+            transform: rotate(45deg);
+        }
+
+        .circle {
+            width: 28px;
+            height: 28px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .square {
+            width: 26px;
+            height: 26px;
+            background: white;
+        }
+
+        /* Animations */
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="kahoot-bg min-h-screen text-white flex flex-col">
+
+    <!-- Audio Elements -->
+    <audio id="bg-music" loop style="display: none;">
+        <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Header (Score & PIN / Status) -->
+    <header class="p-4 flex justify-between items-center bg-white/10 shadow-sm backdrop-blur-md">
+        <div class="text-xl font-black tracking-widest uppercase flex items-center gap-2">
+            <i class="fas fa-gamepad text-yellow-400"></i> DR CBT Games
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="bg-black/30 px-6 py-2 rounded-full text-2xl font-black shadow-inner">
+                Score: <span id="score-display">0</span>
+            </div>
+            <div class="flex flex-col gap-2">
+                <button id="music-toggle" onclick="toggleMusic()" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all" title="Toggle Music">
+                    <i class="fas fa-music"></i>
+                </button>
+                <button id="repeat-question-header" onclick="repeatQuestion()" class="hidden bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold transition-all" title="Ulangi Pertanyaan">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col p-4 md:p-8 max-w-5xl mx-auto w-full" id="game-container">
+        <!-- Start Screen -->
+        <div id="start-screen" class="flex-1 flex flex-col items-center justify-center animate-pop">
+            <div class="bg-white/10 p-8 md:p-12 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl flex flex-col items-center w-full max-w-lg">
+                <i class="fas fa-bolt text-7xl text-yellow-400 drop-shadow-lg mb-6"></i>
+                <h1 class="text-5xl md:text-6xl font-black mb-8 text-center drop-shadow-lg leading-tight">Siap Bermain?</h1>
+                <input type="text" id="player-name" placeholder="Masukkan Nama Kamu" autocomplete="off" class="text-black text-center text-2xl font-bold py-4 px-6 rounded-xl w-full mb-3 border-4 border-transparent focus:border-yellow-400 outline-none transition-all shadow-inner">
+                <select id="select-mapel" class="text-black text-center text-lg font-bold py-3 px-6 rounded-xl w-full mb-3 border-4 border-transparent outline-none">
+                    <option value="">-- Semua Mapel --</option>
+                </select>
+                <select id="select-rombel" class="text-black text-center text-lg font-bold py-3 px-6 rounded-xl w-full mb-6 border-4 border-transparent outline-none">
+                    <option value="">-- Semua Rombel --</option>
+                </select>
+                <div id="host-badge" class="hidden mb-4 bg-orange-500 text-white px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest"><i class="fas fa-crown mr-1"></i> Host Mode</div>
+                <button onclick="enterLobby()" class="bg-yellow-400 border-b-4 border-yellow-600 hover:bg-yellow-300 text-purple-900 text-3xl font-black py-4 px-12 rounded-xl w-full transition-transform active:translate-y-1 shadow-lg">Gas Mulai!</button>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobby-screen" class="hidden flex-1 flex flex-col items-center justify-center animate-pop">
+            <div class="bg-white/10 p-8 md:p-12 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl flex flex-col items-center w-full max-w-lg">
+                <h1 class="text-3xl md:text-4xl font-black mb-4 text-center drop-shadow-lg">Ruang Tunggu</h1>
+                <p class="text-purple-200 mb-6 text-sm text-center">
+                    <span id="lobby-mapel" class="text-white font-bold"></span> - <span id="lobby-rombel" class="text-white font-bold"></span>
+                </p>
+                
+                <div class="w-full bg-black/20 rounded-xl p-4 mb-8 max-h-60 overflow-y-auto">
+                    <h3 class="text-xs uppercase tracking-widest font-bold opacity-60 mb-3 ml-1">Peserta Terhubung:</h3>
+                    <div id="participant-list" class="flex flex-wrap gap-2">
+                        <!-- Participants will appear here -->
+                    </div>
+                </div>
+
+                <div id="host-controls" class="hidden w-full">
+                    <button onclick="hostStartQuizz()" class="bg-green-500 border-b-4 border-green-700 hover:bg-green-400 text-white text-3xl font-black py-4 px-12 rounded-xl w-full transition-transform active:translate-y-1 shadow-lg mb-3">MULAI SEKARANG!</button>
+                    <button onclick="hostResetQuizz()" class="bg-red-500/20 hover:bg-red-500/40 text-red-100 text-xs font-bold py-2 px-4 rounded-lg w-full border border-red-500/30">Reset Room & Kick All</button>
+                </div>
+                
+                <div id="student-waiting" class="w-full text-center">
+                    <div class="flex items-center justify-center gap-3 animate-pulse text-xl text-yellow-400 font-bold">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Menunggu Guru Memulai...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quiz Screen -->
+        <div id="quiz-screen" class="hidden flex-1 flex-col">
+            <!-- Question Title -->
+            <div class="bg-white text-black text-center p-4 md:p-6 rounded-2xl shadow-xl mb-2 self-center w-full min-h-[80px] flex items-center justify-center animate-pop relative border-b-[6px] border-gray-200">
+                 <h2 id="question-text" class="text-2xl md:text-4xl font-black leading-tight drop-shadow-sm">Pertanyaan akan muncul di sini?</h2>
+            </div>
+            
+            <!-- Timer & Media -->
+            <div class="flex flex-row justify-between items-center py-2 my-1 gap-2 md:gap-4">
+                <div class="w-16 h-16 md:w-20 md:h-20 bg-purple-700 rounded-full flex items-center justify-center flex-col shadow-lg border-4 border-purple-400 animate-pop relative overflow-hidden shrink-0">
+                    <span id="timer-display" class="text-2xl md:text-3xl font-black relative z-10">20</span>
+                </div>
+                
+                <!-- Optional Image Placeholder -->
+                <div class="hidden w-full max-w-lg h-24 md:h-32 bg-black/20 rounded-xl items-center justify-center overflow-hidden shadow-inner border border-white/10 shrink-0">
+                    <i class="fas fa-image text-3xl md:text-4xl text-white/30"></i>
+                </div>
+                
+                <div class="w-16 h-16 md:w-20 md:h-20 bg-teal-500 rounded-full flex items-center justify-center flex-col shadow-lg border-4 border-teal-300 animate-pop shrink-0">
+                    <span class="text-[10px] md:text-xs font-bold opacity-80 mb-[-4px]">SOAL</span>
+                    <span id="question-counter" class="text-xl font-black leading-tight">1/5</span>
+                </div>
+            </div>
+
+            <!-- Answers Grid -->
+            <div id="answers-container" class="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 mt-auto mb-2 w-full max-w-5xl mx-auto">
+                <!-- Buttons will be injected here via JS -->
+            </div>
+            
+            <div id="wait-message" class="hidden text-center text-white font-bold my-4 animate-pulse">Menunggu host melanjutkan soal...</div>
+            
+            <!-- Host In-Game Controls -->
+            <div id="host-ingame-controls" class="hidden flex justify-center mt-2 mb-2 w-full max-w-5xl mx-auto gap-4">
+                <button onclick="hostNextQuestion()" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg border-b-4 border-blue-800 hover:bg-blue-500 active:translate-y-1">Lanjut Soal <i class="fas fa-arrow-right ml-2"></i></button>
+                <button onclick="hostEndGame()" class="bg-red-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg border-b-4 border-red-800 hover:bg-red-500 active:translate-y-1">Akhiri Kuis <i class="fas fa-stop ml-2"></i></button>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden flex-1 flex-col items-center justify-center animate-pop">
+            <h1 id="result-title" class="text-5xl md:text-7xl font-black mb-2 text-center drop-shadow-lg text-yellow-400">Permainan Selesai!</h1>
+            <p class="text-2xl font-bold mb-8 text-center text-purple-200" id="result-message">Kerja bagus, <span id="final-name" class="text-white"></span>!</p>
+            
+            <div class="bg-white/20 p-8 rounded-3xl backdrop-blur-xl border border-white/30 text-center w-full max-w-md shadow-2xl flex flex-col items-center relative overflow-hidden">
+                <div class="absolute -top-10 -right-10 text-yellow-400 opacity-20"><i class="fas fa-trophy text-[10rem]"></i></div>
+                
+                <div id="player-stats">
+                    <h3 class="text-lg uppercase tracking-widest font-bold text-gray-200 mb-2 relative z-10">Total Score</h3>
+                    <div class="text-7xl font-black mb-8 text-white drop-shadow-lg relative z-10" id="final-score">0</div>
+                    
+                    <div class="flex justify-around w-full text-xl font-bold bg-black/20 p-4 rounded-xl relative z-10">
+                        <div class="text-green-400 flex flex-col items-center">
+                            <i class="fas fa-check-circle mb-1 text-3xl"></i> 
+                            <span id="correct-count">0</span> Benar
+                        </div>
+                        <div class="text-red-400 flex flex-col items-center">
+                            <i class="fas fa-times-circle mb-1 text-3xl"></i> 
+                            <span id="wrong-count">0</span> Salah
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Host Leaderboard Table -->
+                <div id="host-leaderboard-container" class="hidden w-full relative z-10 flex flex-col pt-4">
+                    <h3 class="text-xl uppercase tracking-widest font-black text-amber-400 mb-4 border-b border-white/20 pb-2"><i class="fas fa-trophy"></i> Live Ranking</h3>
+                    <div class="flex-1 overflow-y-auto max-h-64 custom-scrollbar text-left text-sm" id="host-leaderboard-list">
+                        <!-- Items injected by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-main-lagi" onclick="location.reload()" class="mt-10 bg-white border-b-4 border-gray-300 text-purple-800 hover:bg-gray-100 text-2xl font-black py-4 px-12 rounded-xl shadow-xl transition-transform active:translate-y-1">
+                Main Lagi <i class="fas fa-redo ml-2"></i>
+            </button>
+            <button id="btn-lanjut-soal-leaderboard" onclick="hostNextQuestionFromLeaderboard()" class="hidden mt-10 bg-blue-600 border-b-4 border-blue-800 text-white hover:bg-blue-500 text-2xl font-black py-4 px-12 rounded-xl shadow-xl transition-transform active:translate-y-1">
+                Lanjut Soal Berikutnya <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </main>
+
+    <script>
+        let allQuestions = [];
+        let questions = [];
+
+        // Fetch Quizzes from Server
+        async function fetchQuizzes() {
+            try {
+                const res = await fetch(window.location.origin + '/api/db?full=true');
+                const data = await res.json();
+                if (data && data.quizzes && data.quizzes.length > 0) {
+                    allQuestions = data.quizzes.map(q => ({
+                        question: q.text || q.question || "Tanpa Pertanyaan",
+                        answers: q.options || q.answers || [],
+                        correct: parseInt(q.correct) || 0,
+                        mapel: q.mapel || "",
+                        rombel: q.rombel || ""
+                    }));
+                }
+            } catch(e) {
+                console.error('Failed to load quizzes from database.');
+            }
+            loadSessionData();
+            populateFilters();
+        }
+
+        function populateFilters() {
+            const mapelSet = new Set();
+            const rombelSet = new Set();
+            
+            // Check if teacher/admin session exists in window scope (loaded by loadSessionData)
+            const sessionStr = localStorage.getItem("EXAM_DORKAS_SESSION");
+            let teacherUser = null;
+            if (sessionStr) {
+                try {
+                    const session = JSON.parse(sessionStr);
+                    if (session.user && (session.user.role === 'teacher')) {
+                        teacherUser = session.user;
+                    }
+                } catch(e){}
+            }
+
+            allQuestions.forEach(q => {
+                if (teacherUser) {
+                    // Only add if it belongs to teacher
+                    const tSubjects = (teacherUser.subjects || []).map(s => typeof s === 'string' ? s : s.name);
+                    if (!tSubjects.includes(q.mapel)) return;
+                    
+                    const subjectEntry = teacherUser.subjects.find(s => (typeof s === 'string' ? s : s.name) === q.mapel);
+                    const allowedRombels = subjectEntry ? (subjectEntry.rombels || teacherUser.rombels || []) : [];
+                    if (!allowedRombels.includes(q.rombel)) return;
+                }
+                
+                if(q.mapel) mapelSet.add(q.mapel);
+                if(q.rombel) rombelSet.add(q.rombel);
+            });
+
+            const sm = document.getElementById('select-mapel');
+            const sr = document.getElementById('select-rombel');
+            sm.innerHTML = '<option value="">-- Semua Mapel --</option>';
+            sr.innerHTML = '<option value="">-- Semua Rombel --</option>';
+            
+            mapelSet.forEach(m => sm.innerHTML += `<option value="${m}">${m}</option>`);
+            rombelSet.forEach(r => sr.innerHTML += `<option value="${r}">${r}</option>`);
+        }
+        
+
+        // Colors and Shapes for Buttons (Kahoot style)
+        const styles = [
+            { bg: "bg-[#e21b3c]", border: "border-[#b0102b]", shape: "<div class='triangle-up drop-shadow-md'></div>" }, // Red
+            { bg: "bg-[#1368ce]", border: "border-[#0d4f9e]", shape: "<div class='diamond drop-shadow-md'></div>" },     // Blue
+            { bg: "bg-[#d89e00]", border: "border-[#a87a00]", shape: "<div class='circle drop-shadow-md'></div>" },      // Yellow
+            { bg: "bg-[#26890c]", border: "border-[#1c6408]", shape: "<div class='square drop-shadow-md'></div>" }       // Green
+        ];
+
+        // State Variables
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let pendingScore = 0;
+        let timeLeft = 20;
+        let timerInterval;
+        let playerName = "";
+        let correctAnswers = 0;
+        let isAnswering = false;
+        let studentId = "Guest-" + Math.floor(Math.random() * 1000);
+        let userRole = "student";
+        let lobbyInterval = null;
+        let leaderboardInterval = null;
+        let allAnsweredInterval = null;
+        let isMusicPlaying = false;
+        let isSpeaking = false;
+        let revealAnswerDelay = 3500; // 3.5 seconds to see correct answer
+
+        // Music Control
+        function toggleMusic() {
+            const audio = document.getElementById('bg-music');
+            const btn = document.getElementById('music-toggle');
+            
+            if (isMusicPlaying) {
+                audio.pause();
+                btn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+                isMusicPlaying = false;
+            } else {
+                audio.play().catch(() => console.log('Auto-play not permitted'));
+                btn.innerHTML = '<i class="fas fa-music"></i>';
+                isMusicPlaying = true;
+            }
+        }
+
+        // Text-to-Speech for Question
+        function speakQuestion(text) {
+            // Cancel any ongoing speech
+            if (isSpeaking) {
+                window.speechSynthesis.cancel();
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'id-ID'; // Indonesian
+            utterance.rate = 0.95; // Slightly slower
+            utterance.pitch = 1;
+            utterance.volume = 0.8;
+
+            const bgMusic = document.getElementById('bg-music');
+
+            utterance.onstart = () => {
+                isSpeaking = true;
+                if (isMusicPlaying && bgMusic) {
+                    bgMusic.volume = 0.1; // Reduce music volume
+                }
+            };
+
+            utterance.onend = () => {
+                isSpeaking = false;
+                if (isMusicPlaying && bgMusic) {
+                    bgMusic.volume = 0.5; // Restore music volume
+                }
+            };
+
+            utterance.onerror = () => {
+                isSpeaking = false;
+                if (isMusicPlaying && bgMusic) {
+                    bgMusic.volume = 0.5; // Restore music volume even on error
+                }
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Repeat Question Text
+        function repeatQuestion() {
+            const q = questions[currentQuestionIndex];
+            if (q) {
+                speakQuestion(q.question);
+            }
+        }
+
+        function loadSessionData() {
+            try {
+                const sessionStr = localStorage.getItem("EXAM_DORKAS_SESSION");
+                if (sessionStr) {
+                    const session = JSON.parse(sessionStr);
+                    if (session && session.user && session.user.name) {
+                        const nameInput = document.getElementById("player-name");
+                        if (nameInput) {
+                            nameInput.value = session.user.name;
+                        }
+                        studentId = session.user.id || studentId;
+                        userRole = session.user.role || "student";
+                        
+                        console.log(`[LOAD_SESSION] Loaded from localStorage - userRole=${userRole}, studentId=${studentId}, name=${session.user.name}`);
+                        
+                        if (userRole === 'admin' || userRole === 'teacher') {
+                            document.getElementById('host-badge').classList.remove('hidden');
+                            console.log(`[LOAD_SESSION] ADMIN/TEACHER mode enabled`);
+                        }
+
+                        const rombelSelect = document.getElementById("select-rombel");
+                        if (rombelSelect && session.user.rombel) {
+                            // Try to select student's rombel by default
+                            setTimeout(() => {
+                                if (rombelSelect.querySelector(`option[value="${session.user.rombel}"]`)) {
+                                    rombelSelect.value = session.user.rombel;
+                                }
+                            }, 100);
+                        }
+                    }
+                } else {
+                    console.log(`[LOAD_SESSION] No session data found - using default student role`);
+                }
+            } catch (e) {
+                console.warn('Failed to load session for quiz:', e);
+            }
+        }
+
+        async function enterLobby() {
+            const nameInput = document.getElementById("player-name").value.trim();
+            playerName = nameInput || "Pemain Jago";
+            
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+
+            console.log(`[ENTER_LOBBY] playerName=${playerName}, userRole=${userRole}, mapel=${selMapel}, rombel=${selRombel}, studentId=${studentId}`);
+
+            if (!selMapel || !selRombel) {
+                alert("Pilih Mapel dan Rombel terlebih dahulu!");
+                return;
+            }
+
+            document.getElementById('lobby-mapel').innerText = selMapel;
+            document.getElementById('lobby-rombel').innerText = selRombel;
+
+            // If ADMIN/TEACHER: Reset room status to 'waiting' so students don't auto-start from old sessions
+            if (userRole === 'admin' || userRole === 'teacher') {
+                console.log(`[ENTER_LOBBY] Admin/Teacher detected - resetting room to WAITING status`);
+                try {
+                    await fetch('/api/quizz/status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'waiting' })
+                    });
+                    console.log(`[ENTER_LOBBY] Room status set to WAITING`);
+                } catch (e) {
+                    console.error('Failed to reset room status:', e);
+                }
+
+                // Admin/Teacher auto-play music on entering lobby
+                if (!isMusicPlaying) {
+                    const audio = document.getElementById('bg-music');
+                    if (audio) {
+                        audio.volume = 0.5;
+                        audio.play().then(() => {
+                            isMusicPlaying = true;
+                            document.getElementById('music-toggle').innerHTML = '<i class="fas fa-music"></i>';
+                            console.log('[MUSIC] Admin auto-played music.');
+                        }).catch(e => console.warn('Music play failed for admin:', e));
+                    }
+                }
+            }
+
+            // Join Lobby only if student
+            if (userRole !== 'admin' && userRole !== 'teacher') {
+                console.log(`[ENTER_LOBBY] Joining as STUDENT`);
+                try {
+                    await fetch('/api/quizz/join', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            studentId, 
+                            studentName: playerName, 
+                            mapel: selMapel, 
+                            rombel: selRombel 
+                        })
+                    });
+                } catch (e) {
+                    console.warn('Offline mode: Using direct start.');
+                }
+            } else {
+                console.log(`[ENTER_LOBBY] Joining as ADMIN/TEACHER - will NOT auto-start`);
+            }
+
+            document.getElementById("start-screen").classList.add("hidden");
+            document.getElementById("lobby-screen").classList.remove("hidden");
+            
+            // Hide repeat question button in lobby
+            document.getElementById("repeat-question-header").classList.add("hidden");
+            
+            if (userRole === 'admin' || userRole === 'teacher') {
+                document.getElementById('host-controls').classList.remove('hidden');
+                document.getElementById('student-waiting').classList.add('hidden');
+            } else {
+                document.getElementById('host-controls').classList.add('hidden');
+                document.getElementById('student-waiting').classList.remove('hidden');
+            }
+
+            startPolling();
+        }
+
+        function startPolling() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+
+            console.log(`[LOBBY_POLLING_START] userRole=${userRole}, studentId=${studentId}, mapel=${selMapel}, rombel=${selRombel}`);
+
+            if (lobbyInterval) clearInterval(lobbyInterval);
+            
+            lobbyInterval = setInterval(async () => {
+                try {
+                    // Check participants
+                    const res = await fetch(`/api/quizz/participants?mapel=${encodeURIComponent(selMapel)}&rombel=${encodeURIComponent(selRombel)}`);
+                    if (res.ok) {
+                        const participants = await res.json();
+                        const list = document.getElementById('participant-list');
+                        list.innerHTML = participants.map(p => `
+                            <div class="bg-white/20 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border border-white/10">
+                                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                                ${p.student_name}
+                            </div>
+                        `).join('');
+                    }
+
+                    // Check status - only students should auto-start, not admin/teacher
+                    const statusRes = await fetch(`/api/quizz/check-status?studentId=${encodeURIComponent(studentId)}&mapel=${encodeURIComponent(selMapel)}&rombel=${encodeURIComponent(selRombel)}`);
+                    if (statusRes.ok) {
+                        const { status } = await statusRes.json();
+                        console.log(`[LOBBY_STATUS_CHECK] status=${status}, userRole=${userRole}, isStudent=${userRole !== 'admin' && userRole !== 'teacher'}`);
+                        
+                        // Only non-admin users auto-start. Admins control manually via button
+                        if ((status === 'start' || status === 'playing') && userRole !== 'admin' && userRole !== 'teacher') {
+                            console.log(`[LOBBY_AUTO_START] Student auto-starting quiz with status=${status}`);
+                            clearInterval(lobbyInterval);
+                            actualStartGame();
+                        }
+                    }
+                } catch (e) {
+                    console.error('Polling error', e);
+                }
+            }, 2000);
+        }
+
+        async function hostStartQuizz() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            try {
+                await fetch('/api/quizz/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'start' })
+                });
+                actualStartGame(); // Force start on host side since polling won't catch it
+            } catch (e) {
+                alert('Gagal memulai kuis');
+            }
+        }
+
+        async function hostResetQuizz() {
+            if (!confirm('Yakin ingin reset room? Semua peserta akan dikeluarkan.')) return;
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            try {
+                await fetch('/api/quizz/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mapel: selMapel, rombel: selRombel })
+                });
+                location.reload();
+            } catch (e) {
+                alert('Gagal reset');
+            }
+        }
+
+        // Start Game
+        function actualStartGame() {
+            if (lobbyInterval) clearInterval(lobbyInterval);
+            
+            // Music is now handled by window.onload. Ensure volume is normal.
+            const audio = document.getElementById('bg-music');
+            if (audio && isMusicPlaying) {
+                audio.volume = 0.5; // Ensure normal volume after TTS might have lowered it
+            }
+            
+            score = 0;
+            pendingScore = 0;
+            correctAnswers = 0;
+            
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+
+            questions = allQuestions.filter(q => {
+                let match = true;
+                if (selMapel && q.mapel !== selMapel) match = false;
+                if (selRombel && q.rombel !== selRombel) match = false;
+                return match;
+            });
+
+            if (questions.length === 0) {
+                alert("Maaf, belum ada soal kuis untuk kategori mapel dan rombel yang tertera.");
+                location.reload();
+                return;
+            }
+
+            // Disabled random shuffling so that Host and Students have perfectly synced question indices.
+
+            document.getElementById("lobby-screen").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.remove("hidden");
+            document.getElementById("quiz-screen").classList.add("flex");
+            
+            if (userRole === 'admin' || userRole === 'teacher') {
+                document.getElementById('host-ingame-controls').classList.remove('hidden');
+                document.getElementById('host-ingame-controls').classList.add('flex');
+                document.getElementById('answers-container').classList.add('pointer-events-none');
+                
+                // Set explicitly room index 0 to server
+                const selMapel = document.getElementById("select-mapel").value;
+                const selRombel = document.getElementById("select-rombel").value;
+                fetch('/api/quizz/room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'playing', currentIndex: 0, startTime: Date.now() })
+                });
+            }
+            
+            currentQuestionIndex = 0;
+            loadQuestion();
+
+            // Heartbeat & Sync during game
+            if (lobbyInterval) clearInterval(lobbyInterval);
+            lobbyInterval = setInterval(gameSyncPolling, 2000);
+        }
+
+        async function gameSyncPolling() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            
+            // Sync Score if student
+            if (userRole !== 'admin' && userRole !== 'teacher') {
+                try {
+                    await fetch('/api/quizz/score', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ studentId, mapel: selMapel, rombel: selRombel, score })
+                    });
+                } catch(e){}
+            }
+
+            // Sync Game State
+            try {
+                const res = await fetch(`/api/quizz/check-status?studentId=${encodeURIComponent(studentId)}&mapel=${encodeURIComponent(selMapel)}&rombel=${encodeURIComponent(selRombel)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'ended') {
+                        endGame();
+                    } else if (data.status === 'leaderboard') {
+                        if (document.getElementById("quiz-screen").classList.contains("flex")) {
+                            console.log(`[STUDENT_SYNC] Detected leaderboard status from host`);
+                            showIntermediateLeaderboard();
+                        }
+                    } else if (data.status === 'playing') {
+                        if (document.getElementById("result-screen").classList.contains("flex")) {
+                            document.getElementById("result-screen").classList.add("hidden");
+                            document.getElementById("result-screen").classList.remove("flex");
+                            document.getElementById("quiz-screen").classList.remove("hidden");
+                            document.getElementById("quiz-screen").classList.add("flex");
+                            if (leaderboardInterval) clearInterval(leaderboardInterval);
+                        }
+                        if (data.room_index !== undefined && data.room_index > currentQuestionIndex) {
+                            currentQuestionIndex = data.room_index;
+                            console.log(`[STUDENT_SYNC] Host advanced to Q${currentQuestionIndex + 1}`);
+                            await loadQuestion(); // Wait for reset-answered to complete
+                        }
+                    }
+                }
+            } catch(e){}
+        }
+
+        async function hostNextQuestion() {
+            if (currentQuestionIndex >= questions.length - 1) {
+                hostEndGame();
+                return;
+            }
+            currentQuestionIndex++;
+            console.log(`[HOST_NEXT] Loading Q${currentQuestionIndex + 1}`);
+            
+            // WAIT for loadQuestion to complete (including reset-answered)
+            await loadQuestion();
+            
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            fetch('/api/quizz/room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'playing', currentIndex: currentQuestionIndex, startTime: Date.now() })
+            });
+        }
+        
+        async function hostEndGame() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            fetch('/api/quizz/room', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'ended', currentIndex: currentQuestionIndex, startTime: Date.now() })
+            });
+            endGame();
+        }
+
+        // Keep legacy startGame for safety or internal calls
+        function startGame() { enterLobby(); }
+
+        // Add event listener to input to start on Enter key
+        document.getElementById("player-name").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                startGame();
+            }
+        });
+
+        // Load Question
+        async function loadQuestion() {
+            if (currentQuestionIndex >= questions.length) {
+                endGame();
+                return;
+            }
+            
+            // Hide wait message
+            document.getElementById('wait-message').classList.add('hidden');
+            
+            // Show repeat question button in header
+            document.getElementById('repeat-question-header').classList.remove('hidden');
+            
+            // Reset answered status for new question - WAIT for completion before polling
+            if (userRole === 'admin' || userRole === 'teacher') {
+                const selMapel = document.getElementById("select-mapel").value;
+                const selRombel = document.getElementById("select-rombel").value;
+                try {
+                    await fetch('/api/quizz/reset-answered', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mapel: selMapel, rombel: selRombel })
+                    });
+                    console.log(`[RESET_ANSWERED] Q${currentQuestionIndex + 1} - reset all participants answered status`);
+                } catch (e) {
+                    console.error('Failed to reset answered:', e);
+                }
+            }
+            
+            const q = questions[currentQuestionIndex];
+            isAnswering = false;
+            document.getElementById("question-text").innerText = q.question;
+            document.getElementById("question-counter").innerText = `${currentQuestionIndex + 1}/${questions.length}`;
+            
+            const answersContainer = document.getElementById("answers-container");
+            answersContainer.innerHTML = "";
+
+            // Create Buttons
+            q.answers.forEach((ans, index) => {
+                const btn = document.createElement("button");
+                btn.className = `answer-btn ${styles[index].bg} border-b-[4px] md:border-b-[6px] ${styles[index].border} rounded-xl p-3 md:p-4 text-left flex items-center gap-3 text-lg md:text-2xl font-bold min-h-[60px] md:min-h-[80px] shadow-lg relative overflow-hidden transition-transform active:translate-y-1`;
+                
+                // Content
+                btn.innerHTML = `
+                    <div class="flex-shrink-0 w-8 md:w-12 flex justify-center pointer-events-none scale-75 md:scale-100">${styles[index].shape}</div>
+                    <span class="pointer-events-none w-full text-center pr-6 drop-shadow-md leading-tight">${ans}</span>
+                    <div class="result-icon hidden absolute right-4 text-2xl md:text-3xl pointer-events-none"></div>
+                `;
+                
+                btn.onclick = () => selectAnswer(index, btn);
+                answersContainer.appendChild(btn);
+            });
+
+            // Reset and start timer
+            timeLeft = 20;
+            updateTimerDisplay();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(handleTimer, 1000);
+
+            // Read question text
+            if (userRole !== 'admin' && userRole !== 'teacher') {
+                setTimeout(() => {
+                    speakQuestion(q.question);
+                }, 500); // Delay slightly so UI is ready
+            }
+
+            // For host: poll to check if all participants answered (with 4-sec delay minimum so students have time to read)
+            if (userRole === 'admin' || userRole === 'teacher') {
+                if (allAnsweredInterval) clearInterval(allAnsweredInterval);
+                // Delay polling by 20 seconds to match question timer, ensuring students have full time to answer
+                setTimeout(() => {
+                    allAnsweredInterval = setInterval(checkAllAnsweredAndAutoNext, 1000);
+                    console.log(`[POLLING_START] Q${currentQuestionIndex + 1} - STARTED polling all-answered @T+20sec - ${new Date().toLocaleTimeString('id-ID')}`);
+                }, 20000);
+            }
+        }
+
+        async function checkAllAnsweredAndAutoNext() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            try {
+                const res = await fetch(`/api/quizz/check-all-answered?mapel=${encodeURIComponent(selMapel)}&rombel=${encodeURIComponent(selRombel)}`);
+                const data = await res.json();
+                
+                console.log(`[POLLING_CHECK] Q${currentQuestionIndex + 1} - all_answered:${data.all_answered} - ${new Date().toLocaleTimeString('id-ID')}`);
+                
+                if (data.all_answered === true) {
+                    // All participants answered, show leaderboard and wait for admin to advance
+                    console.log(`[AUTO_LEADERBOARD] Q${currentQuestionIndex + 1} COMPLETED - showing leaderboard NOW`);
+                    clearInterval(allAnsweredInterval);
+                    clearInterval(timerInterval);
+                    
+                    const selMapel = document.getElementById("select-mapel").value;
+                    const selRombel = document.getElementById("select-rombel").value;
+                    fetch('/api/quizz/room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'leaderboard', currentIndex: currentQuestionIndex, startTime: Date.now() })
+                    });
+                    showIntermediateLeaderboard();
+                }
+            } catch(e) {
+                console.error('Error checking all answered:', e);
+            }
+        }
+
+        function handleTimer() {
+            timeLeft--;
+            updateTimerDisplay();
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                handleTimeout();
+            }
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById("timer-display");
+            display.innerText = timeLeft;
+            if (timeLeft <= 5) {
+                display.classList.add("text-red-300", "animate-ping");
+                setTimeout(() => display.classList.remove("animate-ping"), 300);
+            } else {
+                display.classList.remove("text-red-300");
+            }
+        }
+
+        function handleTimeout() {
+            if (isAnswering) return;
+            isAnswering = true;
+            revealAnswers(-1); // -1 means no answer selected
+            
+            // Mark student as answered (timeout count as answered)
+            if (userRole !== 'admin' && userRole !== 'teacher') {
+                const selMapel = document.getElementById("select-mapel").value;
+                const selRombel = document.getElementById("select-rombel").value;
+                fetch('/api/quizz/mark-answered', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId, mapel: selMapel, rombel: selRombel })
+                }).catch(e => console.error('Failed to mark answered:', e));
+            }
+            
+            if (userRole === 'admin' || userRole === 'teacher') {
+                setTimeout(() => {
+                    const selMapel = document.getElementById("select-mapel").value;
+                    const selRombel = document.getElementById("select-rombel").value;
+                    fetch('/api/quizz/room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'leaderboard', currentIndex: currentQuestionIndex, startTime: Date.now() })
+                    });
+                    showIntermediateLeaderboard();
+                }, 3500); // Wait 3.5s to show correct answer on screen before switching to ranking
+            } else {
+                document.getElementById('wait-message').classList.remove('hidden');
+            }
+        }
+
+        function selectAnswer(selectedIndex, selectedBtn) {
+            if (isAnswering) return;
+            isAnswering = true;
+            clearInterval(timerInterval);
+
+            const q = questions[currentQuestionIndex];
+            const isCorrect = selectedIndex === q.correct;
+
+            if (isCorrect) {
+                 // Calculate points based on speed (max 1000, min 500 if correct)
+                 const points = Math.round((timeLeft / 20) * 500) + 500;
+                 correctAnswers++;
+                 
+                 // For host: update score immediately
+                 if (userRole === 'admin' || userRole === 'teacher') {
+                     score += points;
+                     // Animate score update
+                     const scoreDisplay = document.getElementById("score-display");
+                     scoreDisplay.innerText = score;
+                     scoreDisplay.classList.add("text-yellow-400", "scale-125");
+                     setTimeout(() => scoreDisplay.classList.remove("text-yellow-400", "scale-125"), 300);
+                     
+                     const icon = selectedBtn.querySelector(".result-icon");
+                     icon.innerHTML = "<i class='fas fa-check text-green-300 drop-shadow'></i>";
+                     icon.classList.remove("hidden");
+                     icon.classList.add("animate-pop");
+                 } else {
+                     // For students: store points to add when leaderboard appears
+                     pendingScore += points;
+                 }
+            } else {
+                 // No icon for wrong answers
+            }
+
+            revealAnswers(selectedIndex);
+            
+            if (userRole === 'admin' || userRole === 'teacher') {
+                setTimeout(() => {
+                    const selMapel = document.getElementById("select-mapel").value;
+                    const selRombel = document.getElementById("select-rombel").value;
+                    fetch('/api/quizz/room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mapel: selMapel, rombel: selRombel, status: 'leaderboard', currentIndex: currentQuestionIndex, startTime: Date.now() })
+                    });
+                    showIntermediateLeaderboard();
+                }, 3500);
+            } else {
+                syncScoreToServer();
+                document.getElementById('wait-message').classList.remove('hidden');
+            }
+        }
+
+        function showIntermediateLeaderboard() {
+            document.getElementById("quiz-screen").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.remove("flex");
+            
+            // Hide repeat question button during leaderboard
+            document.getElementById("repeat-question-header").classList.add("hidden");
+            
+            document.getElementById("result-screen").classList.remove("hidden");
+            document.getElementById("result-screen").classList.add("flex");
+            
+            document.getElementById("result-title").innerText = "Ranking Sementara";
+            document.getElementById("result-message").innerText = `Setelah Soal ${currentQuestionIndex + 1}`;
+            
+            document.getElementById("player-stats").classList.add("hidden");
+            document.getElementById("btn-main-lagi").classList.add("hidden");
+            
+            document.getElementById("host-leaderboard-container").classList.remove("hidden");
+            document.getElementById("host-leaderboard-container").classList.add("flex");
+            
+            // For student: add pending score now when leaderboard appears
+            if (userRole !== 'admin' && userRole !== 'teacher' && pendingScore > 0) {
+                score += pendingScore;
+                const scoreDisplay = document.getElementById("score-display");
+                scoreDisplay.innerText = score;
+                scoreDisplay.classList.add("text-yellow-400", "scale-125");
+                setTimeout(() => scoreDisplay.classList.remove("text-yellow-400", "scale-125"), 300);
+                pendingScore = 0;
+            }
+            
+            fetchAndRenderLeaderboard();
+            if (leaderboardInterval) clearInterval(leaderboardInterval);
+            leaderboardInterval = setInterval(fetchAndRenderLeaderboard, 3000);
+            
+            if (userRole === 'admin' || userRole === 'teacher') {
+                document.getElementById("btn-lanjut-soal-leaderboard").classList.remove("hidden");
+            }
+        }
+
+        async function hostNextQuestionFromLeaderboard() {
+            console.log(`[LEADERBOARD_EXIT] Admin clicked next question button`);
+            
+            document.getElementById("result-screen").classList.add("hidden");
+            document.getElementById("result-screen").classList.remove("flex");
+            
+            document.getElementById("quiz-screen").classList.remove("hidden");
+            document.getElementById("quiz-screen").classList.add("flex");
+            
+            if (leaderboardInterval) clearInterval(leaderboardInterval);
+            document.getElementById("btn-lanjut-soal-leaderboard").classList.add("hidden");
+            
+            // WAIT for async hostNextQuestion to complete before returning
+            await hostNextQuestion();
+            console.log(`[LEADERBOARD_EXIT] Next question loaded and polling delay started`);
+        }
+
+        async function syncScoreToServer() {
+            if (userRole === 'admin' || userRole === 'teacher') return;
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            try {
+                await fetch('/api/quizz/score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId, mapel: selMapel, rombel: selRombel, score })
+                });
+            } catch (e) {
+                console.warn('Failed to sync score');
+            }
+        }
+
+        function revealAnswers(selectedIndex) {
+            const btns = document.querySelectorAll(".answer-btn");
+            const q = questions[currentQuestionIndex];
+
+            btns.forEach((btn, index) => {
+                btn.onclick = null; // Remove click events
+                btn.style.cursor = "default";
+                btn.classList.remove("active:translate-y-1");
+                
+                if (index === q.correct) {
+                    // Correct answer stays bright
+                    if (selectedIndex === -1 || userRole === 'admin' || userRole === 'teacher') {
+                         // On timeout or host view, show correct answer checkmark
+                         const icon = btn.querySelector(".result-icon");
+                         icon.innerHTML = "<i class='fas fa-check text-white opacity-80'></i>";
+                         icon.classList.remove("hidden");
+                         icon.classList.add("animate-pop");
+                    }
+                }
+
+                if (selectedIndex !== -1 && index === selectedIndex && selectedIndex !== q.correct && userRole !== 'admin' && userRole !== 'teacher') {
+                    // Highlight the student's wrong choice.
+                    btn.style.boxShadow = "0 0 0 4px rgba(255,255,255,0.45)";
+                    btn.style.filter = "brightness(1.05)";
+                }
+            });
+        }
+
+        function endGame() {
+            document.getElementById("quiz-screen").classList.add("hidden");
+            document.getElementById("quiz-screen").classList.remove("flex");
+            document.getElementById("result-screen").classList.remove("hidden");
+            document.getElementById("result-screen").classList.add("flex");
+            
+            // Hide repeat question button
+            document.getElementById("repeat-question-header").classList.add("hidden");
+
+            document.getElementById("btn-lanjut-soal-leaderboard").classList.add("hidden");
+            document.getElementById("btn-main-lagi").classList.remove("hidden");
+
+            if (userRole === 'admin' || userRole === 'teacher') {
+                // Host Mode: Show Leaderboard instead of personal stats
+                document.getElementById("result-title").innerText = "Permainan Selesai!";
+                document.getElementById("result-message").innerText = "Seluruh Pertanyaan Telah Dijawab";
+                document.getElementById("player-stats").classList.add("hidden");
+                document.getElementById("host-leaderboard-container").classList.remove("hidden");
+                document.getElementById("host-leaderboard-container").classList.add("flex");
+                
+                // Fetch leaderboard periodically
+                if (lobbyInterval) clearInterval(lobbyInterval);
+                fetchAndRenderLeaderboard();
+                lobbyInterval = setInterval(fetchAndRenderLeaderboard, 3000);
+            } else {
+                // Player Mode: Show personal stats
+                
+                // Apply any remaining pending score
+                if (pendingScore > 0) {
+                    score += pendingScore;
+                    pendingScore = 0;
+                }
+                
+                document.getElementById("result-title").innerText = "Permainan Selesai!";
+                document.getElementById("result-message").innerHTML = `Kerja bagus, <span id="final-name" class="text-white">${playerName}</span>!`;
+                document.getElementById("player-stats").classList.remove("hidden");
+                document.getElementById("host-leaderboard-container").classList.remove("flex");
+                document.getElementById("host-leaderboard-container").classList.add("hidden");
+                
+                // Animate final score
+                let currentScore = 0;
+                const targetScore = score;
+                const duration = 1500;
+                const intervalTime = 30;
+                const steps = duration / intervalTime;
+                const increment = targetScore / steps;
+                
+                const scoreDisplay = document.getElementById("final-score");
+                const counter = setInterval(() => {
+                    currentScore += increment;
+                    if (currentScore >= targetScore) {
+                        currentScore = targetScore;
+                        clearInterval(counter);
+                        // Add pop animation at the end
+                        scoreDisplay.classList.add("text-yellow-400", "scale-110", "transition-all");
+                        setTimeout(() => scoreDisplay.classList.remove("text-yellow-400", "scale-110", "transition-all"), 300);
+                    }
+                    scoreDisplay.innerText = Math.round(currentScore);
+                }, intervalTime);
+
+                document.getElementById("correct-count").innerText = correctAnswers;
+                document.getElementById("wrong-count").innerText = questions.length - correctAnswers;
+                
+                // Final Sync
+                syncScoreToServer();
+                
+                // Restart polling with long interval to keep alive in leaderboard
+                if (lobbyInterval) clearInterval(lobbyInterval);
+                lobbyInterval = setInterval(syncScoreToServer, 10000);
+            }
+        }
+
+        async function fetchAndRenderLeaderboard() {
+            const selMapel = document.getElementById("select-mapel").value;
+            const selRombel = document.getElementById("select-rombel").value;
+            try {
+                const res = await fetch(`/api/quizz/participants?mapel=${encodeURIComponent(selMapel)}&rombel=${encodeURIComponent(selRombel)}`);
+                const participants = await res.json();
+                participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+                
+                const list = document.getElementById('host-leaderboard-list');
+                if (participants.length === 0) {
+                    list.innerHTML = '<div class="text-center text-white/50 italic py-4">Belum ada peserta</div>';
+                    return;
+                }
+                
+                list.innerHTML = participants.map((p, idx) => `
+                    <div class="flex justify-between items-center bg-white/10 p-3 rounded-xl mb-2 backdrop-blur-sm border border-white/10 ${idx === 0 ? 'bg-amber-400/20 border-amber-400/50' : ''}">
+                        <div class="flex items-center gap-3">
+                            <div class="w-6 h-6 rounded bg-black/30 text-white flex items-center justify-center font-bold text-xs">${idx + 1}</div>
+                            <div class="font-bold text-white truncate max-w-[150px]">${p.student_name}</div>
+                        </div>
+                        <div class="font-black text-amber-300 text-lg">${(p.score || 0).toLocaleString()}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error("Failed to load host leaderboard", e);
+            }
+        }
+
+        window.onload = fetchQuizzes;
+    </script>
+</body>
+</html>
